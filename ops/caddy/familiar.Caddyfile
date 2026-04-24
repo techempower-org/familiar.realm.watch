@@ -1,40 +1,36 @@
-# familiar.jphe.in — paste into ubox0's main Caddyfile or include as a snippet.
-# Authelia forward-auth gates write endpoints; /v1/* stays open so OpenAI
-# clients (cc, speech-to-cli, etc.) work without Authelia config.
+# familiar.jphe.in — append to ubox0's /etc/caddy/Caddyfile.
+# TLS via Cloudflare DNS (CLOUDFLARE_API_TOKEN_JPHE for jphe.in).
+# Write endpoints behind Authelia forward-auth at 10.0.6.134:9091.
+# /v1/* (OpenAI compat) stays open so cc / speech-to-cli / etc. work without auth.
 
 familiar.jphe.in {
-    handle /v1/* {
-        reverse_proxy familiar:8080 {
-            flush_interval -1
-        }
-    }
-    handle /api/version {
-        reverse_proxy familiar:8080
-    }
-    handle /api/familiar/health {
-        reverse_proxy familiar:8080
-    }
+	tls {
+		dns cloudflare {env.CLOUDFLARE_API_TOKEN_JPHE}
+		resolvers 1.1.1.1 8.8.8.8
+	}
 
-    handle /api/familiar/memory* {
-        forward_auth authelia:9091 {
-            uri /api/verify?rd=https://auth.jphe.in
-            copy_headers Remote-User Remote-Groups Remote-Email
-        }
-        reverse_proxy familiar:8080
-    }
-    handle /api/familiar/reflect* {
-        forward_auth authelia:9091 {
-            uri /api/verify?rd=https://auth.jphe.in
-            copy_headers Remote-User Remote-Groups Remote-Email
-        }
-        reverse_proxy familiar:8080
-    }
+	@v1 path /v1/*
+	handle @v1 {
+		reverse_proxy 10.0.6.115:8080 {
+			flush_interval -1
+		}
+	}
 
-    handle {
-        reverse_proxy familiar:8080
-    }
+	@public path /api/version /api/familiar/health
+	handle @public {
+		reverse_proxy 10.0.6.115:8080
+	}
 
-    log {
-        output file /var/log/caddy/familiar.log
-    }
+	@write path /api/familiar/memory* /api/familiar/reflect*
+	handle @write {
+		forward_auth 10.0.6.134:9091 {
+			uri /api/authz/forward-auth
+			copy_headers Remote-User Remote-Groups Remote-Name Remote-Email
+		}
+		reverse_proxy 10.0.6.115:8080
+	}
+
+	handle {
+		reverse_proxy 10.0.6.115:8080
+	}
 }
