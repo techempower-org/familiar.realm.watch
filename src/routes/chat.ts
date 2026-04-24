@@ -47,9 +47,9 @@ export async function handleChat(req: Request, deps: ChatRouteDeps): Promise<Res
     return new Response(JSON.stringify({ error: "at least one user message required" }), { status: 400, headers: { "content-type": "application/json" } });
   }
 
-  const sessionId = body.user ?? deps.sessions.create().id;
-  let session = deps.sessions.get(sessionId);
+  let session = body.user ? deps.sessions.get(body.user) : undefined;
   if (!session) session = deps.sessions.create();
+  const sessionId = session.id;
 
   const wingHint = body.wing ?? req.headers.get("x-familiar-context") ?? null;
 
