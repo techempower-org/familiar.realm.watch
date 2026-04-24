@@ -6,7 +6,6 @@
 familiar.jphe.in {
 	tls {
 		dns cloudflare {env.CLOUDFLARE_API_TOKEN_JPHE}
-		resolvers 1.1.1.1 8.8.8.8
 	}
 
 	@v1 path /v1/*
