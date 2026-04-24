@@ -1,0 +1,40 @@
+# familiar.jphe.in — paste into ubox0's main Caddyfile or include as a snippet.
+# Authelia forward-auth gates write endpoints; /v1/* stays open so OpenAI
+# clients (cc, speech-to-cli, etc.) work without Authelia config.
+
+familiar.jphe.in {
+    handle /v1/* {
+        reverse_proxy familiar:8080 {
+            flush_interval -1
+        }
+    }
+    handle /api/version {
+        reverse_proxy familiar:8080
+    }
+    handle /api/familiar/health {
+        reverse_proxy familiar:8080
+    }
+
+    handle /api/familiar/memory* {
+        forward_auth authelia:9091 {
+            uri /api/verify?rd=https://auth.jphe.in
+            copy_headers Remote-User Remote-Groups Remote-Email
+        }
+        reverse_proxy familiar:8080
+    }
+    handle /api/familiar/reflect* {
+        forward_auth authelia:9091 {
+            uri /api/verify?rd=https://auth.jphe.in
+            copy_headers Remote-User Remote-Groups Remote-Email
+        }
+        reverse_proxy familiar:8080
+    }
+
+    handle {
+        reverse_proxy familiar:8080
+    }
+
+    log {
+        output file /var/log/caddy/familiar.log
+    }
+}
