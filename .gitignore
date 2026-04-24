@@ -1,0 +1,10 @@
+.worktrees/
+worktrees/
+node_modules/
+.env
+.env.local
+*.log
+dist/
+.bun/
+coverage/
+.DS_Store
