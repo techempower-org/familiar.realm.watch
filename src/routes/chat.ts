@@ -1,0 +1,195 @@
+import type { OllamaClient } from "../ollama-client.ts";
+import type { PalaceClient } from "../palace-client.ts";
+import type { CircuitBreaker } from "../circuit-breaker.ts";
+import type { SessionStore } from "../sessions.ts";
+import type { Config } from "../types.ts";
+import { retrieveAndGround } from "../memory-protocol.ts";
+import { voice } from "../lang/familiar-voice.ts";
+
+export interface ChatRouteDeps {
+  cfg: Config;
+  palace: PalaceClient;
+  ollama: OllamaClient;
+  sessions: SessionStore;
+  breakers: {
+    palace: CircuitBreaker;
+    ollama: CircuitBreaker;
+  };
+}
+
+interface OpenAIChatRequest {
+  model?: string;
+  messages: Array<{ role: "system" | "user" | "assistant"; content: string }>;
+  stream?: boolean;
+  user?: string;
+  wing?: string;
+}
+
+/**
+ * POST /v1/chat/completions. OpenAI-compatible request/response.
+ * If stream=true (default), returns Server-Sent Events ("data: {...}\n\n").
+ * If stream=false, buffers the full response and returns a single JSON body.
+ */
+export async function handleChat(req: Request, deps: ChatRouteDeps): Promise<Response> {
+  let body: OpenAIChatRequest;
+  try {
+    body = (await req.json()) as OpenAIChatRequest;
+  } catch {
+    return new Response(JSON.stringify({ error: "invalid JSON body" }), { status: 400, headers: { "content-type": "application/json" } });
+  }
+
+  if (!body.messages || body.messages.length === 0) {
+    return new Response(JSON.stringify({ error: "messages required" }), { status: 400, headers: { "content-type": "application/json" } });
+  }
+
+  const lastUser = [...body.messages].reverse().find((m) => m.role === "user");
+  if (!lastUser) {
+    return new Response(JSON.stringify({ error: "at least one user message required" }), { status: 400, headers: { "content-type": "application/json" } });
+  }
+
+  const sessionId = body.user ?? deps.sessions.create().id;
+  let session = deps.sessions.get(sessionId);
+  if (!session) session = deps.sessions.create();
+
+  const wingHint = body.wing ?? req.headers.get("x-familiar-context") ?? null;
+
+  let grounded: Awaited<ReturnType<typeof retrieveAndGround>>;
+  try {
+    grounded = await deps.breakers.palace.run(() => retrieveAndGround({
+      palace: deps.palace,
+      userMessage: lastUser.content,
+      wingScope: wingHint,
+      retrievalLimit: deps.cfg.retrievalLimit,
+      contextBudgetTokens: deps.cfg.tokenBudget.context,
+      recentCitations: session.recentCitations,
+    }));
+  } catch {
+    // breaker open — still respond, just without palace context
+    grounded = {
+      systemPrompt: `You are the familiar. ${voice.palaceQuiet}`,
+      drawerIds: [],
+      warnings: ["palace_unreachable"],
+    };
+  }
+
+  const model = body.model ?? deps.cfg.ollamaChat.model;
+  const messagesForOllama = [
+    { role: "system" as const, content: grounded.systemPrompt },
+    ...body.messages,
+  ];
+
+  const stream = body.stream !== false;
+  if (stream) {
+    return streamResponse({ deps, model, messagesForOllama, sessionId, drawerIds: grounded.drawerIds, userContent: lastUser.content });
+  } else {
+    return bufferResponse({ deps, model, messagesForOllama, sessionId, drawerIds: grounded.drawerIds, userContent: lastUser.content });
+  }
+}
+
+interface GenOpts {
+  deps: ChatRouteDeps;
+  model: string;
+  messagesForOllama: Array<{ role: "system" | "user" | "assistant"; content: string }>;
+  sessionId: string;
+  drawerIds: string[];
+  userContent: string;
+}
+
+function streamResponse(opts: GenOpts): Response {
+  const { deps, model, messagesForOllama, sessionId, drawerIds, userContent } = opts;
+  const enc = new TextEncoder();
+  let accumulated = "";
+  const created = Math.floor(Date.now() / 1000);
+  const completionId = `chatcmpl-${crypto.randomUUID()}`;
+
+  const body = new ReadableStream<Uint8Array>({
+    async start(controller) {
+      try {
+        await deps.breakers.ollama.run(async () => {
+          for await (const chunk of deps.ollama.chatStream({ model, messages: messagesForOllama })) {
+            const delta = chunk.message?.content ?? "";
+            if (delta) accumulated += delta;
+            const openAIChunk = {
+              id: completionId,
+              object: "chat.completion.chunk",
+              created,
+              model,
+              choices: [{ index: 0, delta: delta ? { role: "assistant", content: delta } : {}, finish_reason: chunk.done ? "stop" : null }],
+            };
+            controller.enqueue(enc.encode(`data: ${JSON.stringify(openAIChunk)}\n\n`));
+            if (chunk.done) {
+              controller.enqueue(enc.encode("data: [DONE]\n\n"));
+            }
+          }
+        });
+      } catch (err) {
+        const errChunk = {
+          id: completionId,
+          object: "chat.completion.chunk",
+          created,
+          model,
+          choices: [{ index: 0, delta: { role: "assistant", content: `\n\n${voice.chatFalters}` }, finish_reason: "stop" }],
+        };
+        controller.enqueue(enc.encode(`data: ${JSON.stringify(errChunk)}\n\n`));
+        controller.enqueue(enc.encode("data: [DONE]\n\n"));
+      } finally {
+        controller.close();
+        postStreamWrite({ deps, sessionId, userContent, assistantContent: accumulated, drawerIds });
+      }
+    },
+  });
+
+  return new Response(body, {
+    status: 200,
+    headers: {
+      "content-type": "text/event-stream",
+      "cache-control": "no-cache",
+      "connection": "keep-alive",
+      "x-session-id": sessionId,
+    },
+  });
+}
+
+async function bufferResponse(opts: GenOpts): Promise<Response> {
+  const { deps, model, messagesForOllama, sessionId, drawerIds, userContent } = opts;
+  let accumulated = "";
+  try {
+    await deps.breakers.ollama.run(async () => {
+      for await (const chunk of deps.ollama.chatStream({ model, messages: messagesForOllama })) {
+        const delta = chunk.message?.content ?? "";
+        if (delta) accumulated += delta;
+      }
+    });
+  } catch {
+    accumulated = voice.chatFalters;
+  }
+  postStreamWrite({ deps, sessionId, userContent, assistantContent: accumulated, drawerIds });
+  const resp = {
+    id: `chatcmpl-${crypto.randomUUID()}`,
+    object: "chat.completion",
+    created: Math.floor(Date.now() / 1000),
+    model,
+    choices: [{ index: 0, message: { role: "assistant", content: accumulated }, finish_reason: "stop" }],
+  };
+  return new Response(JSON.stringify(resp), {
+    status: 200,
+    headers: { "content-type": "application/json", "x-session-id": sessionId },
+  });
+}
+
+function postStreamWrite(args: {
+  deps: ChatRouteDeps;
+  sessionId: string;
+  userContent: string;
+  assistantContent: string;
+  drawerIds: string[];
+}): void {
+  // Fire-and-forget: never await, never propagate errors to the user
+  const { deps, sessionId, userContent, assistantContent, drawerIds } = args;
+  queueMicrotask(() => {
+    deps.sessions.appendTurn(sessionId, { role: "user", content: userContent });
+    deps.sessions.appendTurn(sessionId, { role: "assistant", content: assistantContent });
+    deps.sessions.markCitations(sessionId, drawerIds);
+    // v0.1: no palace writes from post-stream (deferred to v0.2 diary buffering).
+  });
+}
