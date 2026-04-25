@@ -294,6 +294,47 @@ palace-daemon (via jphein fork) continues using its default ONNX all-MiniLM-L6-v
 - **v0.3** (14B model on P40): rivals cloud Sonnet on memory-anchored queries (est. 70-80% E2E QA). Cloud fallback reserved for long-document reasoning and novel problem solving.
 - None of this is the 98.4% retrieval number. Per engram-2, retrieval recall ≠ answer quality; we optimize for E2E.
 
+## Composition with RLM (Recursive Language Models) — added 2026-04-25
+
+[RLM (Recursive Language Models)](https://github.com/alexzhang13/rlm) is a task-agnostic inference paradigm where the LM offloads its context as a variable in a REPL environment and recursively decomposes / examines / sub-calls itself over the input. JP forked it to [jphein/rlm](https://github.com/jphein/rlm) on 2026-04-25. Familiar and RLM solve adjacent problems from opposite directions:
+
+- **familiar's deterministic pipeline** (steps 1-10 above): familiar-api orchestrates retrieve → ground → generate as a fixed flow. The pipeline does the work; the LM just generates from a prepared system prompt.
+- **RLM's recursive REPL**: the LM itself decides when to retrieve, when to recurse, when to compress. Tools are exposed as Python functions in the REPL globals.
+
+### Smoke-test findings (2026-04-25)
+
+Two RLM-as-MemPalace-consumer tests run against Foundry gpt-5.3-chat with `mempalace_search` exposed as an RLM `custom_tools` callable, calling palace-daemon's `/search` HTTP endpoint:
+
+1. **Tool-call discovery is real** — RLM autonomously chose to call `mempalace_search`, picked sensible queries, parsed the JSON response, produced quoted-with-citations answers (4 iterations / 23s / ~13K input tokens). No prompt engineering required beyond the docstring.
+2. **Newer != better for RLM** — same test on `gpt-5.5-1` (Apr-24 deployment) used the tool **0 times**, hallucinated *"I don't have access to that tool"*, returned in 1 iteration. `gpt-5.3-chat` (older, simpler) doggedly tried 13 iterations on a hard question. RLM-paradigm performance is sensitive to system-prompt-following style, not just raw model strength.
+3. **Retrieval-shape problems amplify under RLM** — RLM trusts what the tool returns. MemPalace's current write path is dominated by Stop-hook diary CHECKPOINTs (truncated conversational fragments). When RLM searched for "the architecture decision about palace-daemon", it found CHECKPOINT excerpts that *contained* fragments of decisions, mistook those fragments for the canonical decision, and produced a confident-but-misleading answer. Familiar's deterministic pipeline (steps 4-7: rerank, decay, compression) would have filtered these *before* the LM saw them.
+
+### Implication: RLM and familiar are complementary, not competing
+
+The right composition isn't "RLM replaces familiar's pipeline" — it's **familiar's `/v1/chat/completions` endpoint becomes one of the tools an outer RLM can call**. RLM as orchestrator, familiar as grounded-answer service:
+
+```
+RLM (recursive orchestrator)
+  ├─ tools/familiar_chat(question) → familiar-api /v1/chat/completions
+  │     [familiar's 10-step pipeline runs internally,
+  │      returns grounded/cited answer for one question]
+  ├─ tools/mempalace_search(query) → palace-daemon /search [raw retrieval]
+  └─ REPL globals for compression, decomposition, multi-hop reasoning
+```
+
+This gives RLM the noise-filtering familiar provides (Emmimal 5-component pipeline with confidence gates, refusal directives, citation enforcement) **plus** the recursive decomposition RLM provides for queries that don't fit the prepared-prompt shape (multi-hop, long-document, "find the X that contradicts Y").
+
+### Roadmap impact
+
+- **v0.1, v0.2**: no change. familiar ships its deterministic pipeline as planned. RLM is not a dependency.
+- **v0.3** (P40 milestone, ~6 weeks out): add an `/api/familiar/rlm` endpoint that wraps familiar's chat-completions in an RLM outer loop. The tool list exposed to RLM at minimum includes `familiar_chat` (the deterministic pipeline) and `mempalace_search` (raw retrieval). Use the [jphein/rlm](https://github.com/jphein/rlm) fork's `examples/mempalace_demo.py` as the reference shape.
+- **Future**: when local models get strong enough at multi-step tool orchestration (qwen3 or similar 14B+), the RLM outer-loop becomes the default for "complex" queries — familiar-api routes between the deterministic pipeline (fast, bounded) and RLM-mode (recursive, longer-running) based on query complexity heuristics.
+
+### What we won't do
+- Replace familiar's deterministic pipeline with RLM. The pipeline's value is faithfulness telemetry and grounding directives — both depend on the retrieve-then-generate shape.
+- Run RLM on the v0.1 3B or v0.2 7B local model. The smoke test confirmed RLM is sensitive to model strength in non-obvious ways; small models will refuse-or-hallucinate at the orchestration layer.
+- Use RLM for chat-turn latency-sensitive paths. RLM's recursive sub-calls add 5-25× latency. Per-turn pipeline stays deterministic.
+
 ## Hardware inventory
 
 | Host | CPU | RAM | GPU (v0.1) | GPU (v0.3) | Disk |
