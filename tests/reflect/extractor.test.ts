@@ -69,4 +69,14 @@ describe("extractCandidates", () => {
     expect(out).toHaveLength(1);
     expect(out[0].fact).toBe("fenced");
   });
+
+  test("accepts bare-string array (small-model fallback)", async () => {
+    const inference = stubInference(JSON.stringify([
+      "rlm is a recursive language model paradigm",
+      "DiaryBuffer flushes every 10 turns",
+    ]));
+    const out = await extractCandidates("turn", { inference, maxFacts: 5 });
+    expect(out).toHaveLength(2);
+    expect(out[0].fact).toBe("rlm is a recursive language model paradigm");
+  });
 });

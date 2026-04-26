@@ -11,15 +11,25 @@ import type { InferenceChatProvider } from "../types.ts";
 
 const SYSTEM_PROMPT = `You extract factual claims from text for a knowledge base.
 
-Given an assistant's response text, return a JSON array of factual claims worth remembering. A claim is "worth remembering" if it states something concrete: a fact, a relationship, a definition, a decision. Skip greetings, hedges, refusals, opinions, and meta-commentary.
+Return a JSON array. Each entry is an object with a "fact" string field
+that is a self-contained sentence stating the claim. Optionally include
+"source_span": [start, end] character offsets.
 
-Return ONLY a JSON array. Each entry has:
-  - fact: a single self-contained sentence stating the claim
-  - source_span: [start, end] character offsets into the input text
+A claim is "worth remembering" if it states something concrete: a fact,
+relationship, definition, or decision. Skip greetings, hedges, refusals,
+opinions, and meta-commentary. If the input has no extractable claims,
+return [].
 
-If the input contains no extractable claims, return [].
+EXAMPLE INPUT:
+"DiaryBuffer flushes every 10 turns or on session end. The familiar's primary GPU is the RTX 2080 Ti."
 
-Do not wrap the JSON in markdown fences. Do not add commentary.`;
+EXAMPLE OUTPUT:
+[
+  {"fact": "DiaryBuffer flushes every 10 turns or on session end."},
+  {"fact": "The familiar's primary GPU is the RTX 2080 Ti."}
+]
+
+Return ONLY the JSON array. No markdown fences. No commentary.`;
 
 export interface ExtractorOptions {
   inference: InferenceChatProvider;
@@ -63,15 +73,26 @@ export async function extractCandidates(
 
   const candidates: ReflectCandidate[] = [];
   for (const entry of parsed) {
-    if (!entry || typeof entry !== "object") continue;
-    const e = entry as { fact?: unknown; source_span?: unknown };
-    if (typeof e.fact !== "string") continue;
-    const span =
-      Array.isArray(e.source_span) && e.source_span.length === 2 &&
-      typeof e.source_span[0] === "number" && typeof e.source_span[1] === "number"
-        ? ([e.source_span[0], e.source_span[1]] as [number, number])
-        : ([0, e.fact.length] as [number, number]);
-    candidates.push({ fact: e.fact, source_span: span });
+    // Accept the canonical shape: { fact: string, source_span?: [n,n] }
+    if (entry && typeof entry === "object" && !Array.isArray(entry)) {
+      const e = entry as { fact?: unknown; source_span?: unknown };
+      if (typeof e.fact === "string") {
+        const span =
+          Array.isArray(e.source_span) && e.source_span.length === 2 &&
+          typeof e.source_span[0] === "number" && typeof e.source_span[1] === "number"
+            ? ([e.source_span[0], e.source_span[1]] as [number, number])
+            : ([0, e.fact.length] as [number, number]);
+        candidates.push({ fact: e.fact, source_span: span });
+        continue;
+      }
+    }
+    // Permissive: small models sometimes emit a bare string per fact.
+    if (typeof entry === "string" && entry.trim().length > 0) {
+      candidates.push({ fact: entry, source_span: [0, entry.length] });
+      continue;
+    }
+    // Skip array-of-strings entries (triple-shaped output from weaker models)
+    // — gate would reject these as too short anyway.
   }
   return candidates.slice(0, opts.maxFacts);
 }
