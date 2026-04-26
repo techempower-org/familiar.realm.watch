@@ -7,6 +7,75 @@ versions follow [SemVer](https://semver.org/spec/v2.0.0.html) and the
 [realm-sigil](https://github.com/jphein/realm-sigil) convention used across
 the realm.watch ecosystem.
 
+## [0.3.0] — 2026-04-26 — *the familiar writes back*
+
+### Added — reflect loop (Subsystem A)
+
+- **`POST /api/familiar/reflect`** (`src/routes/reflect.ts`). Operator-
+  triggered endpoint. Body: `{session_id, assistant_turn}`. Runs the
+  candidate-extraction → gate → dedup → palace.writeMemory pipeline
+  and returns a `{decisions[], summary}` JSON. Off the chat hot path;
+  errors degrade silently. v0.4 will add automatic per-session
+  triggering via Stop hook. Gated by Authelia `@write` matcher in
+  ubox0's Caddyfile.
+- **`ReflectWriter`** (`src/reflect/writer.ts`). Orchestrator that
+  stitches the four reflect modules. Wing-scoped writes (default:
+  `wing="reflect"`, `room=<session_id>`) so reflect-written drawers
+  are attributable and bulk-removable.
+- **`extractCandidates`** (`src/reflect/extractor.ts`). LLM-based
+  fact extraction via the existing `InferenceRouter`. JSON-array
+  protocol with a one-shot example in the prompt; permissive parser
+  accepts both `{fact, source_span}` objects and bare-string array
+  entries (small models like Qwen 2.5 3B sometimes emit the latter).
+  Robust to malformed output (returns `[]` rather than throwing).
+- **`gate`** (`src/reflect/gate.ts`). Pure-logic filter: drops
+  refusal patterns, leading hedges, and stubs (<20 chars).
+- **`dedupCheck`** (`src/reflect/dedup.ts`). `palace.search` top-1
+  with strict-greater-than threshold (default 0.85). Defensive on
+  missing `drawer_id`.
+- **Types** (`src/reflect/types.ts`): `ReflectCandidate`, `ReflectDecision`.
+
+### Investigated and reverted (Subsystem C)
+
+Two read-side rerank attempts measured against jp-realm-v0.1 and
+reverted because the data didn't justify shipping them:
+
+- **bm25 blend in `domainRerank.baseScore`** (`eb0b640`, reverted by
+  `d2bf8a0`). Mempalace fork's `_hybrid_rank` already does an
+  identical 0.6/0.4 blend internally. Net effect: zero.
+- **`CANDIDATE_LIMIT=20` window expansion** (`55d8889`, reverted by
+  `f4f2cce`). Wing-match boost (×1.4) elevated same-wing-irrelevant
+  drawers above correct answers when the candidate pool widened.
+  Net regression (76.67% → 71.67%). 4 questions regressed, 3 improved.
+
+Both kept in commit history for the lesson; baseline JSONs in
+`multipass-structural-memory-eval/baselines/jp_realm_v0_1_familiar_v0.3_*.json`.
+
+### Changed
+
+- `PalaceDrawer.matched_via` type widened to include
+  `"sqlite_bm25_fallback"` (memorypalace fork #1005's value).
+
+### Test suite
+
+- 183 tests, ~397 expect() calls, 0 failures, typecheck clean.
+- New test files: `tests/reflect/{gate,dedup,extractor,writer,route}.test.ts`.
+
+### Documentation
+
+- v0.3 spec: `docs/superpowers/specs/2026-04-26-familiar-v0.3-design.md`
+- v0.3 plan: `docs/superpowers/plans/2026-04-26-familiar-v0.3.md`
+
+### Eval baseline (jp-realm-v0.1)
+
+- v0.2.1 entering v0.3: 76.67% recall, 17 full hits, 29/30 hit-rate
+- v0.3.0 after smoke:   78.33% recall, 18 full hits, 29/30 hit-rate
+
+q14_hermes_agent flipped 0.5 → 1.0 because the reflect smoke turn
+wrote a drawer about hermes-agent that now surfaces `agent` in
+retrieval. v0.4's automatic per-session reflect should compound this
+across many turns.
+
 ## [0.2.1] — 2026-04-26 — *eval-driven hardening*
 
 Patch release: reliability + retrieval fixes surfaced by the first
