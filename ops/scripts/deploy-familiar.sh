@@ -58,7 +58,7 @@ echo ">>> Installing/refreshing systemd unit..."
 ssh "${DEST_HOST}" "sudo cp ${DEST_ROOT}/ops/systemd/familiar-api.service /etc/systemd/system/ && sudo systemctl daemon-reload"
 
 echo ">>> (Re)starting familiar-api..."
-ssh "${DEST_HOST}" "sudo systemctl enable --now familiar-api.service"
+ssh "${DEST_HOST}" "sudo systemctl enable familiar-api.service && sudo systemctl restart familiar-api.service"
 sleep 3
 
 echo ">>> Smoke test..."
