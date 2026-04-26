@@ -1,0 +1,21 @@
+[Unit]
+Description=Ollama chat model (GPU0, port 11434)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+Environment="CUDA_VISIBLE_DEVICES=0"
+Environment="CUDA_DEVICE_ORDER=PCI_BUS_ID"
+Environment="OLLAMA_HOST=0.0.0.0:11434"
+Environment="OLLAMA_MODELS=/var/cache/ollama"
+Environment="OLLAMA_KEEP_ALIVE=-1"
+Environment="OLLAMA_MAX_LOADED_MODELS=1"
+ExecStart=/usr/local/bin/ollama serve
+Restart=on-failure
+RestartSec=5
+User=ollama
+Group=ollama
+
+[Install]
+WantedBy=multi-user.target

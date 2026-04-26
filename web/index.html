@@ -1,0 +1,28 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#0a0e14" media="(prefers-color-scheme: dark)">
+  <meta name="theme-color" content="#f5f1e8" media="(prefers-color-scheme: light)">
+  <title>familiar</title>
+  <link rel="icon" type="image/svg+xml" href="/favicon.svg">
+  <link rel="manifest" href="/manifest.webmanifest">
+  <link rel="stylesheet" href="/style.css">
+</head>
+<body data-viz-base-url="">
+  <header class="hdr">
+    <div class="sigil" aria-hidden="true">
+      <svg viewBox="0 0 32 32"><circle cx="16" cy="16" r="14" fill="none" stroke="currentColor" stroke-width="1.5"/><circle cx="16" cy="16" r="3" fill="currentColor"/></svg>
+    </div>
+    <h1>familiar</h1>
+    <div class="status" id="status" title="connection state">quiet</div>
+  </header>
+  <main id="log" class="log" aria-live="polite"></main>
+  <form id="form" class="form" autocomplete="off">
+    <input id="input" name="msg" placeholder="speak to the familiar..." autofocus required>
+    <button type="submit" title="send">→</button>
+  </form>
+  <script type="module" src="/app.js"></script>
+</body>
+</html>

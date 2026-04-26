@@ -1,0 +1,22 @@
+[Unit]
+Description=palace-daemon — mempalace HTTP/MCP gateway (jphein fork)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=%h/Projects/palace-daemon
+ExecStartPre=-/usr/bin/fuser -k 8085/tcp
+ExecStart=%h/Projects/palace-daemon/venv/bin/python main.py
+Environment=PALACE_PORT=8085
+Environment=MEMPALACE_PALACE=%h/Projects/mempalace-data/palace
+Environment=PALACE_MAX_CONCURRENCY=4
+EnvironmentFile=%h/.config/palace-daemon/env
+Restart=on-failure
+RestartSec=5
+StandardOutput=journal
+StandardError=journal
+KillMode=mixed
+
+[Install]
+WantedBy=default.target

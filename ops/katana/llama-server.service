@@ -1,0 +1,24 @@
+[Unit]
+Description=llama.cpp server (Qwen2.5-7B, GPU0 RTX 2080 Ti, port 11436)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+# Pin to GPU0 in PCI bus order so we don't get bitten by FASTEST_FIRST surprises
+# if a second GPU is added later. Same pattern as familiar's Ollama units.
+Environment="CUDA_VISIBLE_DEVICES=0"
+Environment="CUDA_DEVICE_ORDER=PCI_BUS_ID"
+ExecStart=%h/.local/share/llama.cpp/build/bin/llama-server \
+  --model %h/.local/share/models/Qwen2.5-7B-Instruct-Q5_K_M.gguf \
+  --host 0.0.0.0 \
+  --port 11436 \
+  --ctx-size 8192 \
+  --n-gpu-layers 35 \
+  --threads 6 \
+  --flash-attn off
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=default.target

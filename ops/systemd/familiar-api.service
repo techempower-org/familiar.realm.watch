@@ -1,0 +1,20 @@
+[Unit]
+Description=familiar-api — local AI companion (Bun/TS)
+After=network-online.target ollama-chat.service ollama-embed.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=/srv/familiar
+EnvironmentFile=/srv/familiar/.env
+ExecStart=/home/familiar/.bun/bin/bun run src/familiar.ts
+Restart=on-failure
+RestartSec=5
+User=familiar
+Group=familiar
+StandardOutput=journal
+StandardError=journal
+MemoryMax=2G
+
+[Install]
+WantedBy=multi-user.target
