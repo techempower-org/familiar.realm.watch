@@ -168,6 +168,44 @@ export interface SmeQueryResponse {
 }
 
 /**
+ * Structural snapshot of the palace, returned by palace-daemon's `GET /graph`
+ * (v1.6.0+). Wings + rooms + tunnels + KG entities + KG triples in one
+ * parallel-gathered response. ~0.4s on a 151K-drawer palace versus ~30s+
+ * for an equivalent serial MCP fan-out.
+ *
+ * Familiar exposes this verbatim via `GET /api/familiar/graph` with a 30s
+ * cache so the PWA / mempalace-viz / multipass adapter can poll cheaply.
+ */
+export interface PalaceGraph {
+  /** wing_name → drawer_count */
+  wings: Record<string, number>;
+  rooms: Array<{
+    wing: string;
+    rooms: Record<string, number>;
+  }>;
+  tunnels: Array<{
+    room: string;
+    wings: string[];
+  }>;
+  kg_entities: Array<{
+    id: string;
+    name: string;
+    type: string;
+    properties: Record<string, unknown>;
+  }>;
+  kg_triples: Array<{
+    subject: string;
+    predicate: string;
+    object: string;
+    valid_from?: string;
+    valid_to?: string | null;
+    confidence?: number;
+    source_file?: string;
+  }>;
+  kg_stats: { entities: number; triples: number };
+}
+
+/**
  * Structured per-turn record of a chat interaction.
  *
  * Every chat turn produces this shape — the query, the drawers walked, the

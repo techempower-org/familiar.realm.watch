@@ -1,4 +1,4 @@
-import type { PalaceSearchKind, PalaceSearchResult } from "./types.ts";
+import type { PalaceGraph, PalaceSearchKind, PalaceSearchResult } from "./types.ts";
 
 export interface PalaceClientOptions {
   baseUrl: string;
@@ -86,5 +86,17 @@ export class PalaceClient {
     const res = await this.fetchFn(`${this.baseUrl}/health`, { headers: this.headers() });
     if (!res.ok) throw new Error(`palace-daemon health: ${res.status}`);
     return (await res.json()) as { status: string };
+  }
+
+  /**
+   * Fetch the palace structural snapshot. palace-daemon v1.6.0 added this as
+   * a single-shot parallel-gather endpoint. Heavy by design — callers should
+   * cache the result rather than poll directly. Familiar's /api/familiar/graph
+   * route adds a 30s in-memory cache layer on top of this.
+   */
+  async getGraph(): Promise<PalaceGraph> {
+    const res = await this.fetchFn(`${this.baseUrl}/graph`, { headers: this.headers() });
+    if (!res.ok) throw new Error(`palace-daemon graph: ${res.status} ${res.statusText}`);
+    return (await res.json()) as PalaceGraph;
   }
 }
