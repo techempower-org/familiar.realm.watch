@@ -26,6 +26,14 @@ export interface Config {
   logLevel: "debug" | "info" | "warn" | "error";
 }
 
+/**
+ * Search-result filter for Stop-hook checkpoint drawers.
+ * memorypalace fork (270 ahead of upstream) introduced this — checkpoints
+ * are 5-word session summaries that dominate vector similarity unless filtered.
+ * Default for chat retrieval is "content"; "checkpoint" is for audit/recovery.
+ */
+export type PalaceSearchKind = "content" | "checkpoint" | "all";
+
 export interface PalaceDrawer {
   id?: string;
   text: string;
@@ -35,7 +43,11 @@ export interface PalaceDrawer {
   created_at?: string;
   similarity?: number;
   distance?: number;
-  matched_via?: "drawer" | "sqlite_bm25_fallback" | string;
+  // memorypalace fork additions:
+  topic?: string;
+  matched_via?: "drawer" | "closet" | "sqlite_bm25_fallback" | string;
+  cosine?: number;
+  bm25?: number;
 }
 
 export interface PalaceSearchResult {

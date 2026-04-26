@@ -1,4 +1,4 @@
-import type { PalaceSearchResult } from "./types.ts";
+import type { PalaceSearchKind, PalaceSearchResult } from "./types.ts";
 
 export interface PalaceClientOptions {
   baseUrl: string;
@@ -13,6 +13,8 @@ export interface SearchOpts {
   wing?: string;
   room?: string;
   maxDistance?: number;
+  /** Filter checkpoint vs content drawers. Defaults to "content" — see PalaceSearchKind. */
+  kind?: PalaceSearchKind;
 }
 
 export interface WriteMemoryOpts {
@@ -46,6 +48,9 @@ export class PalaceClient {
     if (opts.wing) params.set("wing", opts.wing);
     if (opts.room) params.set("room", opts.room);
     if (opts.maxDistance !== undefined) params.set("max_distance", String(opts.maxDistance));
+    // Default to "content" — excludes Stop-hook checkpoints which otherwise
+    // dominate vector similarity on heavily-autobiographical palaces.
+    params.set("kind", opts.kind ?? "content");
     const url = `${this.baseUrl}/search?${params.toString()}`;
 
     const ctl = new AbortController();
