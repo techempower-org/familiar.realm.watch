@@ -66,6 +66,16 @@ export async function retrieveAndGround(opts: RetrieveAndGroundOpts): Promise<Re
     warnings.push("palace_unreachable");
   }
 
+  // Defensive: palace-daemon occasionally returns drawers with `text: null`
+  // (legacy / corrupt entries). Downstream code (compress, snippet) assumes
+  // string. Filter them out and surface the count as a warning so eval +
+  // Trace can see the data-quality signal.
+  const droppedNullCount = drawers.length;
+  drawers = drawers.filter((d) => typeof d.text === "string");
+  if (drawers.length < droppedNullCount) {
+    warnings.push(`filtered_null_text_${droppedNullCount - drawers.length}`);
+  }
+
   // Dedup against recentCitations (don't re-inject last turn's drawers)
   if (opts.recentCitations.length > 0) {
     drawers = drawers.filter((d) => !d.id || !opts.recentCitations.includes(d.id));
