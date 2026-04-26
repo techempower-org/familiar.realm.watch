@@ -83,9 +83,22 @@ export class PalaceClient {
   }
 
   async health(): Promise<{ status: string; [k: string]: unknown }> {
-    const res = await this.fetchFn(`${this.baseUrl}/health`, { headers: this.headers() });
-    if (!res.ok) throw new Error(`palace-daemon health: ${res.status}`);
-    return (await res.json()) as { status: string };
+    // Bound /health probe with the same 2s ceiling used elsewhere — when
+    // the daemon is wedged (mid-rebuild, lock contention, etc.) /health can
+    // hang indefinitely and we don't want familiar's /api/familiar/health
+    // to hang with it.
+    const ctl = new AbortController();
+    const timer = setTimeout(() => ctl.abort(), this.searchTimeoutMs);
+    try {
+      const res = await this.fetchFn(`${this.baseUrl}/health`, {
+        headers: this.headers(),
+        signal: ctl.signal,
+      });
+      if (!res.ok) throw new Error(`palace-daemon health: ${res.status}`);
+      return (await res.json()) as { status: string };
+    } finally {
+      clearTimeout(timer);
+    }
   }
 
   /**
