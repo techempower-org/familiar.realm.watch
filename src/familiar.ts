@@ -7,6 +7,7 @@ import { readSigil } from "./sigil.ts";
 import { handleChat } from "./routes/chat.ts";
 import { handleEmbeddings } from "./routes/embeddings.ts";
 import { handleVersion, handleHealth } from "./routes/api.ts";
+import { handleEval } from "./routes/eval.ts";
 
 const cfg = loadConfig();
 const sigil = readSigil(cfg.realmSigilRealm);
@@ -59,6 +60,9 @@ const server = Bun.serve({
           breakers: { palace: breakers.palace, ollamaChat: breakers.ollamaChat, ollamaEmbed: breakers.ollamaEmbed },
           sigil,
         });
+      }
+      if (url.pathname === "/api/familiar/eval" && req.method === "POST") {
+        return await handleEval(req, { cfg, palace, inference: ollamaChat });
       }
 
       if (req.method === "GET") {

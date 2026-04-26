@@ -68,6 +68,7 @@ export async function handleChat(req: Request, deps: ChatRouteDeps): Promise<Res
     grounded = {
       systemPrompt: `You are the familiar. ${voice.palaceQuiet}`,
       drawerIds: [],
+      entities: [],
       warnings: ["palace_unreachable"],
     };
   }
