@@ -5,14 +5,14 @@
  * score with metadata-aware signals: wing match (drawer wing matches the
  * active scope), and recency (last 48h). No ML model — pure client-side math.
  *
- * Formula:
+ * Formula (from the v0.1 design spec):
  *
- *   final = base × 0.68 + tag × 0.32 + recency
+ *   final = base_score × 0.68
+ *         + tag_importance × 0.32
+ *         + recency_bonus
  *
- *   base       = cosine × 0.6 + bm25 × 0.4 when fork surfaces both,
- *                else falls back to similarity, then to (1 - distance), then 0
- *   tag        = 1.4 if drawer.wing === wingScope, else 1.0
- *   recency    = 0.1 if drawer < 48h old, else 0
+ *   tag_importance = 1.4 if drawer.wing === wingScope, else 1.0
+ *   recency_bonus  = 0.1 if drawer is < 48h old, else 0
  *
  * The function preserves all PalaceDrawer fields (topic, matched_via, cosine,
  * bm25 etc.) via spread; only `similarity` is replaced with the final score.
@@ -32,8 +32,6 @@ const WING_BOOST = 1.4;
 const NEUTRAL_WEIGHT = 1.0;
 const RECENCY_BONUS = 0.1;
 const RECENCY_WINDOW_MS = 48 * 3600 * 1000;
-const COSINE_WEIGHT = 0.6;
-const BM25_WEIGHT = 0.4;
 
 function tagImportance(drawer: PalaceDrawer, wingScope: string | null): number {
   if (wingScope && drawer.wing === wingScope) return WING_BOOST;
@@ -49,15 +47,7 @@ function recencyBonus(drawer: PalaceDrawer, now: number): number {
 }
 
 function baseScore(drawer: PalaceDrawer): number {
-  // Prefer the cosine+bm25 blend when the fork surfaces them (memorypalace
-  // ≥3.3.0). This catches keyword-strong but vector-weak hits — see the
-  // q08 case from jp-realm-v0.1 in CHANGELOG v0.3.
-  const c = typeof drawer.cosine === "number" ? drawer.cosine : undefined;
-  const b = typeof drawer.bm25 === "number" ? drawer.bm25 : undefined;
-  if (c !== undefined || b !== undefined) {
-    return (c ?? 0) * COSINE_WEIGHT + (b ?? 0) * BM25_WEIGHT;
-  }
-  // Back-compat: older daemon responses surface only `similarity`.
+  // Prefer similarity (already in [0,1]); fall back to inverted distance, then 0.
   if (typeof drawer.similarity === "number") return drawer.similarity;
   if (typeof drawer.distance === "number") return Math.max(0, 1 - drawer.distance);
   return 0;
