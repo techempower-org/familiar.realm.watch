@@ -9,6 +9,11 @@ export interface Config {
     url: string;
     model: string;
   };
+  /** Optional llama.cpp endpoint. When set, prepended to the inference router as primary. */
+  llamaCpp: {
+    url: string;        // empty string = disabled (falls through to ollamaChat)
+    model: string;
+  };
   palaceDaemon: {
     url: string;
     apiKey: string;
@@ -75,6 +80,22 @@ export interface OllamaChatChunk {
   created_at: string;
   message?: { role: string; content: string };
   done: boolean;
+}
+
+/**
+ * Common interface satisfied by OllamaClient and LlamaCppClient. The
+ * InferenceRouter wraps multiple providers behind this same shape so the
+ * chat + eval routes don't care which backend served the response.
+ *
+ * `chatStream` yields OllamaChatChunk-shaped objects regardless of whether
+ * the upstream protocol is Ollama NDJSON or OpenAI-compat SSE — the clients
+ * normalize on emit.
+ */
+export interface InferenceChatProvider {
+  /** Returns true if the provider responds to a basic probe within the timeout. */
+  isHealthy(): Promise<boolean>;
+  /** Stream a chat completion. Throws if the upstream is unreachable. */
+  chatStream(opts: import("./ollama-client.ts").ChatStreamOpts): AsyncGenerator<OllamaChatChunk>;
 }
 
 export interface Session {

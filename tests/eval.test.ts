@@ -14,8 +14,9 @@ function mockPalace(drawers: PalaceDrawer[], availableInScope = drawers.length):
   } as unknown as PalaceClient;
 }
 
-function mockInference(answer: string): { chatStream: EvalRouteDeps["inference"]["chatStream"] } {
+function mockInference(answer: string): EvalRouteDeps["inference"] {
   return {
+    isHealthy: () => Promise.resolve(true),
     async *chatStream() {
       yield {
         model: "test",
@@ -33,6 +34,7 @@ const baseCfg: Config = {
   host: "",
   ollamaChat: { url: "", model: "" },
   ollamaEmbed: { url: "", model: "" },
+  llamaCpp: { url: "", model: "" },
   palaceDaemon: { url: "", apiKey: "", searchTimeoutMs: 1000 },
   tokenBudget: { system: 1500, context: 4000, history: 2000, response: 512 },
   retrievalLimit: 5,

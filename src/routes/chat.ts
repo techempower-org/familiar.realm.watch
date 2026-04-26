@@ -1,8 +1,7 @@
-import type { OllamaClient } from "../ollama-client.ts";
 import type { PalaceClient } from "../palace-client.ts";
 import type { CircuitBreaker } from "../circuit-breaker.ts";
 import type { SessionStore } from "../sessions.ts";
-import type { Config } from "../types.ts";
+import type { Config, InferenceChatProvider } from "../types.ts";
 import type { DiaryBuffer } from "../diary-buffer.ts";
 import { retrieveAndGround, type RetrieveAndGroundResult } from "../memory-protocol.ts";
 import { voice } from "../lang/familiar-voice.ts";
@@ -11,7 +10,12 @@ import { buildTrace, traceSummary } from "../trace.ts";
 export interface ChatRouteDeps {
   cfg: Config;
   palace: PalaceClient;
-  ollama: OllamaClient;
+  /**
+   * Any InferenceChatProvider — typically the InferenceRouter, which
+   * internally wraps llama.cpp + Ollama. The chat route doesn't care which
+   * upstream serves the bytes; only that chatStream emits OllamaChatChunk shape.
+   */
+  ollama: InferenceChatProvider;
   sessions: SessionStore;
   diaryBuffer: DiaryBuffer;
   breakers: {

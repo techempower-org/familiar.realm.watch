@@ -33,6 +33,11 @@ export function loadConfig(): Config {
       url: readStr("OLLAMA_EMBED_URL", "http://127.0.0.1:11435"),
       model: readStr("OLLAMA_EMBED_MODEL", "nomic-embed-text:v1.5"),
     },
+    llamaCpp: {
+      // Empty default → router skips this provider (Phase 1 sets it to katana:11436)
+      url: readStr("LLAMA_CPP_URL", ""),
+      model: readStr("LLAMA_CPP_MODEL", "qwen2.5-7b"),
+    },
     palaceDaemon: {
       url: readStr("PALACE_DAEMON_URL", "http://katana:8085"),
       apiKey: readStr("PALACE_DAEMON_API_KEY", ""),

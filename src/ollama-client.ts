@@ -78,4 +78,14 @@ export class OllamaClient {
     const data = (await res.json()) as { embedding: number[] };
     return data.embedding;
   }
+
+  /** GET /api/tags is the cheapest non-mutating Ollama endpoint. */
+  async isHealthy(): Promise<boolean> {
+    try {
+      const res = await this.fetchFn(`${this.baseUrl}/api/tags`);
+      return res.ok;
+    } catch {
+      return false;
+    }
+  }
 }

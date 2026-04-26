@@ -14,10 +14,10 @@
  * Spec: ~/Projects/multipass-structural-memory-eval/docs/sme_spec_v8.md
  */
 
-import type { OllamaClient } from "../ollama-client.ts";
 import type { PalaceClient } from "../palace-client.ts";
 import type {
   Config,
+  InferenceChatProvider,
   SmeQueryRequest,
   SmeQueryResponse,
 } from "../types.ts";
@@ -27,10 +27,10 @@ export interface EvalRouteDeps {
   cfg: Config;
   palace: PalaceClient;
   /**
-   * Inference client used when mock !== true. v0.2.0 uses OllamaClient
-   * directly; Phase 2 swaps this for InferenceRouter (same chatStream shape).
+   * InferenceChatProvider used when mock !== true. Typically the
+   * InferenceRouter (which wraps llama.cpp + Ollama with circuit breakers).
    */
-  inference: Pick<OllamaClient, "chatStream">;
+  inference: InferenceChatProvider;
 }
 
 const STUB_ANSWER =

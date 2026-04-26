@@ -3,6 +3,9 @@ import { SessionStore } from "./sessions.ts";
 import { CircuitBreaker } from "./circuit-breaker.ts";
 import { PalaceClient } from "./palace-client.ts";
 import { OllamaClient } from "./ollama-client.ts";
+import { LlamaCppClient } from "./llama-client.ts";
+import { InferenceRouter } from "./inference-router.ts";
+import type { InferenceChatProvider } from "./types.ts";
 import { readSigil } from "./sigil.ts";
 import { handleChat } from "./routes/chat.ts";
 import { handleEmbeddings } from "./routes/embeddings.ts";
@@ -24,6 +27,16 @@ const palace = new PalaceClient({
 });
 const ollamaChat = new OllamaClient({ baseUrl: cfg.ollamaChat.url, defaultModel: cfg.ollamaChat.model });
 const ollamaEmbed = new OllamaClient({ baseUrl: cfg.ollamaEmbed.url, defaultModel: cfg.ollamaEmbed.model });
+
+// Build the inference router. Order matters — first healthy wins.
+// llama.cpp on katana (Phase 1) goes first when LLAMA_CPP_URL is set;
+// otherwise Ollama is the only provider.
+const inferenceProviders: InferenceChatProvider[] = [];
+if (cfg.llamaCpp.url) {
+  inferenceProviders.push(new LlamaCppClient({ baseUrl: cfg.llamaCpp.url, model: cfg.llamaCpp.model }));
+}
+inferenceProviders.push(ollamaChat);
+const inferenceRouter = new InferenceRouter(inferenceProviders);
 
 const mkBreaker = () => new CircuitBreaker({ threshold: 3, windowMs: 30_000, openMs: 60_000 });
 const breakers = {
@@ -75,7 +88,7 @@ const server = Bun.serve({
     const t0 = Date.now();
     try {
       if (url.pathname === "/v1/chat/completions" && req.method === "POST") {
-        return await handleChat(req, { cfg, palace, ollama: ollamaChat, sessions, diaryBuffer, breakers: { palace: breakers.palace, ollama: breakers.ollamaChat } });
+        return await handleChat(req, { cfg, palace, ollama: inferenceRouter, sessions, diaryBuffer, breakers: { palace: breakers.palace, ollama: breakers.ollamaChat } });
       }
       if (url.pathname === "/v1/embeddings" && req.method === "POST") {
         return await handleEmbeddings(req, { cfg, ollamaEmbed, breaker: breakers.ollamaEmbed });
@@ -93,7 +106,7 @@ const server = Bun.serve({
         });
       }
       if (url.pathname === "/api/familiar/eval" && req.method === "POST") {
-        return await handleEval(req, { cfg, palace, inference: ollamaChat });
+        return await handleEval(req, { cfg, palace, inference: inferenceRouter });
       }
       if (url.pathname === "/api/familiar/graph" && req.method === "GET") {
         return await handleGraph(req, { palace });
