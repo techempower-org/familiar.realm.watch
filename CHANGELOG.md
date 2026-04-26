@@ -1,0 +1,148 @@
+# Changelog
+
+All notable changes to familiar.realm.watch.
+
+Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/);
+versions follow [SemVer](https://semver.org/spec/v2.0.0.html) and the
+[realm-sigil](https://github.com/jphein/realm-sigil) convention used across
+the realm.watch ecosystem.
+
+## [0.2.0] — 2026-04-26 — *the familiar remembers better*
+
+### Added — retrieval pipeline (Emmimal components 2-4)
+
+- **Domain-weighted reranker** (`src/retrieval/rerank.ts`). Adjusts palace
+  search similarity using wing-match × 1.4 boost and 48h recency bonus.
+  Pure metadata math, no ML model — preserves raw `cosine`/`bm25` for
+  telemetry.
+- **Exponential temporal decay** (`src/retrieval/decay.ts`). Multiplies
+  similarity by `exp(-λ × age_days)` with default 30-day half-life.
+- **Extractive sentence compression** (`src/retrieval/compress.ts`). Trims
+  drawers >500 chars to top-3 sentences by Jaccard token overlap with the
+  query, in original order. Full body remains addressable by drawer ID.
+- **Confidence gate + stuck-loop detector** (`src/grounding.ts`,
+  `src/sessions.ts`). System-prompt directives that trigger `voice.weakContext`
+  when retrieval is weak (top similarity < 0.3 AND fewer than 2 results)
+  or `voice.stuckSearching` when 2+ recent queries Jaccard-overlap > 0.7.
+
+### Added — multi-endpoint inference
+
+- **`LlamaCppClient`** (`src/llama-client.ts`). HTTP client for llama.cpp's
+  OpenAI-compatible `/v1/chat/completions`, translating SSE chunks into
+  OllamaChatChunk shape so it's a drop-in alternative to OllamaClient.
+- **`InferenceRouter`** (`src/inference-router.ts`). Tries providers in
+  priority order with per-endpoint circuit breakers. Recursively
+  satisfies its own `InferenceChatProvider` interface (composable today,
+  rlm-ready for v0.3).
+- **llama.cpp on katana** (`ops/katana/install-llama.sh` +
+  `ops/katana/llama-server.service`). Build script, systemd-user unit,
+  Qwen2.5-7B Q5_K_M loaded on RTX 2080 Ti GPU0 (~5.9GB VRAM). Primary
+  inference route when `LLAMA_CPP_URL` is set; falls back to Ollama
+  on familiar.
+
+### Added — observability + measurement
+
+- **`POST /api/familiar/eval`** (SME adapter contract). Implements
+  multipass-structural-memory-eval's required shape: returns `answer`,
+  verbatim `context_string` (tiktoken-counted by multipass), SME-shaped
+  `retrieved_entities`, `retrieved_edges` (empty in v0.2; KG triples in
+  v0.3+), and `error`. `mock=true` skips inference for retrieval-only
+  testing.
+- **`Trace` per-turn record** (`src/trace.ts`). Structured per-turn ledger:
+  `trace_id`, `query`, `wing_scope`, `retrieved`, `context_string`,
+  `answer`, `citations`, `warnings`, `duration_ms`. Emitted as a final
+  SSE event when chat is requested with `?trace=1`; always logged as
+  one-liner to journal.
+- **`GET /api/familiar/graph`** proxy. Caches palace-daemon's `/graph`
+  (5-minute TTL — the underlying call takes ~30s on a 151k-drawer palace).
+- **`palace_daemon.recall_quality`** field on `/api/familiar/health`.
+  Distinguishes `ok` / `empty_hnsw` (rebuild needed) / `probe_error`
+  (daemon busy) — surfaces HNSW degradations to status.realm.watch's
+  60s poll instead of hiding them in chat-trace warnings.
+
+### Added — durable writes
+
+- **`DiaryBuffer`** (`src/diary-buffer.ts`). In-memory accumulator of
+  per-turn entries, flushes every 10 turns or on graceful shutdown
+  (SIGTERM/SIGINT). Failed flushes restore entries to the head of the
+  queue. Wired through palace-daemon's `/silent-save` endpoint, which
+  itself queues to `palace-daemon-pending.jsonl` during palace rebuilds
+  — no client-side retry needed.
+
+### Added — agent surface
+
+- **MCP server** (`src/mcp-server.ts`) at `/mcp` exposing three tools:
+  `familiar_recall`, `familiar_reflect`, `familiar_chat`. Uses
+  `@modelcontextprotocol/sdk`'s `WebStandardStreamableHTTPServerTransport`
+  for native fit with Bun.serve. Any MCP client (Claude Code, Cursor,
+  custom agents) can now call into the familiar.
+
+### Added — PWA
+
+- **Citation popovers** (`web/app.js` + `web/style.css`). Replaces
+  `[drawer_xxx]` markers in assistant responses with click-to-open
+  popover buttons. DOM-only (no `innerHTML`); `?trace=1` SSE events
+  feed entity metadata into popovers (wing/room/snippet). Link target
+  uses `<body data-viz-base-url=...>` for one-config swap to
+  mempalace-viz when deployed.
+
+### Added — type seam
+
+- **`Provenance` enum** (`src/types.ts`). Every `SmeEntity` carries
+  `{ kind: "observed" }` in v0.2; v0.3+ adds `dream` (background reasoning)
+  and `synthesized` (multi-hop traversal) variants. Adopted from karta's
+  pattern; no consumer code changes when v0.3 lifts more provenance kinds.
+
+### Changed
+
+- **`kind=content` filter** is now passed on every palace search
+  (`src/palace-client.ts`). Excludes Stop-hook checkpoint drawers which
+  otherwise dominate vector similarity on heavily-autobiographical
+  palaces. Validated on a 151K-drawer palace.
+- `PalaceDrawer` type carries `topic`, `matched_via`, `cosine`, `bm25`
+  (surfaced by the memorypalace fork). Rerank/decay preserve via spread;
+  raw scores stay intact for eval telemetry.
+- Bun.serve `idleTimeout`: default 10s → 60s. Palace-daemon's `/graph`
+  takes 30-40s on big palaces; the default would kill the connection.
+- `palace.health()` is now bounded by `searchTimeoutMs` (was unbounded —
+  could hang familiar's `/api/familiar/health` indefinitely when the
+  daemon was wedged).
+
+### Fixed
+
+- `extractiveCompress` null-text safety + `filtered_null_text_N`
+  warning. Live palace returns some legacy drawers with `text: null`;
+  the pipeline used to crash and get mislabeled `palace_unreachable`.
+- `deploy-familiar.sh`: idempotent `.env` write (preserves operator
+  overrides), `--exclude .env` on host-side rsync (was being deleted
+  by `--delete`), `systemctl restart` instead of `enable --now` (the
+  latter no-ops when the unit is already running).
+- `sigil.ts` reads version from `package.json` at module load instead
+  of a hardcoded literal.
+
+### Test suite
+
+- 152 tests, 332 expect() calls, 0 failures, typecheck clean.
+- New test files: `tests/llama-client.test.ts`, `tests/inference-router.test.ts`,
+  `tests/eval.test.ts`, `tests/trace.test.ts`, `tests/graph.test.ts`,
+  `tests/diary-buffer.test.ts`, `tests/mcp-server.test.ts`,
+  `tests/health.test.ts`, plus `tests/retrieval/{rerank,decay,compress}.test.ts`.
+
+### Documentation
+
+- v0.2 plan: `docs/superpowers/plans/2026-04-24-familiar-v0.2.md`
+- katana ops: `ops/katana/install-llama.sh`, `ops/katana/llama-server.service`
+
+## [0.1.0] — 2026-04-23 — *the familiar speaks*
+
+End-to-end stack live:
+
+- Ollama chat (Qwen 2.5 3B Q4, GPU0) + embed (nomic-v1.5, GPU1) on familiar
+- palace-daemon (jphein fork mempalace) on katana → later moved to disks
+- familiar-api (Bun + TS) at familiar:8080 with retrieve+ground+budget
+  pipeline, SSE streaming chat, OpenAI-compat surface
+- PWA shell + service worker
+- Caddy route on ubox0 with Authelia gating
+- realm-sigil version endpoint, status.realm.watch registration
+
+Tag: [v0.1.0](https://github.com/jphein/familiar.realm.watch/releases/tag/v0.1.0)
