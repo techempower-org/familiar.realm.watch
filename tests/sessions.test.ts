@@ -66,4 +66,66 @@ describe("SessionStore", () => {
     expect(store.get(s1.id)).toBeUndefined();
     expect(store.get(s2.id)).toBeDefined();
   });
+
+  test("create() initializes recentQueryHashes as empty array", () => {
+    const store = new SessionStore({ ttlMinutes: 60 });
+    const s = store.create();
+    expect(s.recentQueryHashes).toEqual([]);
+  });
+
+  describe("stuck detection", () => {
+    test("isStuck returns false on a fresh session", () => {
+      const store = new SessionStore({ ttlMinutes: 60 });
+      const s = store.create();
+      expect(store.isStuck(s.id, "what are my projects?")).toBe(false);
+    });
+
+    test("isStuck returns true after near-identical queries repeat", () => {
+      const store = new SessionStore({ ttlMinutes: 60 });
+      const s = store.create();
+      // Realistic "user asks the same thing" — only the trailing modifier varies.
+      store.markQuery(s.id, "tell me about my recent hiking adventures");
+      store.markQuery(s.id, "tell me about my recent hiking adventures please");
+      expect(store.isStuck(s.id, "tell me about my recent hiking adventures again")).toBe(true);
+    });
+
+    test("isStuck returns false when queries are different topics", () => {
+      const store = new SessionStore({ ttlMinutes: 60 });
+      const s = store.create();
+      store.markQuery(s.id, "what are my hobbies");
+      store.markQuery(s.id, "where did I work last summer");
+      expect(store.isStuck(s.id, "tell me about my friends")).toBe(false);
+    });
+
+    test("markQuery caps history at 10 entries", () => {
+      const store = new SessionStore({ ttlMinutes: 60 });
+      const s = store.create();
+      for (let i = 0; i < 15; i++) {
+        store.markQuery(s.id, `query number ${i}`);
+      }
+      const fetched = store.get(s.id)!;
+      expect(fetched.recentQueryHashes.length).toBe(10);
+      // Oldest should be query number 5 (0-4 dropped)
+      expect(fetched.recentQueryHashes[0]).toContain("5");
+    });
+
+    test("markQuery on unknown session is a no-op", () => {
+      const store = new SessionStore({ ttlMinutes: 60 });
+      expect(() => store.markQuery("nonexistent", "x")).not.toThrow();
+    });
+
+    test("isStuck on unknown session returns false", () => {
+      const store = new SessionStore({ ttlMinutes: 60 });
+      expect(store.isStuck("nonexistent", "anything")).toBe(false);
+    });
+
+    test("isStuck ignores trivial short words", () => {
+      const store = new SessionStore({ ttlMinutes: 60 });
+      const s = store.create();
+      // These all have only short connector words in common
+      store.markQuery(s.id, "is the sky blue");
+      store.markQuery(s.id, "is the sea wet");
+      expect(store.isStuck(s.id, "is the cat asleep")).toBe(false);
+    });
+  });
 });

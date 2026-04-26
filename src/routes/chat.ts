@@ -54,6 +54,12 @@ export async function handleChat(req: Request, deps: ChatRouteDeps): Promise<Res
 
   const wingHint = body.wing ?? req.headers.get("x-familiar-context") ?? null;
 
+  // Track this query for stuck-loop detection; check before retrieval so the
+  // current query is INCLUDED in the recent-history window for future turns
+  // but does NOT match itself for the current turn's stuck check.
+  const stuck = deps.sessions.isStuck(sessionId, lastUser.content);
+  deps.sessions.markQuery(sessionId, lastUser.content);
+
   let grounded: Awaited<ReturnType<typeof retrieveAndGround>>;
   try {
     grounded = await deps.breakers.palace.run(() => retrieveAndGround({
@@ -63,6 +69,7 @@ export async function handleChat(req: Request, deps: ChatRouteDeps): Promise<Res
       retrievalLimit: deps.cfg.retrievalLimit,
       contextBudgetTokens: deps.cfg.tokenBudget.context,
       recentCitations: session.recentCitations,
+      stuck,
     }));
   } catch {
     // breaker open — still respond, just without palace context
@@ -73,6 +80,7 @@ export async function handleChat(req: Request, deps: ChatRouteDeps): Promise<Res
       warnings: ["palace_unreachable"],
     };
   }
+  if (stuck) grounded.warnings.push("stuck_loop");
 
   const model = body.model ?? deps.cfg.ollamaChat.model;
   const messagesForOllama = [

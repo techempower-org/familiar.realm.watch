@@ -17,6 +17,8 @@ export interface RetrieveAndGroundOpts {
   recentCitations: string[];
   /** Defaults to "content" inside palace-client; pass "checkpoint" for audit/recovery flows. */
   kind?: PalaceSearchKind;
+  /** When true, append a stuck-loop directive to the system prompt. Set by the chat route from session telemetry. */
+  stuck?: boolean;
 }
 
 export interface RetrieveAndGroundResult {
@@ -40,6 +42,7 @@ function drawerToEntity(d: PalaceDrawer): SmeEntity {
     cosine: d.cosine,
     bm25: d.bm25,
     matched_via: d.matched_via,
+    provenance: { kind: "observed" },  // v0.2: every retrieved drawer is direct-observed
   };
 }
 
@@ -90,11 +93,20 @@ export async function retrieveAndGround(opts: RetrieveAndGroundOpts): Promise<Re
     warnings.push(`budget_dropped_${alloc.dropped.length}`);
   }
 
+  // Confidence gate signal: surface as a warning when retrieval is weak so
+  // /api/familiar/eval and Trace consumers can see it in their telemetry.
+  // The grounding layer separately emits a system-prompt directive.
+  const topSimilarity = alloc.kept[0]?.similarity ?? 0;
+  if (topSimilarity < 0.3 && alloc.kept.length < 2) {
+    warnings.push("low_confidence");
+  }
+
   const systemPrompt = buildSystemPrompt({
     drawers: alloc.kept,
     warnings: palaceWarnings,
     availableInScope: availableInScope ?? 0,
     wingScope: opts.wingScope,
+    stuck: opts.stuck ?? false,
   });
 
   const drawerIds = alloc.kept.map((d) => d.id).filter((id): id is string => Boolean(id));

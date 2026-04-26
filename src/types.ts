@@ -83,6 +83,12 @@ export interface Session {
   lastSeenAt: number;
   recentTurns: ChatMessage[];
   recentCitations: string[];
+  /**
+   * Normalized query hashes from recent turns, capped to ~10. Used by the
+   * stuck detector to notice when the user asks similar questions in a row
+   * and to nudge the assistant to suggest rephrasing or wing scope.
+   */
+  recentQueryHashes: string[];
 }
 
 // ------------------------------------------------------------
@@ -104,6 +110,26 @@ export interface SmeQueryRequest {
   mock?: boolean;
 }
 
+/**
+ * Origin of a retrieved entity. Modeled on karta's Provenance enum
+ * (~/Projects/karta — `crates/karta-core/src/note.rs`).
+ *
+ * v0.2 only emits `observed` (direct palace search hit). v0.3+ adds
+ * `dream` (background reasoning surfaced this) and `synthesized`
+ * (multi-hop traversal derived this) variants — adding the seam now
+ * costs almost nothing and lets future features carry origin metadata
+ * without consumer-side churn.
+ */
+export type Provenance =
+  | { kind: "observed" }
+  | {
+      kind: "dream";
+      dream_type: "contradiction" | "consolidation" | "deduction" | "induction" | "abduction" | "episode" | "cross_episode";
+      source_ids: string[];
+      confidence: number;
+    }
+  | { kind: "synthesized"; steps: string[] };
+
 export interface SmeEntity {
   /** drawer_id */
   id: string;
@@ -117,6 +143,8 @@ export interface SmeEntity {
   cosine?: number;
   bm25?: number;
   matched_via?: string;
+  /** Defaults to `{ kind: "observed" }` when constructed from palace search. */
+  provenance?: Provenance;
 }
 
 export interface SmeEdge {

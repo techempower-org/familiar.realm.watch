@@ -144,4 +144,16 @@ describe("/api/familiar/eval — SME adapter contract", () => {
     const body = (await res.json()) as Record<string, unknown>;
     expect(body.available_in_scope).toBe(4242);
   });
+
+  test("retrieved entities carry provenance: { kind: 'observed' } in v0.2", async () => {
+    const palace = mockPalace([
+      { id: "drawer_a", text: "fact", wing: "w", room: "r", similarity: 0.7 },
+    ]);
+    const res = await handleEval(
+      makeRequest({ query: "test", mock: true }),
+      deps(palace, "")
+    );
+    const body = (await res.json()) as { retrieved_entities: Array<{ provenance?: { kind: string } }> };
+    expect(body.retrieved_entities[0].provenance?.kind).toBe("observed");
+  });
 });

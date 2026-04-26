@@ -1,10 +1,41 @@
 import type { PalaceDrawer } from "./types.ts";
+import { voice } from "./lang/familiar-voice.ts";
 
 export interface GroundingInput {
   drawers: PalaceDrawer[];
   warnings: string[];
   availableInScope: number;
   wingScope: string | null;
+  /** When true, append a system directive nudging the assistant to suggest rephrasing/scoping. */
+  stuck?: boolean;
+}
+
+/**
+ * Confidence gate (Phase 4 of the v0.2 design).
+ *
+ * Returns a system-prompt directive when retrieval looks weak, asking the
+ * assistant to open with the themed `voice.weakContext` caveat. Empty string
+ * when retrieval is strong enough that we don't need to hedge.
+ *
+ * "Weak" = top result similarity < 0.3 AND fewer than 2 results returned.
+ * The two-pronged condition prevents false positives on naturally-low-similarity
+ * queries that still have many candidates (e.g. broad/conversational prompts).
+ */
+export function confidencePrefix(drawers: PalaceDrawer[]): string {
+  const top = drawers[0]?.similarity ?? 0;
+  if (top < 0.3 && drawers.length < 2) {
+    return `\n── Confidence note ──\nRetrieval is weak. Open with: "${voice.weakContext}" then answer with whatever the palace context above does support.`;
+  }
+  return "";
+}
+
+/**
+ * Returns a system-prompt directive when the user has been asking similar
+ * questions repeatedly. The assistant is asked to graciously suggest
+ * rephrasing or wing scope rather than just plowing forward.
+ */
+export function stuckDirective(): string {
+  return `\n── Loop note ──\nThe user has asked several similar questions in this session. Briefly suggest: "${voice.stuckSearching}" then proceed with your best answer.`;
 }
 
 const PERSONA = `You are the familiar — a magical companion who lives inside JP's realm.watch palace.
@@ -25,6 +56,9 @@ export function buildSystemPrompt(input: GroundingInput): string {
   parts.push(renderContextBlock(input));
   parts.push("");
   parts.push(DIRECTIVES);
+  const conf = confidencePrefix(input.drawers);
+  if (conf) parts.push(conf);
+  if (input.stuck) parts.push(stuckDirective());
   return parts.join("\n");
 }
 
