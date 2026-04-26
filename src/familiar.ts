@@ -13,6 +13,7 @@ import { handleVersion, handleHealth } from "./routes/api.ts";
 import { handleEval } from "./routes/eval.ts";
 import { handleGraph } from "./routes/graph.ts";
 import { DiaryBuffer } from "./diary-buffer.ts";
+import { mountFamiliarMcp } from "./mcp-server.ts";
 
 const cfg = loadConfig();
 const sigil = readSigil(cfg.realmSigilRealm);
@@ -76,6 +77,9 @@ function log(event: string, data: Record<string, unknown> = {}): void {
 
 log("server.starting", { port: cfg.port, host: cfg.host, sigil });
 
+// Mount MCP server (3 tools: familiar_recall, familiar_reflect, familiar_chat)
+const mcp = await mountFamiliarMcp({ cfg, palace, inference: inferenceRouter });
+
 const server = Bun.serve({
   port: cfg.port,
   hostname: cfg.host,
@@ -110,6 +114,9 @@ const server = Bun.serve({
       }
       if (url.pathname === "/api/familiar/graph" && req.method === "GET") {
         return await handleGraph(req, { palace });
+      }
+      if (url.pathname === "/mcp" || url.pathname.startsWith("/mcp/")) {
+        return await mcp.handle(req);
       }
 
       if (req.method === "GET") {
