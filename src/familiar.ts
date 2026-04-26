@@ -105,7 +105,7 @@ const server = Bun.serve({
     const t0 = Date.now();
     try {
       if (url.pathname === "/v1/chat/completions" && req.method === "POST") {
-        return await handleChat(req, { cfg, palace, ollama: inferenceRouter, sessions, diaryBuffer, breakers: { palace: breakers.palace, ollama: breakers.ollamaChat } });
+        return await handleChat(req, { cfg, palace, ollama: inferenceRouter, sessions, diaryBuffer, reflectWriter, breakers: { palace: breakers.palace, ollama: breakers.ollamaChat } });
       }
       if (url.pathname === "/v1/embeddings" && req.method === "POST") {
         return await handleEmbeddings(req, { cfg, ollamaEmbed, breaker: breakers.ollamaEmbed });

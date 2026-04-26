@@ -2,16 +2,27 @@
   "name": "familiar.realm.watch",
   "short_name": "familiar",
   "description": "Your familiar — reads the palace before speaking, writes it after.",
+  "lang": "en",
+  "dir": "ltr",
   "start_url": "/",
+  "scope": "/",
   "display": "standalone",
+  "orientation": "any",
   "background_color": "#0a0e14",
   "theme_color": "#0a0e14",
+  "categories": ["productivity", "personalization"],
   "icons": [
     {
       "src": "/favicon.svg",
       "sizes": "any",
       "type": "image/svg+xml",
-      "purpose": "any maskable"
+      "purpose": "any"
+    },
+    {
+      "src": "/favicon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "maskable"
     }
   ]
 }

@@ -3,9 +3,14 @@ import type { CircuitBreaker } from "../circuit-breaker.ts";
 import type { SessionStore } from "../sessions.ts";
 import type { Config, InferenceChatProvider } from "../types.ts";
 import type { DiaryBuffer } from "../diary-buffer.ts";
+import type { ReflectWriter } from "../reflect/writer.ts";
+import type { ReflectDecision } from "../reflect/types.ts";
 import { retrieveAndGround, type RetrieveAndGroundResult } from "../memory-protocol.ts";
 import { voice } from "../lang/familiar-voice.ts";
 import { buildTrace, traceSummary } from "../trace.ts";
+
+/** Minimum assistant turn length to trigger automatic reflect (chars). */
+const REFLECT_MIN_TURN_CHARS = 80;
 
 export interface ChatRouteDeps {
   cfg: Config;
@@ -18,10 +23,35 @@ export interface ChatRouteDeps {
   ollama: InferenceChatProvider;
   sessions: SessionStore;
   diaryBuffer: DiaryBuffer;
+  /** Optional: when present, fires after each assistant turn (length-gated). */
+  reflectWriter?: ReflectWriter;
   breakers: {
     palace: CircuitBreaker;
     ollama: CircuitBreaker;
   };
+}
+
+function reflectSummary(decisions: ReflectDecision[]) {
+  return {
+    written: decisions.filter((d) => d.status === "written").length,
+    gated: decisions.filter((d) => d.status === "gated").length,
+    duplicate: decisions.filter((d) => d.status === "duplicate").length,
+    total: decisions.length,
+  };
+}
+
+async function runReflect(
+  deps: ChatRouteDeps,
+  sessionId: string,
+  assistantTurn: string,
+): Promise<ReflectDecision[] | null> {
+  if (!deps.reflectWriter) return null;
+  if (assistantTurn.length < REFLECT_MIN_TURN_CHARS) return null;
+  try {
+    return await deps.reflectWriter.review({ sessionId, assistantTurn });
+  } catch {
+    return null;
+  }
 }
 
 interface OpenAIChatRequest {
@@ -147,6 +177,11 @@ function streamResponse(opts: GenOpts): Response {
             controller.enqueue(enc.encode(`data: ${JSON.stringify(openAIChunk)}\n\n`));
             if (chunk.done) {
               if (traceEnabled) emitTraceEvent(controller, enc, opts, accumulated);
+              const decisions = await runReflect(deps, sessionId, accumulated);
+              if (decisions !== null) {
+                const summary = reflectSummary(decisions);
+                controller.enqueue(enc.encode(`event: reflect\ndata: ${JSON.stringify({ summary, decisions })}\n\n`));
+              }
               controller.enqueue(enc.encode("data: [DONE]\n\n"));
             }
           }

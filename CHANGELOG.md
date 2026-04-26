@@ -7,6 +7,79 @@ versions follow [SemVer](https://semver.org/spec/v2.0.0.html) and the
 [realm-sigil](https://github.com/jphein/realm-sigil) convention used across
 the realm.watch ecosystem.
 
+## [0.3.1] — 2026-04-26 — *the familiar's window*
+
+PWA polish patch: surfaces what reflect just remembered, distinguishes
+palace states, makes citations discoverable, preserves multi-session
+state in localStorage, adds proper iOS PWA install metadata, and
+leans the visual identity further toward fantasy without adding deps.
+
+### Added — chat surface
+
+- **Reflect SSE event** (`src/routes/chat.ts`). After the assistant turn
+  streams, the chat route runs `ReflectWriter.review(...)` synchronously
+  and emits `event: reflect\ndata: {summary, decisions}` before `[DONE]`.
+  Length-gated: assistant turns shorter than 80 chars skip extraction
+  (avoids spending an LLM call on greetings). Wired via the optional
+  `reflectWriter` dep on `ChatRouteDeps`.
+- **Reflect pill in PWA** (`web/app.js`, `web/style.css`). Renders
+  below each assistant message: `✦ N remembered · M already known`.
+  Click expands a detail panel listing each fact + status. Hidden
+  when reflect ran but found nothing.
+- **Multi-session sidebar** (`web/app.js`, `web/index.html`,
+  `web/style.css`). Click the rotating sigil to open a session list.
+  Each session has a label (auto from first user turn, renameable),
+  relative timestamp, and delete affordance. Sessions persist in
+  `localStorage` under `familiar_sessions`; legacy single-id form
+  migrates on first load.
+- **Per-session transcript persistence**. Reload preserves the active
+  session's history. Switching sessions replays the transcript.
+
+### Changed — chat surface
+
+- **Status pill — finer-grained palace state**. Now reads
+  `dependencies.palace_daemon.recall_quality` from `/api/familiar/health`:
+  `connected` (green/accent), `palace slow` / `palace rebuilding`
+  (warn yellow), `palace busy` / `offline` (red).
+- **Citation discoverability**. `[d8a3ce]` markers now have a leading
+  `✦`, soft-fade-in animation when first rendered, hover lift, and
+  open-state highlight. Removes the "looks like a build artifact"
+  problem.
+- **Sigil → button**. The header sigil is now an interactive control
+  (opens sessions panel) with slow continuous rotation (60s/turn,
+  respects `prefers-reduced-motion`). New nested-circles layout adds
+  visual weight without new files.
+- **Sigil-word in header**. The build's realm-sigil word (e.g.,
+  `wildwood`) now renders as a small caps line under the title,
+  fed from `/api/familiar/health` version block.
+- **Glyph flourish on assistant turns**. Subtle `✦` in the top-left
+  margin of each assistant message; serif body lifts to 1.02rem with
+  1.55 line-height.
+- **Parchment grain**. Fixed-position radial accent gradients on
+  `body` (no images, GPU-cheap).
+- **Send button**. Plain `→` replaced with a clean SVG arrow that
+  nudges right on hover.
+
+### Changed — PWA basics
+
+- **iOS install metadata** (`web/index.html`):
+  `apple-mobile-web-app-capable`, `apple-touch-icon`, `mask-icon`,
+  `viewport-fit=cover`, safe-area-inset padding. Standalone-mode
+  install on iOS now picks up the right title and status-bar style.
+- **Manifest extended** (`web/manifest.webmanifest`): explicit
+  `lang`, `dir`, `scope`, `orientation`, `categories`, and split
+  `purpose` icons (`any` + `maskable` separate entries — Chrome's
+  preferred shape).
+- **Service worker cache version**: `familiar-shell-v1` →
+  `familiar-shell-v2` so installed clients pick up the new shell.
+
+### Test suite
+
+- 183 tests, ~397 expect() calls, 0 failures, typecheck clean.
+- No new server-side tests; all changes are CSS/HTML/client-JS plus
+  a chat-route addition that preserves existing behavior when
+  `reflectWriter` is undefined (back-compat shape).
+
 ## [0.3.0] — 2026-04-26 — *the familiar writes back*
 
 ### Added — reflect loop (Subsystem A)
