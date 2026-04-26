@@ -11,6 +11,13 @@ import { buildTrace, traceSummary } from "../trace.ts";
 
 /** Minimum assistant turn length to trigger automatic reflect (chars). */
 const REFLECT_MIN_TURN_CHARS = 80;
+/**
+ * How long to wait for reflect before shipping [DONE] anyway. Reflect
+ * keeps running in the background past this — drawers still get written,
+ * just no SSE event for the client. Bounds the visible "submit disabled"
+ * window: chat always closes within this budget after the model finishes.
+ */
+const REFLECT_STREAM_BUDGET_MS = 4000;
 
 export interface ChatRouteDeps {
   cfg: Config;
@@ -40,17 +47,24 @@ function reflectSummary(decisions: ReflectDecision[]) {
   };
 }
 
+type ReflectOutcome =
+  | { skipped: "no_writer" | "too_short" | "timeout" | "error"; decisions: [] }
+  | { skipped: null; decisions: ReflectDecision[] };
+
 async function runReflect(
   deps: ChatRouteDeps,
   sessionId: string,
   assistantTurn: string,
-): Promise<ReflectDecision[] | null> {
-  if (!deps.reflectWriter) return null;
-  if (assistantTurn.length < REFLECT_MIN_TURN_CHARS) return null;
+): Promise<ReflectOutcome> {
+  if (!deps.reflectWriter) return { skipped: "no_writer", decisions: [] };
+  if (assistantTurn.length < REFLECT_MIN_TURN_CHARS) {
+    return { skipped: "too_short", decisions: [] };
+  }
   try {
-    return await deps.reflectWriter.review({ sessionId, assistantTurn });
+    const decisions = await deps.reflectWriter.review({ sessionId, assistantTurn });
+    return { skipped: null, decisions };
   } catch {
-    return null;
+    return { skipped: "error", decisions: [] };
   }
 }
 
@@ -177,11 +191,20 @@ function streamResponse(opts: GenOpts): Response {
             controller.enqueue(enc.encode(`data: ${JSON.stringify(openAIChunk)}\n\n`));
             if (chunk.done) {
               if (traceEnabled) emitTraceEvent(controller, enc, opts, accumulated);
-              const decisions = await runReflect(deps, sessionId, accumulated);
-              if (decisions !== null) {
-                const summary = reflectSummary(decisions);
-                controller.enqueue(enc.encode(`event: reflect\ndata: ${JSON.stringify({ summary, decisions })}\n\n`));
-              }
+              // Race reflect against a stream budget. Whatever takes longer
+              // (the LLM extraction call, per-fact dedup, palace writes)
+              // continues in the background — chat always closes inside the
+              // budget so the PWA's submit button doesn't get stuck waiting.
+              // We always emit a reflect event (with skipped=<reason> if it
+              // didn't run) so the client can show *something* every turn.
+              const reflectPromise = runReflect(deps, sessionId, accumulated);
+              const timeoutPromise = new Promise<ReflectOutcome>((resolve) =>
+                setTimeout(() => resolve({ skipped: "timeout", decisions: [] }), REFLECT_STREAM_BUDGET_MS),
+              );
+              const outcome = await Promise.race([reflectPromise, timeoutPromise]);
+              const summary = reflectSummary(outcome.decisions);
+              const payload = { summary, decisions: outcome.decisions, skipped: outcome.skipped };
+              controller.enqueue(enc.encode(`event: reflect\ndata: ${JSON.stringify(payload)}\n\n`));
               controller.enqueue(enc.encode("data: [DONE]\n\n"));
             }
           }

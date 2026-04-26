@@ -25,6 +25,26 @@
 
 * { box-sizing: border-box; }
 html, body { margin: 0; padding: 0; height: 100%; }
+
+/* Themed scrollbars — match the parchment + sigil-gold palette. */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: color-mix(in srgb, var(--accent) 35%, transparent) transparent;
+}
+*::-webkit-scrollbar { width: 8px; height: 8px; }
+*::-webkit-scrollbar-track { background: transparent; }
+*::-webkit-scrollbar-thumb {
+  background: color-mix(in srgb, var(--accent) 30%, transparent);
+  border-radius: 999px;
+  border: 2px solid transparent;
+  background-clip: padding-box;
+  transition: background 150ms ease;
+}
+*::-webkit-scrollbar-thumb:hover {
+  background: color-mix(in srgb, var(--accent) 55%, transparent);
+  background-clip: padding-box;
+}
+*::-webkit-scrollbar-corner { background: transparent; }
 body {
   background: var(--bg);
   color: var(--fg);
@@ -146,31 +166,49 @@ body {
   pointer-events: none;
 }
 
-/* Reflect pill: shows after assistant turn when reflect ran. */
-.reflect-pill {
+/* Per-turn footer: context (drawers grounded) + reflect (facts written). */
+.turn-footer {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  margin-top: 0.6rem;
+  padding-top: 0.5rem;
+  border-top: 1px dashed color-mix(in srgb, var(--border) 80%, transparent);
+}
+.footer-row { display: flex; flex-direction: column; gap: 0.3rem; }
+
+/* Context pill: shows N drawers grounded. Click to expand source list. */
+.ctx-pill, .reflect-pill {
   display: inline-flex;
+  align-self: flex-start;
   align-items: center;
-  gap: 0.3rem;
-  margin-top: 0.4rem;
-  padding: 0.15rem 0.55rem;
+  gap: 0.35rem;
+  padding: 0.18rem 0.65rem;
   font-family: var(--mono);
-  font-size: 0.7rem;
+  font-size: 0.72rem;
   letter-spacing: 0.04em;
   color: var(--fg-muted);
   border: 1px solid var(--border);
   border-radius: 999px;
   background: transparent;
   cursor: pointer;
-  transition: color 150ms ease, border-color 150ms ease;
+  transition: color 150ms ease, border-color 150ms ease, background 150ms ease;
   animation: msg-appear 280ms ease-out backwards;
   animation-delay: 200ms;
+  text-align: left;
 }
-.reflect-pill:hover { color: var(--accent); border-color: var(--accent); }
-.reflect-pill[data-empty="true"] { display: none; }
-.reflect-pill .reflect-glyph { color: var(--accent); }
-.reflect-detail {
+.ctx-pill:hover, .reflect-pill:hover {
+  color: var(--accent);
+  border-color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 6%, transparent);
+}
+.ctx-pill-empty { opacity: 0.5; }
+.ctx-pill .src-chip-glyph,
+.reflect-pill .reflect-glyph { color: var(--accent); opacity: 0.85; }
+
+.ctx-detail, .reflect-detail {
   display: none;
-  margin-top: 0.35rem;
+  margin-top: 0.1rem;
   padding: 0.5rem 0.75rem;
   font-family: var(--mono);
   font-size: 0.78rem;
@@ -178,12 +216,39 @@ body {
   border-radius: 6px;
   color: var(--fg-muted);
   white-space: normal;
+  background: color-mix(in srgb, var(--accent) 3%, transparent);
 }
-.reflect-detail[data-open="true"] { display: block; }
-.reflect-detail ul { margin: 0.2rem 0 0 0; padding-left: 1.2rem; }
+.ctx-detail[data-open="true"], .reflect-detail[data-open="true"] { display: block; }
+
+.ctx-detail .ctx-item {
+  padding: 0.35rem 0;
+  border-bottom: 1px dashed color-mix(in srgb, var(--border) 60%, transparent);
+}
+.ctx-detail .ctx-item:last-child { border-bottom: none; }
+.ctx-detail .ctx-item-head {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+.ctx-detail .ctx-score {
+  font-family: var(--mono);
+  font-size: 0.82em;
+  color: var(--fg-muted);
+}
+.ctx-detail .ctx-snippet {
+  margin: 0.3rem 0 0;
+  font-family: var(--serif);
+  font-size: 0.92em;
+  color: var(--fg);
+  line-height: 1.45;
+}
+
+.reflect-detail ul { margin: 0; padding-left: 1.2rem; }
 .reflect-detail li { margin: 0.15rem 0; }
-.reflect-detail .reflect-fact { color: var(--fg); }
+.reflect-detail .reflect-fact { color: var(--fg); font-family: var(--serif); }
 .reflect-detail .reflect-status { color: var(--fg-muted); margin-left: 0.4rem; font-size: 0.85em; }
+.reflect-detail .reflect-hint { margin: 0; font-style: italic; }
 
 .form {
   display: flex;
@@ -298,6 +363,38 @@ body {
   font-size: 0.85em;
   text-align: center;
 }
+
+/* Source chips — verbatim [wing=X · room=Y · ...] markers echoed by the model */
+.src-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.15rem;
+  padding: 0.05rem 0.55rem;
+  margin: 0 0.15rem;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--accent) 6%, transparent);
+  font-family: var(--mono);
+  font-size: 0.72em;
+  color: var(--fg-muted);
+  vertical-align: baseline;
+  letter-spacing: 0.02em;
+  white-space: nowrap;
+  transition: background 120ms ease, border-color 120ms ease, color 120ms ease;
+  animation: citation-appear 360ms ease-out backwards;
+}
+.src-chip:hover {
+  border-color: var(--accent);
+  color: var(--fg);
+  background: color-mix(in srgb, var(--accent) 12%, transparent);
+}
+.src-chip-glyph {
+  color: var(--accent);
+  opacity: 0.7;
+  font-size: 0.95em;
+  margin-right: 0.05rem;
+}
+.src-chip-label { font-family: var(--mono); }
 
 /* Citation popovers — DOM-only [drawer_xxx] markers */
 .citation {

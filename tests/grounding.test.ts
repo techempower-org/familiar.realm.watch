@@ -50,12 +50,13 @@ describe("buildSystemPrompt", () => {
     expect(prompt).toContain("wing_scope: realmwatch");
   });
 
-  test("includes grounding directives (faithfulness/citation/refusal)", () => {
+  test("includes grounding directives (faithfulness/citation/persona-meta/ambiguity)", () => {
     const prompt = buildSystemPrompt({ drawers: [], warnings: [], availableInScope: 0, wingScope: null });
-    expect(prompt).toMatch(/only from the palace context/i);
-    expect(prompt).toMatch(/cite drawer ids/i);
-    expect(prompt).toMatch(/do not refuse/i);
+    expect(prompt).toMatch(/prefer the palace context/i);
+    expect(prompt).toMatch(/\[drawer_id\]/);
+    expect(prompt).toMatch(/answer from your persona/i);
     expect(prompt).toMatch(/name the ambiguity/i);
+    expect(prompt).toMatch(/don't force-cite/i);
   });
 
   test("labels empty palace clearly", () => {
