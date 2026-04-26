@@ -60,6 +60,7 @@ export async function handleEval(req: Request, deps: EvalRouteDeps): Promise<Res
       userMessage: body.query,
       wingScope: body.wing ?? null,
       retrievalLimit: limit,
+      candidateLimit: deps.cfg.candidateLimit,
       contextBudgetTokens: deps.cfg.tokenBudget.context,
       recentCitations: [],
       kind: body.kind,

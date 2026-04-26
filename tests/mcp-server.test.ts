@@ -12,6 +12,7 @@ const baseCfg: Config = {
   palaceDaemon: { url: "", apiKey: "", searchTimeoutMs: 1000 },
   tokenBudget: { system: 1500, context: 4000, history: 2000, response: 512 },
   retrievalLimit: 5,
+  candidateLimit: 20,
   sessionTtlMinutes: 60,
   realmSigilRealm: "fantasy",
   logLevel: "warn",

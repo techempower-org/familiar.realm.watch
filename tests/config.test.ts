@@ -26,6 +26,7 @@ describe("loadConfig", () => {
     expect(cfg.tokenBudget.history).toBe(2000);
     expect(cfg.tokenBudget.response).toBe(512);
     expect(cfg.retrievalLimit).toBe(5);
+    expect(cfg.candidateLimit).toBe(20);
     expect(cfg.sessionTtlMinutes).toBe(60);
     expect(cfg.realmSigilRealm).toBe("fantasy");
     expect(cfg.logLevel).toBe("info");
