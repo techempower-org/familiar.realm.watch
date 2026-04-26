@@ -3,8 +3,9 @@ import type { PalaceClient } from "../palace-client.ts";
 import type { CircuitBreaker } from "../circuit-breaker.ts";
 import type { SessionStore } from "../sessions.ts";
 import type { Config } from "../types.ts";
-import { retrieveAndGround } from "../memory-protocol.ts";
+import { retrieveAndGround, type RetrieveAndGroundResult } from "../memory-protocol.ts";
 import { voice } from "../lang/familiar-voice.ts";
+import { buildTrace, traceSummary } from "../trace.ts";
 
 export interface ChatRouteDeps {
   cfg: Config;
@@ -80,11 +81,20 @@ export async function handleChat(req: Request, deps: ChatRouteDeps): Promise<Res
   ];
 
   const stream = body.stream !== false;
-  if (stream) {
-    return streamResponse({ deps, model, messagesForOllama, sessionId, drawerIds: grounded.drawerIds, userContent: lastUser.content });
-  } else {
-    return bufferResponse({ deps, model, messagesForOllama, sessionId, drawerIds: grounded.drawerIds, userContent: lastUser.content });
-  }
+  const traceEnabled = new URL(req.url).searchParams.get("trace") === "1";
+  const turnStartedAt = Date.now();
+  const sharedOpts: GenOpts = {
+    deps,
+    model,
+    messagesForOllama,
+    sessionId,
+    grounded,
+    wingScope: wingHint,
+    userContent: lastUser.content,
+    turnStartedAt,
+    traceEnabled,
+  };
+  return stream ? streamResponse(sharedOpts) : bufferResponse(sharedOpts);
 }
 
 interface GenOpts {
@@ -92,12 +102,15 @@ interface GenOpts {
   model: string;
   messagesForOllama: Array<{ role: "system" | "user" | "assistant"; content: string }>;
   sessionId: string;
-  drawerIds: string[];
+  grounded: RetrieveAndGroundResult;
+  wingScope: string | null;
   userContent: string;
+  turnStartedAt: number;
+  traceEnabled: boolean;
 }
 
 function streamResponse(opts: GenOpts): Response {
-  const { deps, model, messagesForOllama, sessionId, drawerIds, userContent } = opts;
+  const { deps, model, messagesForOllama, sessionId, grounded, wingScope, userContent, turnStartedAt, traceEnabled } = opts;
   const enc = new TextEncoder();
   let accumulated = "";
   const created = Math.floor(Date.now() / 1000);
@@ -119,6 +132,7 @@ function streamResponse(opts: GenOpts): Response {
             };
             controller.enqueue(enc.encode(`data: ${JSON.stringify(openAIChunk)}\n\n`));
             if (chunk.done) {
+              if (traceEnabled) emitTraceEvent(controller, enc, opts, accumulated);
               controller.enqueue(enc.encode("data: [DONE]\n\n"));
             }
           }
@@ -132,10 +146,12 @@ function streamResponse(opts: GenOpts): Response {
           choices: [{ index: 0, delta: { role: "assistant", content: `\n\n${voice.chatFalters}` }, finish_reason: "stop" }],
         };
         controller.enqueue(enc.encode(`data: ${JSON.stringify(errChunk)}\n\n`));
+        if (traceEnabled) emitTraceEvent(controller, enc, opts, accumulated);
         controller.enqueue(enc.encode("data: [DONE]\n\n"));
       } finally {
         controller.close();
-        postStreamWrite({ deps, sessionId, userContent, assistantContent: accumulated, drawerIds });
+        logTrace(opts, accumulated);
+        postStreamWrite({ deps, sessionId, userContent, assistantContent: accumulated, drawerIds: grounded.drawerIds });
       }
     },
   });
@@ -152,7 +168,7 @@ function streamResponse(opts: GenOpts): Response {
 }
 
 async function bufferResponse(opts: GenOpts): Promise<Response> {
-  const { deps, model, messagesForOllama, sessionId, drawerIds, userContent } = opts;
+  const { deps, model, messagesForOllama, sessionId, grounded, userContent } = opts;
   let accumulated = "";
   try {
     await deps.breakers.ollama.run(async () => {
@@ -164,18 +180,52 @@ async function bufferResponse(opts: GenOpts): Promise<Response> {
   } catch {
     accumulated = voice.chatFalters;
   }
-  postStreamWrite({ deps, sessionId, userContent, assistantContent: accumulated, drawerIds });
-  const resp = {
+  logTrace(opts, accumulated);
+  postStreamWrite({ deps, sessionId, userContent, assistantContent: accumulated, drawerIds: grounded.drawerIds });
+  const resp: Record<string, unknown> = {
     id: `chatcmpl-${crypto.randomUUID()}`,
     object: "chat.completion",
     created: Math.floor(Date.now() / 1000),
     model,
     choices: [{ index: 0, message: { role: "assistant", content: accumulated }, finish_reason: "stop" }],
   };
+  if (opts.traceEnabled) {
+    resp.trace = buildTraceFromOpts(opts, accumulated);
+  }
   return new Response(JSON.stringify(resp), {
     status: 200,
     headers: { "content-type": "application/json", "x-session-id": sessionId },
   });
+}
+
+function buildTraceFromOpts(opts: GenOpts, answer: string) {
+  const { sessionId, grounded, wingScope, userContent, turnStartedAt } = opts;
+  return buildTrace({
+    sessionId,
+    query: userContent,
+    wingScope,
+    entities: grounded.entities,
+    contextString: grounded.systemPrompt,
+    answer,
+    warnings: grounded.warnings,
+    availableInScope: grounded.availableInScope,
+    startedAt: turnStartedAt,
+  });
+}
+
+function emitTraceEvent(
+  controller: ReadableStreamDefaultController<Uint8Array>,
+  enc: TextEncoder,
+  opts: GenOpts,
+  answer: string,
+): void {
+  const trace = buildTraceFromOpts(opts, answer);
+  controller.enqueue(enc.encode(`event: trace\ndata: ${JSON.stringify(trace)}\n\n`));
+}
+
+function logTrace(opts: GenOpts, answer: string): void {
+  const trace = buildTraceFromOpts(opts, answer);
+  console.log(traceSummary(trace));
 }
 
 function postStreamWrite(args: {

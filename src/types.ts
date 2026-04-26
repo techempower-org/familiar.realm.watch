@@ -138,3 +138,33 @@ export interface SmeQueryResponse {
   warnings: string[];
   available_in_scope?: number;
 }
+
+/**
+ * Structured per-turn record of a chat interaction.
+ *
+ * Every chat turn produces this shape — the query, the drawers walked, the
+ * verbatim prompt sent to inference, the answer, the citations cited.
+ * Emitted as an SSE event when the chat request includes `?trace=1`,
+ * always logged to the journal as a one-line summary.
+ *
+ * Trace is the substrate that connects familiar to its downstream consumers:
+ *  - multipass Cat 9 HandshakeTrace (one level up — across many turns)
+ *  - mempalace-viz (visualizes a trace as a graph walk)
+ *  - hermes-agent fine-tune corpus (one trace = one training tuple)
+ *  - debugging (full turn replay)
+ */
+export interface Trace {
+  trace_id: string;
+  session_id: string;
+  ts: string;                       // ISO8601 timestamp
+  query: string;                    // user message
+  wing_scope: string | null;
+  retrieved: SmeEntity[];           // drawers selected after rerank/budget
+  context_string: string;           // verbatim system prompt sent to inference
+  answer: string;                   // assistant response
+  citations: string[];              // drawer_ids cited in answer ([drawer_xxx] pattern)
+  warnings: string[];
+  available_in_scope?: number;
+  inference_endpoint?: string;      // which provider served this (post-Phase 2)
+  duration_ms: number;
+}
