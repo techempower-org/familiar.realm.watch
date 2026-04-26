@@ -2,26 +2,53 @@
 <html lang="en">
 <head>
   <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <meta name="theme-color" content="#0a0e14" media="(prefers-color-scheme: dark)">
   <meta name="theme-color" content="#f5f1e8" media="(prefers-color-scheme: light)">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="familiar">
+  <meta name="description" content="Your familiar — reads the palace before speaking, writes it after.">
   <title>familiar</title>
   <link rel="icon" type="image/svg+xml" href="/favicon.svg">
+  <link rel="apple-touch-icon" href="/favicon.svg">
+  <link rel="mask-icon" href="/favicon.svg" color="#d4a050">
   <link rel="manifest" href="/manifest.webmanifest">
   <link rel="stylesheet" href="/style.css">
 </head>
 <body data-viz-base-url="">
   <header class="hdr">
-    <div class="sigil" aria-hidden="true">
-      <svg viewBox="0 0 32 32"><circle cx="16" cy="16" r="14" fill="none" stroke="currentColor" stroke-width="1.5"/><circle cx="16" cy="16" r="3" fill="currentColor"/></svg>
+    <button class="sigil" id="sigil" type="button" aria-label="open sessions" title="sessions">
+      <svg viewBox="0 0 32 32" aria-hidden="true">
+        <circle cx="16" cy="16" r="14" fill="none" stroke="currentColor" stroke-width="1.25"/>
+        <circle cx="16" cy="16" r="10" fill="none" stroke="currentColor" stroke-width="0.75" stroke-opacity="0.5"/>
+        <path d="M16 4 L16 9 M16 23 L16 28 M4 16 L9 16 M23 16 L28 16" stroke="currentColor" stroke-width="1" stroke-linecap="round"/>
+        <circle cx="16" cy="16" r="2.5" fill="currentColor"/>
+        <path d="M9.5 9.5 L22.5 22.5 M22.5 9.5 L9.5 22.5" stroke="currentColor" stroke-width="0.5" stroke-opacity="0.35"/>
+      </svg>
+    </button>
+    <div class="hdr-title">
+      <h1>familiar</h1>
+      <div class="word" id="word" title="this build's sigil word">·</div>
     </div>
-    <h1>familiar</h1>
     <div class="status" id="status" title="connection state">quiet</div>
   </header>
+  <aside class="sessions" id="sessions" hidden>
+    <div class="sessions-head">
+      <span class="sessions-title">sessions</span>
+      <button class="sessions-new" id="sessions-new" type="button" title="new session">+</button>
+    </div>
+    <ul class="sessions-list" id="sessions-list"></ul>
+  </aside>
   <main id="log" class="log" aria-live="polite"></main>
   <form id="form" class="form" autocomplete="off">
     <input id="input" name="msg" placeholder="speak to the familiar..." autofocus required>
-    <button type="submit" title="send">→</button>
+    <button type="submit" title="send" aria-label="send">
+      <svg viewBox="0 0 16 16" aria-hidden="true" width="16" height="16">
+        <path d="M2 8 L14 8 M9 3 L14 8 L9 13" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+      </svg>
+    </button>
   </form>
   <script type="module" src="/app.js"></script>
 </body>

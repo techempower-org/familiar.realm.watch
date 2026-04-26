@@ -34,6 +34,15 @@ body {
   max-width: 960px;
   margin: 0 auto;
   padding: 0 1rem;
+  /* Subtle parchment grain — radial gradient noise. Inert at the GPU layer. */
+  background-image:
+    radial-gradient(circle at 20% 10%, color-mix(in srgb, var(--accent) 4%, transparent), transparent 40%),
+    radial-gradient(circle at 80% 80%, color-mix(in srgb, var(--accent) 3%, transparent), transparent 45%);
+  background-attachment: fixed;
+  min-height: 100vh;
+  min-height: 100dvh;
+  padding-bottom: env(safe-area-inset-bottom);
+  padding-top: env(safe-area-inset-top);
 }
 
 .hdr {
@@ -43,8 +52,29 @@ body {
   padding: 1rem 0;
   border-bottom: 1px solid var(--border);
 }
-.sigil { width: 32px; height: 32px; color: var(--accent); }
+.sigil {
+  width: 36px;
+  height: 36px;
+  padding: 0;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 50%;
+  color: var(--accent);
+  cursor: pointer;
+  transition: transform 6s linear, color 200ms ease, border-color 200ms ease;
+  animation: sigil-rotate 60s linear infinite;
+}
+.sigil:hover { color: var(--fg); border-color: var(--border); }
+.sigil:focus-visible { outline: 1px solid var(--accent); outline-offset: 2px; }
 .sigil svg { width: 100%; height: 100%; display: block; }
+@keyframes sigil-rotate {
+  from { transform: rotate(0deg); }
+  to   { transform: rotate(360deg); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .sigil { animation: none; }
+}
+.hdr-title { flex: 1; display: flex; flex-direction: column; gap: 0.1rem; min-width: 0; }
 .hdr h1 {
   margin: 0;
   font-family: var(--serif);
@@ -52,7 +82,13 @@ body {
   font-size: 1.5rem;
   letter-spacing: 0.05em;
   color: var(--fg);
-  flex: 1;
+}
+.word {
+  font-family: var(--mono);
+  font-size: 0.65rem;
+  color: var(--fg-muted);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
 }
 .status {
   font-family: var(--mono);
@@ -63,6 +99,7 @@ body {
   border-radius: 4px;
 }
 .status.connected { color: var(--accent); border-color: var(--accent); }
+.status.warn { color: #d4a050; border-color: #d4a050; opacity: 0.85; }
 .status.error { color: #cc6666; border-color: #cc6666; }
 
 .log {
@@ -81,9 +118,72 @@ body {
   max-width: 85%;
   white-space: pre-wrap;
   word-wrap: break-word;
+  position: relative;
+  animation: msg-appear 280ms ease-out backwards;
+}
+@keyframes msg-appear {
+  from { opacity: 0; transform: translateY(4px); }
+  to   { opacity: 1; transform: translateY(0); }
 }
 .msg.user { background: var(--user-bg); align-self: flex-end; }
-.msg.assistant { background: var(--assistant-bg); align-self: flex-start; font-family: var(--serif); }
+.msg.assistant {
+  background: var(--assistant-bg);
+  align-self: flex-start;
+  font-family: var(--serif);
+  font-size: 1.02rem;
+  line-height: 1.55;
+  /* Glyph flourish at top-left of assistant turns */
+  padding-left: 1.4rem;
+}
+.msg.assistant::before {
+  content: "✦";
+  position: absolute;
+  left: 0.45rem;
+  top: 0.55rem;
+  color: var(--accent);
+  opacity: 0.55;
+  font-size: 0.85em;
+  pointer-events: none;
+}
+
+/* Reflect pill: shows after assistant turn when reflect ran. */
+.reflect-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  margin-top: 0.4rem;
+  padding: 0.15rem 0.55rem;
+  font-family: var(--mono);
+  font-size: 0.7rem;
+  letter-spacing: 0.04em;
+  color: var(--fg-muted);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: transparent;
+  cursor: pointer;
+  transition: color 150ms ease, border-color 150ms ease;
+  animation: msg-appear 280ms ease-out backwards;
+  animation-delay: 200ms;
+}
+.reflect-pill:hover { color: var(--accent); border-color: var(--accent); }
+.reflect-pill[data-empty="true"] { display: none; }
+.reflect-pill .reflect-glyph { color: var(--accent); }
+.reflect-detail {
+  display: none;
+  margin-top: 0.35rem;
+  padding: 0.5rem 0.75rem;
+  font-family: var(--mono);
+  font-size: 0.78rem;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  color: var(--fg-muted);
+  white-space: normal;
+}
+.reflect-detail[data-open="true"] { display: block; }
+.reflect-detail ul { margin: 0.2rem 0 0 0; padding-left: 1.2rem; }
+.reflect-detail li { margin: 0.15rem 0; }
+.reflect-detail .reflect-fact { color: var(--fg); }
+.reflect-detail .reflect-status { color: var(--fg-muted); margin-left: 0.4rem; font-size: 0.85em; }
 
 .form {
   display: flex;
@@ -111,12 +211,93 @@ body {
   border: none;
   border-radius: 6px;
   padding: 0 1rem;
-  font-size: 1.25rem;
+  cursor: pointer;
+  font-family: var(--serif);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 3rem;
+  transition: transform 100ms ease, opacity 150ms ease;
+}
+.form button:hover { opacity: 0.85; transform: translateX(1px); }
+.form button:disabled { opacity: 0.4; cursor: wait; transform: none; }
+.form button svg { display: block; }
+
+/* Sessions panel — slides down under the header. */
+.sessions {
+  border-bottom: 1px solid var(--border);
+  padding: 0.5rem 0;
+  animation: msg-appear 200ms ease-out;
+}
+.sessions[hidden] { display: none; }
+.sessions-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 0.25rem 0.4rem;
+}
+.sessions-title {
+  font-family: var(--mono);
+  font-size: 0.7rem;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  color: var(--fg-muted);
+}
+.sessions-new {
+  background: transparent;
+  border: 1px solid var(--border);
+  color: var(--accent);
+  border-radius: 4px;
+  padding: 0 0.5rem;
+  font-size: 1rem;
   cursor: pointer;
   font-family: var(--serif);
 }
-.form button:hover { opacity: 0.85; }
-.form button:disabled { opacity: 0.4; cursor: wait; }
+.sessions-new:hover { border-color: var(--accent); }
+.sessions-list { list-style: none; margin: 0; padding: 0; }
+.sessions-list li {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.4rem 0.5rem;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 0.85rem;
+  color: var(--fg-muted);
+  transition: background 100ms ease, color 100ms ease;
+}
+.sessions-list li:hover { background: var(--user-bg); color: var(--fg); }
+.sessions-list li.active { color: var(--accent); }
+.sessions-list .session-marker {
+  font-family: var(--mono);
+  font-size: 0.7em;
+  color: var(--accent);
+  width: 1ch;
+  flex-shrink: 0;
+}
+.sessions-list .session-label { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-family: var(--serif); }
+.sessions-list .session-date { font-family: var(--mono); font-size: 0.75em; color: var(--fg-muted); }
+.sessions-list .session-rename, .sessions-list .session-delete {
+  background: transparent;
+  border: none;
+  color: var(--fg-muted);
+  cursor: pointer;
+  font-size: 0.85em;
+  padding: 0 0.2rem;
+  opacity: 0;
+  transition: opacity 100ms ease, color 100ms ease;
+}
+.sessions-list li:hover .session-rename,
+.sessions-list li:hover .session-delete { opacity: 1; }
+.sessions-list .session-rename:hover { color: var(--accent); }
+.sessions-list .session-delete:hover { color: #cc6666; }
+.sessions-empty {
+  padding: 0.5rem;
+  font-style: italic;
+  color: var(--fg-muted);
+  font-size: 0.85em;
+  text-align: center;
+}
 
 /* Citation popovers — DOM-only [drawer_xxx] markers */
 .citation {
@@ -125,7 +306,7 @@ body {
   vertical-align: baseline;
 }
 .citation-trigger {
-  background: transparent;
+  background: color-mix(in srgb, var(--accent) 8%, transparent);
   border: 1px solid var(--accent);
   border-radius: 3px;
   color: var(--accent);
@@ -136,8 +317,30 @@ body {
   margin: 0 2px;
   vertical-align: super;
   line-height: 1.4;
+  transition: background 120ms ease, transform 120ms ease;
+  animation: citation-appear 360ms ease-out backwards;
 }
-.citation-trigger:hover { background: color-mix(in srgb, var(--accent) 15%, transparent); }
+.citation-trigger::before {
+  content: "✦";
+  margin-right: 3px;
+  font-size: 0.85em;
+  opacity: 0.75;
+}
+.citation-trigger:hover {
+  background: color-mix(in srgb, var(--accent) 22%, transparent);
+  transform: translateY(-1px);
+}
+.citation-trigger:focus-visible {
+  outline: 1px solid var(--accent);
+  outline-offset: 1px;
+}
+.citation--open .citation-trigger {
+  background: color-mix(in srgb, var(--accent) 28%, transparent);
+}
+@keyframes citation-appear {
+  from { opacity: 0; transform: translateY(2px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
 .citation-popover {
   display: none;
   position: absolute;
