@@ -2,6 +2,7 @@ import type { PalaceClient } from "./palace-client.ts";
 import type { PalaceDrawer, PalaceSearchKind, SmeEntity } from "./types.ts";
 import { buildSystemPrompt } from "./grounding.ts";
 import { allocateContext } from "./budget.ts";
+import { domainRerank } from "./retrieval/rerank.ts";
 
 export interface RetrieveAndGroundOpts {
   palace: PalaceClient;
@@ -62,6 +63,10 @@ export async function retrieveAndGround(opts: RetrieveAndGroundOpts): Promise<Re
   if (opts.recentCitations.length > 0) {
     drawers = drawers.filter((d) => !d.id || !opts.recentCitations.includes(d.id));
   }
+
+  // Emmimal component 2 — domain-weighted rerank.
+  // Adjusts similarity using wing-match + recency; raw cosine/bm25 preserved.
+  drawers = domainRerank(drawers, opts.wingScope);
 
   // Apply token budget
   const alloc = allocateContext(drawers, opts.contextBudgetTokens);
