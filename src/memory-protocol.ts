@@ -12,16 +12,7 @@ export interface RetrieveAndGroundOpts {
   palace: PalaceClient;
   userMessage: string;
   wingScope: string | null;
-  /** How many drawers to keep AFTER rerank/decay/compress. Bounds context. */
   retrievalLimit: number;
-  /**
-   * How many drawers to fetch FROM daemon before reranking. Defaults to
-   * retrievalLimit (back-compat). Setting candidateLimit > retrievalLimit
-   * gives familiar's wing-match + recency rerank a wider candidate pool —
-   * a drawer that ranks #6 by daemon hybrid can surface to the top after
-   * familiar's domain-aware reorder.
-   */
-  candidateLimit?: number;
   contextBudgetTokens: number;
   recentCitations: string[];
   /** Defaults to "content" inside palace-client; pass "checkpoint" for audit/recovery flows. */
@@ -61,11 +52,10 @@ export async function retrieveAndGround(opts: RetrieveAndGroundOpts): Promise<Re
   let availableInScope: number | undefined;
   let palaceWarnings: string[] = [];
 
-  const fetchLimit = opts.candidateLimit ?? opts.retrievalLimit;
   try {
     const search = await opts.palace.search({
       query: opts.userMessage.slice(0, 250),
-      limit: fetchLimit,
+      limit: opts.retrievalLimit,
       wing: opts.wingScope ?? undefined,
       kind: opts.kind,  // undefined → palace-client defaults to "content"
     });
@@ -106,10 +96,6 @@ export async function retrieveAndGround(opts: RetrieveAndGroundOpts): Promise<Re
   // Long drawers (>500 chars) get trimmed to top-3 query-relevant sentences.
   // Full drawer body remains addressable by drawer.id via citations.
   drawers = extractiveCompress(drawers, opts.userMessage);
-
-  // Slice to retrievalLimit after the wider-candidate rerank settled the
-  // order. When candidateLimit == retrievalLimit (back-compat), this is a no-op.
-  drawers = drawers.slice(0, opts.retrievalLimit);
 
   // Apply token budget
   const alloc = allocateContext(drawers, opts.contextBudgetTokens);

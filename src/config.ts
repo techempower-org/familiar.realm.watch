@@ -50,7 +50,6 @@ export function loadConfig(): Config {
       response: readInt("TOKEN_BUDGET_RESPONSE", 512),
     },
     retrievalLimit: readInt("RETRIEVAL_LIMIT", 5),
-    candidateLimit: readInt("CANDIDATE_LIMIT", 20),
     sessionTtlMinutes: readInt("SESSION_TTL_MINUTES", 60),
     realmSigilRealm: readStr("REALM_SIGIL_REALM", "fantasy"),
     logLevel: readLogLevel("LOG_LEVEL", "info"),

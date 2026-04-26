@@ -73,7 +73,6 @@ export async function handleChat(req: Request, deps: ChatRouteDeps): Promise<Res
       userMessage: lastUser.content,
       wingScope: wingHint,
       retrievalLimit: deps.cfg.retrievalLimit,
-      candidateLimit: deps.cfg.candidateLimit,
       contextBudgetTokens: deps.cfg.tokenBudget.context,
       recentCitations: session.recentCitations,
       stuck,

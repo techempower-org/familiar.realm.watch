@@ -26,12 +26,6 @@ export interface Config {
     response: number;
   };
   retrievalLimit: number;
-  /**
-   * Daemon-side fetch limit before familiar's domain rerank. Defaults to
-   * 4× retrievalLimit so wing-match + recency have a wider candidate pool.
-   * The post-rerank slice still caps context at retrievalLimit.
-   */
-  candidateLimit: number;
   sessionTtlMinutes: number;
   realmSigilRealm: string;
   logLevel: "debug" | "info" | "warn" | "error";
