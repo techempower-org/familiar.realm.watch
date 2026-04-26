@@ -26,18 +26,20 @@ ssh "${DEST_HOST}" "sudo rsync -a --delete --chown ${DEST_USER}:${DEST_USER} /tm
 echo ">>> Installing dependencies..."
 ssh "${DEST_HOST}" "sudo -u ${DEST_USER} bash -c 'cd ${DEST_ROOT} && ~/.bun/bin/bun install --production'"
 
-echo ">>> Populating .env..."
-API_KEY="$(bw get password 'palace-daemon-v1' 2>/dev/null || true)"
-[ -n "${API_KEY}" ] || { echo "WARN: palace-daemon-v1 not in vault — .env will have empty key"; }
-
-ssh "${DEST_HOST}" "sudo tee ${DEST_ROOT}/.env > /dev/null <<EOF
+echo ">>> Populating .env (only if missing — preserves operator overrides)..."
+if ssh "${DEST_HOST}" "sudo test -s ${DEST_ROOT}/.env"; then
+  echo "    .env already exists; leaving in place. Edit on host to change config."
+else
+  API_KEY="$(bw get password 'palace-daemon-v1' 2>/dev/null || true)"
+  [ -n "${API_KEY}" ] || { echo "WARN: palace-daemon-v1 not in vault — .env will have empty key"; }
+  ssh "${DEST_HOST}" "sudo tee ${DEST_ROOT}/.env > /dev/null <<EOF
 FAMILIAR_PORT=8080
 FAMILIAR_HOST=0.0.0.0
 OLLAMA_CHAT_URL=http://127.0.0.1:11434
 OLLAMA_EMBED_URL=http://127.0.0.1:11435
 OLLAMA_CHAT_MODEL=qwen2.5:3b-instruct-q4_K_M
 OLLAMA_EMBED_MODEL=nomic-embed-text:v1.5
-PALACE_DAEMON_URL=http://katana:8085
+PALACE_DAEMON_URL=http://disks:8085
 PALACE_DAEMON_API_KEY=${API_KEY}
 PALACE_SEARCH_TIMEOUT_MS=2000
 TOKEN_BUDGET_SYSTEM=1500
@@ -49,7 +51,8 @@ SESSION_TTL_MINUTES=60
 REALM_SIGIL_REALM=fantasy
 LOG_LEVEL=info
 EOF"
-ssh "${DEST_HOST}" "sudo chmod 600 ${DEST_ROOT}/.env && sudo chown ${DEST_USER}:${DEST_USER} ${DEST_ROOT}/.env"
+  ssh "${DEST_HOST}" "sudo chmod 600 ${DEST_ROOT}/.env && sudo chown ${DEST_USER}:${DEST_USER} ${DEST_ROOT}/.env"
+fi
 
 echo ">>> Installing/refreshing systemd unit..."
 ssh "${DEST_HOST}" "sudo cp ${DEST_ROOT}/ops/systemd/familiar-api.service /etc/systemd/system/ && sudo systemctl daemon-reload"
