@@ -99,4 +99,40 @@ export class PalaceClient {
     if (!res.ok) throw new Error(`palace-daemon graph: ${res.status} ${res.statusText}`);
     return (await res.json()) as PalaceGraph;
   }
+
+  /**
+   * Stop-hook diary save. palace-daemon v1.5.0+ exposes /silent-save as the
+   * single durable write path for session checkpoints. Queue-safe by design:
+   * if a palace rebuild is in progress, the daemon writes to
+   * `<palace_parent>/palace-daemon-pending.jsonl` and drains automatically
+   * once the rebuild completes — no retry logic needed client-side.
+   */
+  async silentSave(params: SilentSaveParams): Promise<SilentSaveResult> {
+    const res = await this.fetchFn(`${this.baseUrl}/silent-save`, {
+      method: "POST",
+      headers: this.headers(),
+      body: JSON.stringify(params),
+    });
+    if (!res.ok) throw new Error(`palace-daemon silent-save: ${res.status} ${res.statusText}`);
+    return (await res.json()) as SilentSaveResult;
+  }
+}
+
+export interface SilentSaveParams {
+  session_id: string;
+  wing: string;
+  entry: string;
+  topic?: string;
+  agent_name?: string;
+  themes?: string[];
+  message_count?: number;
+}
+
+export interface SilentSaveResult {
+  count: number;
+  themes: string[];
+  queued: boolean;
+  entry_id?: string;
+  /** Daemon-formatted, glyphed string (✦ for memory ops). Render verbatim. */
+  systemMessage: string;
 }

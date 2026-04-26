@@ -9,6 +9,7 @@ import { handleEmbeddings } from "./routes/embeddings.ts";
 import { handleVersion, handleHealth } from "./routes/api.ts";
 import { handleEval } from "./routes/eval.ts";
 import { handleGraph } from "./routes/graph.ts";
+import { DiaryBuffer } from "./diary-buffer.ts";
 
 const cfg = loadConfig();
 const sigil = readSigil(cfg.realmSigilRealm);
@@ -31,6 +32,31 @@ const breakers = {
   ollamaEmbed: mkBreaker(),
 };
 
+// Diary buffer: every 10 turns, flush a checkpoint summary to palace /silent-save.
+// The daemon-side queue handles palace rebuilds, so no client-side retry needed.
+const diaryBuffer = new DiaryBuffer({
+  flushSize: 10,
+  flushFn: async (entries) => {
+    const entry = entries.join("\n\n---\n\n");
+    const result = await palace.silentSave({
+      session_id: "familiar-api",
+      wing: "familiar",
+      entry,
+      themes: ["session-checkpoint", "familiar-turn"],
+      message_count: entries.length,
+    });
+    if (result.queued) {
+      log("diary.queued", { count: result.count, reason: "palace under repair" });
+    } else {
+      log("diary.flushed", { count: result.count, entry_id: result.entry_id, msg: result.systemMessage });
+    }
+  },
+});
+
+// Drain the buffer cleanly on graceful shutdown so no entries are lost.
+process.on("SIGTERM", () => { diaryBuffer.flush().catch(() => { /* drain best-effort */ }); });
+process.on("SIGINT", () => { diaryBuffer.flush().catch(() => { /* drain best-effort */ }); });
+
 function log(event: string, data: Record<string, unknown> = {}): void {
   console.log(JSON.stringify({ ts: new Date().toISOString(), event, ...data }));
 }
@@ -49,7 +75,7 @@ const server = Bun.serve({
     const t0 = Date.now();
     try {
       if (url.pathname === "/v1/chat/completions" && req.method === "POST") {
-        return await handleChat(req, { cfg, palace, ollama: ollamaChat, sessions, breakers: { palace: breakers.palace, ollama: breakers.ollamaChat } });
+        return await handleChat(req, { cfg, palace, ollama: ollamaChat, sessions, diaryBuffer, breakers: { palace: breakers.palace, ollama: breakers.ollamaChat } });
       }
       if (url.pathname === "/v1/embeddings" && req.method === "POST") {
         return await handleEmbeddings(req, { cfg, ollamaEmbed, breaker: breakers.ollamaEmbed });

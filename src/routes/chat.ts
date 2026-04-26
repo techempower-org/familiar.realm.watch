@@ -3,6 +3,7 @@ import type { PalaceClient } from "../palace-client.ts";
 import type { CircuitBreaker } from "../circuit-breaker.ts";
 import type { SessionStore } from "../sessions.ts";
 import type { Config } from "../types.ts";
+import type { DiaryBuffer } from "../diary-buffer.ts";
 import { retrieveAndGround, type RetrieveAndGroundResult } from "../memory-protocol.ts";
 import { voice } from "../lang/familiar-voice.ts";
 import { buildTrace, traceSummary } from "../trace.ts";
@@ -12,6 +13,7 @@ export interface ChatRouteDeps {
   palace: PalaceClient;
   ollama: OllamaClient;
   sessions: SessionStore;
+  diaryBuffer: DiaryBuffer;
   breakers: {
     palace: CircuitBreaker;
     ollama: CircuitBreaker;
@@ -249,6 +251,8 @@ function postStreamWrite(args: {
     deps.sessions.appendTurn(sessionId, { role: "user", content: userContent });
     deps.sessions.appendTurn(sessionId, { role: "assistant", content: assistantContent });
     deps.sessions.markCitations(sessionId, drawerIds);
-    // v0.1: no palace writes from post-stream (deferred to v0.2 diary buffering).
+    // Feed the diary buffer — flushes every 10 turns to palace /silent-save.
+    const entry = `[${new Date().toISOString()}] user: ${userContent.slice(0, 200)} | assistant: ${assistantContent.slice(0, 200)}`;
+    deps.diaryBuffer.add(entry).catch(() => { /* daemon-side queue handles failures */ });
   });
 }
