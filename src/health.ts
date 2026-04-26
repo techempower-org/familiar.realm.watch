@@ -34,6 +34,16 @@ interface DepReport {
   status: "ok" | "degraded";
   latency_ms?: number;
   error?: string;
+  /**
+   * For palace_daemon only: "ok" when vector recall is healthy,
+   * "empty_hnsw" when the daemon's /search reports the
+   * "vector ranked 0/1 — rest only reachable by keyword match" warning
+   * (rebuild needed). Surfaced loudly so status.realm.watch + manual
+   * eyeballing both flag the issue immediately, instead of it hiding
+   * inside chat-turn warnings.
+   */
+  recall_quality?: "ok" | "empty_hnsw";
+  recall_warning?: string;
 }
 
 async function probe(fn: () => Promise<void>): Promise<DepReport> {
@@ -46,9 +56,38 @@ async function probe(fn: () => Promise<void>): Promise<DepReport> {
   }
 }
 
+const HNSW_EMPTY_PATTERN = /vector ranked [01]\b/i;
+
+/**
+ * Probe palace recall health by issuing a tiny /search and inspecting the
+ * warnings field. The jphein-fork's BM25-fallback path emits a specific
+ * warning when the HNSW index is empty/quarantined; surfacing it at the
+ * /api/familiar/health level means status.realm.watch sees the regression
+ * immediately on its 60s poll, rather than learning about it from chat
+ * trace warnings buried in journal logs.
+ */
+async function probePalaceRecall(palace: PalaceClient): Promise<{
+  recall_quality: "ok" | "empty_hnsw";
+  recall_warning?: string;
+}> {
+  try {
+    const r = await palace.search({ query: "_health_probe", limit: 1, kind: "content" });
+    const warnings = r.warnings ?? [];
+    const empty = warnings.find((w) => HNSW_EMPTY_PATTERN.test(w));
+    if (empty) {
+      return { recall_quality: "empty_hnsw", recall_warning: empty };
+    }
+    return { recall_quality: "ok" };
+  } catch {
+    // Don't fail health on probe error — the basic palace.health() already
+    // covers daemon reachability. Just leave recall_quality unset.
+    return { recall_quality: "ok" };
+  }
+}
+
 export async function getHealth(deps: HealthDeps): Promise<HealthReport> {
   const fetchFn = deps.fetch ?? fetch;
-  const [palace, chat, embed] = await Promise.all([
+  const [palace, chat, embed, recall] = await Promise.all([
     probe(() => deps.palace.health().then(() => {})),
     probe(async () => {
       const r = await fetchFn(`${deps.ollamaChatUrl}/api/tags`);
@@ -58,7 +97,20 @@ export async function getHealth(deps: HealthDeps): Promise<HealthReport> {
       const r = await fetchFn(`${deps.ollamaEmbedUrl}/api/tags`);
       if (!r.ok) throw new Error(`${r.status}`);
     }),
+    probePalaceRecall(deps.palace),
   ]);
+
+  // Merge recall info into the palace_daemon report. If recall is degraded
+  // but the daemon is otherwise reachable, flip top-level status to
+  // "degraded" so status.realm.watch (and the existing 503-on-degraded
+  // logic in routes/api.ts) raise the alarm.
+  if (palace.status === "ok" && recall.recall_quality === "empty_hnsw") {
+    palace.status = "degraded";
+    palace.error = `HNSW index empty: ${recall.recall_warning}`;
+  }
+  palace.recall_quality = recall.recall_quality;
+  if (recall.recall_warning) palace.recall_warning = recall.recall_warning;
+
   return {
     service: "familiar-api",
     version: deps.sigil,
