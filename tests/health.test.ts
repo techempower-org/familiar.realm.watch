@@ -85,20 +85,25 @@ describe("getHealth", () => {
     expect(r.dependencies.palace_daemon.status).toBe("ok");
   });
 
-  test("daemon-unreachable still reports degraded; recall left as ok (probe falls through)", async () => {
-    const r = await getHealth(deps(mockPalace({ healthThrows: true })));
+  test("daemon-unreachable reports degraded with the daemon's own error", async () => {
+    // Both /health and /search throw. The daemon-down error wins as the
+    // top-level error since it's the more fundamental failure.
+    const r = await getHealth(deps(mockPalace({ healthThrows: true, searchThrows: true })));
     expect(r.dependencies.palace_daemon.status).toBe("degraded");
     expect(r.dependencies.palace_daemon.error).toContain("ECONNREFUSED");
-    // Search probe also throws, but recall_quality defaults to "ok" rather
-    // than confusing two different failure modes.
-    expect(r.dependencies.palace_daemon.recall_quality).toBe("ok");
+    expect(r.dependencies.palace_daemon.recall_quality).toBe("probe_error");
   });
 
-  test("search probe failure doesn't break overall health", async () => {
+  test("daemon /health ok but /search times out → recall: probe_error (likely rebuild in progress)", async () => {
+    // This is the operationally important case — daemon is up, but a heavy
+    // rebuild is holding the read semaphore so /search hangs. The report
+    // says degraded with a specific 'recall probe failed' message, distinct
+    // from 'HNSW empty' which would indicate a different (rebuild-needed) state.
     const r = await getHealth(deps(mockPalace({ searchThrows: true })));
-    // Daemon /health succeeded, /search failed — overall stays ok-but-recall-unknown.
-    expect(r.dependencies.palace_daemon.status).toBe("ok");
-    expect(r.dependencies.palace_daemon.recall_quality).toBe("ok");
+    expect(r.dependencies.palace_daemon.status).toBe("degraded");
+    expect(r.dependencies.palace_daemon.recall_quality).toBe("probe_error");
+    expect(r.dependencies.palace_daemon.error).toMatch(/recall probe failed/i);
+    expect(r.dependencies.palace_daemon.recall_warning).toContain("search probe failed");
   });
 
   test("includes circuit breaker states", async () => {
