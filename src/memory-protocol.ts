@@ -3,6 +3,10 @@ import type { PalaceDrawer, PalaceSearchKind, SmeEntity } from "./types.ts";
 import { buildSystemPrompt } from "./grounding.ts";
 import { allocateContext } from "./budget.ts";
 import { domainRerank } from "./retrieval/rerank.ts";
+import { temporalDecay } from "./retrieval/decay.ts";
+import { extractiveCompress } from "./retrieval/compress.ts";
+
+const DEFAULT_HALF_LIFE_DAYS = 30;
 
 export interface RetrieveAndGroundOpts {
   palace: PalaceClient;
@@ -67,6 +71,18 @@ export async function retrieveAndGround(opts: RetrieveAndGroundOpts): Promise<Re
   // Emmimal component 2 — domain-weighted rerank.
   // Adjusts similarity using wing-match + recency; raw cosine/bm25 preserved.
   drawers = domainRerank(drawers, opts.wingScope);
+
+  // Emmimal component 3 — exponential temporal decay.
+  // Multiplies similarity by exp(-λ * age_days) where λ = ln(2) / half_life.
+  drawers = temporalDecay(drawers, { halfLifeDays: DEFAULT_HALF_LIFE_DAYS });
+  // Re-sort: decay can change the order significantly when older drawers
+  // had high rerank scores.
+  drawers.sort((a, b) => (b.similarity ?? 0) - (a.similarity ?? 0));
+
+  // Emmimal component 4 — extractive compression.
+  // Long drawers (>500 chars) get trimmed to top-3 query-relevant sentences.
+  // Full drawer body remains addressable by drawer.id via citations.
+  drawers = extractiveCompress(drawers, opts.userMessage);
 
   // Apply token budget
   const alloc = allocateContext(drawers, opts.contextBudgetTokens);
