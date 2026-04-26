@@ -93,19 +93,19 @@ describe("/api/familiar/graph", () => {
     expect(res2.headers.get("x-graph-cache")).toBe("miss");
   });
 
-  test("default TTL is 30_000 ms when not specified", async () => {
+  test("default TTL is 300_000 ms (5 min) when not specified", async () => {
     let now = 1_000_000;
     const calls = { n: 0 };
     const palace = mockPalace({ calls });
     const deps: GraphRouteDeps = { palace, now: () => now };
 
     await handleGraph(req(), deps);
-    now += 29_999;  // just under 30s
+    now += 299_999;  // just under 5 min
     const res2 = await handleGraph(req(), deps);
     expect(res2.headers.get("x-graph-cache")).toBe("hit");
     expect(calls.n).toBe(1);
 
-    now += 2;  // total elapsed = 30_001
+    now += 2;  // total elapsed = 300_001
     const res3 = await handleGraph(req(), deps);
     expect(res3.headers.get("x-graph-cache")).toBe("miss");
     expect(calls.n).toBe(2);

@@ -16,7 +16,11 @@ import type { PalaceGraph } from "../types.ts";
 
 export interface GraphRouteDeps {
   palace: PalaceClient;
-  /** Cache TTL in milliseconds. Defaults to 30_000 (30s). */
+  /**
+   * Cache TTL in milliseconds. Defaults to 300_000 (5 min) — palace-daemon
+   * /graph can take 30s+ on large palaces; structural data changes slowly,
+   * so a longer TTL is the right tradeoff.
+   */
   cacheTtlMs?: number;
   /** For deterministic tests; defaults to Date.now(). */
   now?: () => number;
@@ -35,7 +39,7 @@ export function _resetGraphCache(): void {
 }
 
 export async function handleGraph(_req: Request, deps: GraphRouteDeps): Promise<Response> {
-  const ttl = deps.cacheTtlMs ?? 30_000;
+  const ttl = deps.cacheTtlMs ?? 300_000;
   const now = (deps.now ?? Date.now)();
 
   if (cache && now - cache.ts < ttl) {

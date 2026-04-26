@@ -40,6 +40,10 @@ log("server.starting", { port: cfg.port, host: cfg.host, sigil });
 const server = Bun.serve({
   port: cfg.port,
   hostname: cfg.host,
+  // palace-daemon /graph can take 30-40s on 150K-drawer palaces (single-shot
+  // structural snapshot). Default Bun idleTimeout=10 kills those mid-flight.
+  // Streaming chat responses also need headroom for slow models.
+  idleTimeout: 60,
   async fetch(req) {
     const url = new URL(req.url);
     const t0 = Date.now();
