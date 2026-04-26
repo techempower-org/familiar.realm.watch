@@ -44,6 +44,38 @@ function safeGit(args: string[]): string {
   return new TextDecoder().decode(proc.stdout).trim();
 }
 
+/**
+ * Read package.json once at module load. Bun.serve is long-lived; reading
+ * once means version is stable for the process lifetime even if package.json
+ * changes on disk. Falls back to safe defaults if the file is missing or
+ * malformed.
+ */
+function readPackageMetadata(): { name: string; version: string; description: string } {
+  const FALLBACK = {
+    name: "familiar-realm-watch",
+    version: "0.0.0",
+    description: "Local-first AI companion — reads mempalace before speaking, writes it after.",
+  };
+  try {
+    const proc = Bun.spawnSync({ cmd: ["cat", "package.json"], stdout: "pipe" });
+    if (!proc.success) return FALLBACK;
+    const pkg = JSON.parse(new TextDecoder().decode(proc.stdout)) as {
+      name?: string;
+      version?: string;
+      description?: string;
+    };
+    return {
+      name: pkg.name ?? FALLBACK.name,
+      version: pkg.version ?? FALLBACK.version,
+      description: pkg.description ?? FALLBACK.description,
+    };
+  } catch {
+    return FALLBACK;
+  }
+}
+
+const PKG = readPackageMetadata();
+
 export function readSigil(realm: string): SigilInfo {
   const hash = safeGit(["rev-parse", "HEAD"]).slice(0, 12);
   const branch = safeGit(["rev-parse", "--abbrev-ref", "HEAD"]);
@@ -52,9 +84,9 @@ export function readSigil(realm: string): SigilInfo {
     ? FANTASY_WORDS[hashToIndex(hash, FANTASY_WORDS.length)]
     : "wildwood"; // fallback when outside a git repo
   return {
-    name: "familiar-realm-watch",
-    description: "Local-first AI companion — reads mempalace before speaking, writes it after.",
-    version: "0.1.0",
+    name: PKG.name,
+    description: PKG.description,
+    version: PKG.version,
     realm,
     word,
     hash,
