@@ -12,6 +12,8 @@ import { handleEmbeddings } from "./routes/embeddings.ts";
 import { handleVersion, handleHealth } from "./routes/api.ts";
 import { handleEval } from "./routes/eval.ts";
 import { handleGraph } from "./routes/graph.ts";
+import { handleReflect } from "./routes/reflect.ts";
+import { ReflectWriter } from "./reflect/writer.ts";
 import { DiaryBuffer } from "./diary-buffer.ts";
 import { mountFamiliarMcp } from "./mcp-server.ts";
 
@@ -71,6 +73,17 @@ const diaryBuffer = new DiaryBuffer({
 process.on("SIGTERM", () => { diaryBuffer.flush().catch(() => { /* drain best-effort */ }); });
 process.on("SIGINT", () => { diaryBuffer.flush().catch(() => { /* drain best-effort */ }); });
 
+// ReflectWriter: post-turn write-back of synthesized facts to palace.
+// v0.3 ships as operator-triggered (POST /api/familiar/reflect); v0.4
+// will wire automatic per-session triggering via Stop hook.
+const reflectWriter = new ReflectWriter({
+  palace,
+  inference: inferenceRouter,
+  threshold: 0.85,
+  maxFactsPerTurn: 5,
+  wing: "reflect",
+});
+
 function log(event: string, data: Record<string, unknown> = {}): void {
   console.log(JSON.stringify({ ts: new Date().toISOString(), event, ...data }));
 }
@@ -114,6 +127,9 @@ const server = Bun.serve({
       }
       if (url.pathname === "/api/familiar/graph" && req.method === "GET") {
         return await handleGraph(req, { palace });
+      }
+      if (url.pathname === "/api/familiar/reflect" && req.method === "POST") {
+        return await handleReflect(req, { writer: reflectWriter });
       }
       if (url.pathname === "/mcp" || url.pathname.startsWith("/mcp/")) {
         return await mcp.handle(req);
