@@ -64,6 +64,9 @@ sleep 3
 echo ">>> Smoke test..."
 curl -s --max-time 5 http://familiar:8080/api/version | head -c 500 || { echo "FAIL: /api/version"; ssh "${DEST_HOST}" "sudo journalctl -u familiar-api -n 40"; exit 1; }
 echo ""
-curl -s --max-time 5 http://familiar:8080/api/familiar/health | head -c 500 || { echo "FAIL: /api/familiar/health"; exit 1; }
+# Health endpoint can take up to ~4s under degraded conditions (2s palace
+# health probe + 2s search recall probe, both bounded by searchTimeoutMs).
+# 10s leaves headroom while still failing fast on real hangs.
+curl -s --max-time 10 http://familiar:8080/api/familiar/health | head -c 500 || { echo "FAIL: /api/familiar/health"; exit 1; }
 echo ""
 echo ">>> Deploy done."
