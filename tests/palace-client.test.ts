@@ -39,6 +39,34 @@ describe("PalaceClient", () => {
     expect(captured!.headers.get("x-api-key")).toBe("test-key");
   });
 
+  test("search strips trailing punctuation from q (embedding-stability fix)", async () => {
+    let captured = "";
+    const fetchMock = mockFetch((req) => {
+      captured = req.url;
+      return new Response(JSON.stringify({ query: "x", results: [] }), { status: 200 });
+    });
+    const client = new PalaceClient({ baseUrl: "http://k:8085", apiKey: "", searchTimeoutMs: 2000, fetch: fetchMock as unknown as typeof fetch });
+    await client.search({ query: "What is GraphPalace?", limit: 5 });
+    // Trailing "?" stripped — observed dropping known-good hits out of top-K
+    // due to nomic-embed-text v1.5 punctuation sensitivity.
+    expect(captured).toContain("q=What+is+GraphPalace&");
+    expect(captured).not.toContain("%3F");
+  });
+
+  test("search preserves internal punctuation (only trailing is stripped)", async () => {
+    let captured = "";
+    const fetchMock = mockFetch((req) => {
+      captured = req.url;
+      return new Response(JSON.stringify({ query: "x", results: [] }), { status: 200 });
+    });
+    const client = new PalaceClient({ baseUrl: "http://k:8085", apiKey: "", searchTimeoutMs: 2000, fetch: fetchMock as unknown as typeof fetch });
+    await client.search({ query: "What's the difference, exactly?", limit: 5 });
+    // Apostrophes and inner commas preserved — they carry semantic meaning
+    expect(captured).toContain("What%27s+the+difference%2C+exactly");
+    // But the trailing "?" still stripped
+    expect(captured).not.toMatch(/exactly%3F/);
+  });
+
   test("search without wing omits wing param", async () => {
     let captured: string = "";
     const fetchMock = mockFetch((req) => {

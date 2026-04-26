@@ -44,7 +44,13 @@ export class PalaceClient {
   }
 
   async search(opts: SearchOpts): Promise<PalaceSearchResult> {
-    const params = new URLSearchParams({ q: opts.query, limit: String(opts.limit) });
+    // Strip trailing punctuation before embedding. nomic-embed-text v1.5
+    // produces meaningfully different embeddings for "What is X" vs "What
+    // is X?" — a single trailing "?" was observed dropping a known-good
+    // hit from sim=0.562 (#1) out of top-5 entirely on the live palace.
+    // Normalize at the client layer so every consumer benefits.
+    const normalizedQ = opts.query.replace(/[?!.,;:]+\s*$/, "").trim();
+    const params = new URLSearchParams({ q: normalizedQ, limit: String(opts.limit) });
     if (opts.wing) params.set("wing", opts.wing);
     if (opts.room) params.set("room", opts.room);
     if (opts.maxDistance !== undefined) params.set("max_distance", String(opts.maxDistance));
