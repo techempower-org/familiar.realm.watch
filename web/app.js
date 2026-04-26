@@ -5,6 +5,121 @@ const input = document.getElementById("input");
 const submit = form.querySelector("button");
 const status = document.getElementById("status");
 
+// Citation rendering — converts [drawer_xxx] markers in assistant responses
+// into hover-popover buttons. DOM-only, no innerHTML. The link target uses
+// <body data-viz-base-url="..."> for one-config swap to mempalace-viz when
+// the deployed origin exists; empty/absent → /api/familiar/memory/<id>.
+const CITATION_PATTERN = /\[(drawer_[a-z0-9]+)\]/g;
+
+function vizBaseUrl() {
+  return document.body.getAttribute("data-viz-base-url") || "";
+}
+
+function buildPopover(drawerId, meta) {
+  const popover = document.createElement("span");
+  popover.className = "citation-popover";
+  popover.setAttribute("role", "tooltip");
+
+  const title = document.createElement("strong");
+  title.textContent = meta && meta.wing && meta.room
+    ? `${meta.wing} · ${meta.room}`
+    : drawerId;
+  popover.appendChild(title);
+
+  if (meta && meta.created_at) {
+    const date = document.createElement("span");
+    date.className = "citation-date";
+    date.textContent = new Date(meta.created_at).toLocaleDateString();
+    popover.appendChild(date);
+  }
+
+  if (meta && meta.text) {
+    const snippet = document.createElement("p");
+    snippet.className = "citation-snippet";
+    snippet.textContent = meta.text.length > 280 ? meta.text.slice(0, 280) + "…" : meta.text;
+    popover.appendChild(snippet);
+  }
+
+  const link = document.createElement("a");
+  link.className = "citation-link";
+  const base = vizBaseUrl();
+  link.href = base ? `${base}/drawer/${drawerId}` : `/api/familiar/memory/${drawerId}`;
+  link.target = "_blank";
+  link.rel = "noopener noreferrer";
+  link.textContent = base ? "view in palace ↗" : "view in palace →";
+  popover.appendChild(link);
+
+  return popover;
+}
+
+function buildCitationSpan(rawId, meta) {
+  const drawerId = `drawer_${rawId}`;
+  const wrapper = document.createElement("span");
+  wrapper.className = "citation";
+  wrapper.setAttribute("data-drawer-id", drawerId);
+
+  const btn = document.createElement("button");
+  btn.type = "button";
+  btn.className = "citation-trigger";
+  btn.setAttribute("aria-label", `Palace source: ${drawerId}`);
+  btn.textContent = `[${rawId.slice(0, 6)}]`;
+
+  const popover = buildPopover(drawerId, meta);
+  wrapper.appendChild(btn);
+  wrapper.appendChild(popover);
+
+  btn.addEventListener("click", (e) => {
+    e.stopPropagation();
+    wrapper.classList.toggle("citation--open");
+  });
+
+  return wrapper;
+}
+
+/**
+ * Replace the assistant element's content with a sequence of text nodes
+ * and citation spans. Called once after streaming completes. Uses matchAll
+ * so we never touch regex .lastIndex state.
+ */
+function renderWithCitations(container, text) {
+  while (container.firstChild) container.removeChild(container.firstChild);
+  let lastIndex = 0;
+  for (const match of text.matchAll(CITATION_PATTERN)) {
+    const idx = match.index ?? 0;
+    if (idx > lastIndex) {
+      container.appendChild(document.createTextNode(text.slice(lastIndex, idx)));
+    }
+    const drawerId = `drawer_${match[1]}`;
+    const meta = traceLookup.get(drawerId) || null;
+    container.appendChild(buildCitationSpan(match[1], meta));
+    lastIndex = idx + match[0].length;
+  }
+  if (lastIndex < text.length) {
+    container.appendChild(document.createTextNode(text.slice(lastIndex)));
+  }
+}
+
+// Close any open popover when clicking outside.
+document.addEventListener("click", () => {
+  document.querySelectorAll(".citation--open").forEach((el) => el.classList.remove("citation--open"));
+});
+
+// Per-session map of drawer_id → entity metadata, populated from the trace
+// SSE event the chat route emits when ?trace=1 is set.
+const traceLookup = new Map();
+
+function ingestTrace(trace) {
+  if (!trace || !Array.isArray(trace.retrieved)) return;
+  for (const e of trace.retrieved) {
+    if (!e || !e.id) continue;
+    traceLookup.set(e.id, {
+      wing: e.wing,
+      room: e.room,
+      text: e.content_snippet,
+    });
+  }
+}
+
 function getOrCreateSessionId() {
   const key = "familiar_session_id";
   let sid = localStorage.getItem(key);
@@ -55,7 +170,7 @@ form.addEventListener("submit", async (e) => {
   const assistantEl = appendMessage("assistant", "");
 
   try {
-    const res = await fetch("/v1/chat/completions", {
+    const res = await fetch("/v1/chat/completions?trace=1", {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({
@@ -76,12 +191,22 @@ form.addEventListener("submit", async (e) => {
       buf += decoder.decode(value, { stream: true });
       let idx;
       while ((idx = buf.indexOf("\n\n")) >= 0) {
-        const event = buf.slice(0, idx);
+        const eventBlock = buf.slice(0, idx);
         buf = buf.slice(idx + 2);
-        const line = event.split("\n").find((l) => l.startsWith("data: "));
-        if (!line) continue;
-        const payload = line.slice(6).trim();
+        const lines = eventBlock.split("\n");
+        const eventType = lines.find((l) => l.startsWith("event: "))?.slice(7).trim();
+        const dataLine = lines.find((l) => l.startsWith("data: "));
+        if (!dataLine) continue;
+        const payload = dataLine.slice(6).trim();
         if (payload === "[DONE]") continue;
+
+        // Trace event arrives just before [DONE] when ?trace=1 is set.
+        if (eventType === "trace") {
+          try { ingestTrace(JSON.parse(payload)); } catch { /* skip */ }
+          continue;
+        }
+
+        // Otherwise it's a regular OpenAI-compat chat chunk.
         try {
           const obj = JSON.parse(payload);
           const delta = obj.choices?.[0]?.delta?.content;
@@ -94,6 +219,8 @@ form.addEventListener("submit", async (e) => {
       }
     }
     history.push({ role: "assistant", content: full });
+    // After streaming completes, replace the plain text with citation-aware DOM.
+    renderWithCitations(assistantEl, full);
   } catch (err) {
     assistantEl.textContent = `(the familiar did not respond: ${err.message})`;
   } finally {

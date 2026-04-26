@@ -117,3 +117,52 @@ body {
 }
 .form button:hover { opacity: 0.85; }
 .form button:disabled { opacity: 0.4; cursor: wait; }
+
+/* Citation popovers — DOM-only [drawer_xxx] markers */
+.citation {
+  position: relative;
+  display: inline-block;
+  vertical-align: baseline;
+}
+.citation-trigger {
+  background: transparent;
+  border: 1px solid var(--accent);
+  border-radius: 3px;
+  color: var(--accent);
+  cursor: pointer;
+  font-size: 0.72em;
+  font-family: var(--mono, monospace);
+  padding: 0 5px;
+  margin: 0 2px;
+  vertical-align: super;
+  line-height: 1.4;
+}
+.citation-trigger:hover { background: color-mix(in srgb, var(--accent) 15%, transparent); }
+.citation-popover {
+  display: none;
+  position: absolute;
+  bottom: 130%;
+  left: 0;
+  min-width: 240px;
+  max-width: 380px;
+  background: var(--user-bg, var(--bg));
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 0.6rem 0.75rem;
+  font-size: 0.85em;
+  line-height: 1.4;
+  z-index: 50;
+  box-shadow: 0 4px 16px rgba(0,0,0,0.35);
+  flex-direction: column;
+  gap: 0.35rem;
+}
+.citation--open .citation-popover { display: flex; }
+.citation-popover strong { color: var(--accent); font-weight: 600; }
+.citation-popover .citation-date { color: var(--fg-muted); font-size: 0.9em; }
+.citation-popover .citation-snippet { margin: 0.2rem 0; color: var(--fg); }
+.citation-popover .citation-link { color: var(--accent); text-decoration: none; margin-top: 0.25rem; }
+.citation-popover .citation-link:hover { text-decoration: underline; }
+
+@media (prefers-color-scheme: light) {
+  .citation-popover { box-shadow: 0 4px 16px rgba(0,0,0,0.12); }
+}
