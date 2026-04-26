@@ -7,6 +7,35 @@ versions follow [SemVer](https://semver.org/spec/v2.0.0.html) and the
 [realm-sigil](https://github.com/jphein/realm-sigil) convention used across
 the realm.watch ecosystem.
 
+## [0.2.1] — 2026-04-26 — *eval-driven hardening*
+
+Patch release: reliability + retrieval fixes surfaced by the first
+multipass-structural-memory-eval baseline run against the live palace.
+30-question jp-realm-v0.1 corpus; recall 73.33% → 76.67%, hit-rate
+90.00% → 96.67% across the v0.2.0→v0.2.1 cut.
+
+### Fixed
+
+- **Trailing-punctuation embedding distortion** (`src/palace-client.ts`).
+  A single trailing `?` was observed dropping a known-good drawer from
+  sim=0.562 (#1) to outside top-5 entirely on the live 151K-drawer palace.
+  nomic-embed-text v1.5 produces meaningfully different embeddings for
+  "What is X" vs "What is X?". Strip trailing sentence terminators
+  (`?!.,;:`) at the client layer so chat, eval, and MCP all benefit.
+  Internal punctuation (apostrophes, commas) preserved.
+- **`PALACE_SEARCH_TIMEOUT_MS` 2000ms → 5000ms** (deploy default +
+  production env). Real-world p99 search latency on a 151K palace
+  legitimately touches 1.9-2.0s; the prior boundary caused ~10% of
+  baseline runs to error with `palace_unreachable`. 5s gives ~2.5×
+  headroom on observed tail latency.
+
+### Diagnostic baseline
+
+- 154 tests pass, typecheck clean.
+- Eval baselines committed in
+  `multipass-structural-memory-eval/baselines/jp_realm_v0_1_*.json`
+  alongside the corpus YAML at `sme/corpora/jp_realm_v0_1/questions.yaml`.
+
 ## [0.2.0] — 2026-04-26 — *the familiar remembers better*
 
 ### Added — retrieval pipeline (Emmimal components 2-4)
