@@ -8,24 +8,36 @@ DEST_HOST="familiar"
 DEST_ROOT="/srv/familiar"
 DEST_USER="familiar"
 
-# ---- Compute the sigil up front so the realm-word is the first thing
-# the operator sees. Same logic as the bake step below; we duplicate the
-# small computation rather than reorder the file structure to keep the
-# bake step adjacent to the rsync it feeds.
-HASH=$(git -C "${REPO_ROOT}" rev-parse HEAD 2>/dev/null | cut -c1-12 || echo "")
-BRANCH=$(git -C "${REPO_ROOT}" rev-parse --abbrev-ref HEAD 2>/dev/null || echo "")
-DIRTY=$([ -z "$(git -C "${REPO_ROOT}" status --porcelain 2>/dev/null)" ] && echo "false" || echo "true")
-VERSION=$(grep -oP '"version":\s*"\K[^"]+' "${REPO_ROOT}/package.json" 2>/dev/null || echo "?")
-# Same word table + index as src/sigil.ts. If you edit one, edit the other.
-WORDS=(lantern oakheart embertide glimmer whisper tarn hollow spindle cinder moth sigil talon quillhearth greengage fernstep moss thistle woolgather hedgerow moonwort smaragd willowshade)
-sum=0
-for ((i=0; i<${#HASH}; i++)); do
-  ord=$(printf '%d' "'${HASH:$i:1}")
-  sum=$(( (sum + ord) % 100003 ))
-done
-WORD=${WORDS[$(( sum % ${#WORDS[@]} ))]}
-DIRTY_FLAG=""; [ "$DIRTY" = "true" ] && DIRTY_FLAG=" *dirty*"
-printf '\n  ✦ \033[1;33m%s\033[0m  v%s  %s  (%s%s)\n\n' "$WORD" "$VERSION" "$HASH" "$BRANCH" "$DIRTY_FLAG"
+# ---- realm-sigil banner up front so the realm name is visible without
+# scrolling. Sources the canonical helper from ~/Projects/realm-sigil/.
+# realm_sigil_pre prints the bold "✦ Realm Name · hash" banner using the
+# same deterministic hash → name mapping the runtime /api/version uses.
+# realm_sigil_git_info bakes .git_info (sigil.json equivalent) so the
+# in-process readSigil() inside familiar can recover hash/branch/dirty
+# after the .git-excluded rsync.
+SIGIL_HELPER="${HOME}/Projects/realm-sigil/deploy-banner.sh"
+if [ -r "${SIGIL_HELPER}" ]; then
+  # shellcheck source=/dev/null
+  . "${SIGIL_HELPER}"
+  realm_sigil_git_info "${REPO_ROOT}/.git_info"
+  realm_sigil_pre "fantasy" "${REPO_ROOT}/.git_info"
+  echo ""
+else
+  echo "WARN: realm-sigil helper not found at ${SIGIL_HELPER}; banner skipped."
+fi
+
+# Compute HASH/BRANCH/DIRTY for the bake-into-sigil.json step below. Read
+# them out of .git_info if the helper just made it; otherwise fall back to
+# direct git so the bake step still works.
+if [ -r "${REPO_ROOT}/.git_info" ]; then
+  HASH=$(python3 -c "import json; print(json.load(open('${REPO_ROOT}/.git_info'))['hash'])")
+  BRANCH=$(python3 -c "import json; print(json.load(open('${REPO_ROOT}/.git_info'))['branch'])")
+  DIRTY=$(python3 -c "import json; print('true' if json.load(open('${REPO_ROOT}/.git_info'))['dirty'] else 'false')")
+else
+  HASH=$(git -C "${REPO_ROOT}" rev-parse HEAD 2>/dev/null | cut -c1-12 || echo "")
+  BRANCH=$(git -C "${REPO_ROOT}" rev-parse --abbrev-ref HEAD 2>/dev/null || echo "")
+  DIRTY=$([ -z "$(git -C "${REPO_ROOT}" status --porcelain 2>/dev/null)" ] && echo "false" || echo "true")
+fi
 
 echo ">>> Ensuring service user exists on ${DEST_HOST}..."
 ssh "${DEST_HOST}" "id ${DEST_USER} >/dev/null 2>&1 || sudo useradd -r -m -s /bin/bash ${DEST_USER}"
@@ -33,12 +45,20 @@ ssh "${DEST_HOST}" "id ${DEST_USER} >/dev/null 2>&1 || sudo useradd -r -m -s /bi
 echo ">>> Ensuring Bun is installed for ${DEST_USER}..."
 ssh "${DEST_HOST}" "sudo -u ${DEST_USER} bash -c 'test -x ~/.bun/bin/bun || curl -fsSL https://bun.sh/install | bash'"
 
-echo ">>> Bake sigil.json so realm-sigil keeps its git state across the .git-excluded rsync..."
-# HASH/BRANCH/DIRTY were computed at the top of this script so the realm
-# word could be the first line of output. Reuse them here.
-cat > "${REPO_ROOT}/sigil.json" <<EOF
-{"hash":"${HASH}","branch":"${BRANCH}","dirty":${DIRTY}}
-EOF
+# .git_info was already baked by `realm_sigil_git_info` at the top of this
+# script. realm-sigil's gitInfo() reads it on the deployed host so
+# /api/version reports the correct hash/branch/dirty even though .git is
+# excluded from rsync.
+
+# Vendor realm-sigil into the deploy tree so the file: dep resolves on
+# the deployed host (which has no ~/Projects/realm-sigil). package.json
+# points at vendor/realm-sigil; we sync from JP's working clone here.
+echo ">>> Vendoring realm-sigil into ${REPO_ROOT}/vendor/realm-sigil..."
+mkdir -p "${REPO_ROOT}/vendor/realm-sigil"
+rsync -a --delete \
+  --exclude __tests__ --exclude '*.test.js' --exclude node_modules \
+  "${HOME}/Projects/realm-sigil/js/" \
+  "${REPO_ROOT}/vendor/realm-sigil/"
 
 echo ">>> rsync source to ${DEST_HOST}:${DEST_ROOT}/..."
 ssh "${DEST_HOST}" "sudo mkdir -p ${DEST_ROOT} && sudo chown ${DEST_USER}:${DEST_USER} ${DEST_ROOT}"
@@ -94,5 +114,13 @@ echo ""
 # health probe + 2s search recall probe, both bounded by searchTimeoutMs).
 # 10s leaves headroom while still failing fast on real hangs.
 curl -s --max-time 10 http://familiar:8080/api/familiar/health | head -c 500 || { echo "FAIL: /api/familiar/health"; exit 1; }
+echo ""
+# Post-deploy banner from the canonical helper — fetches /api/version
+# and renders the live realm-sigil so the operator sees the running
+# sigil at the bottom of scrollback, matching what status.realm.watch
+# would see on its next poll.
+if declare -F realm_sigil_post >/dev/null 2>&1; then
+  realm_sigil_post "http://familiar:8080/api/version"
+fi
 echo ""
 echo ">>> Deploy done."

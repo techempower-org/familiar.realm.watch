@@ -7,14 +7,16 @@ import type { SigilInfo } from "../src/sigil.ts";
 const SIGIL: SigilInfo = {
   name: "familiar-realm-watch",
   description: "test",
-  version: "0.2.0",
+  version: "Test Sigil · deadbeef",
+  pkg_version: "0.2.0",
   realm: "fantasy",
-  word: "test",
-  hash: "",
-  branch: "",
+  word: "sigil",
+  hash: "deadbeef",
+  branch: "main",
   dirty: false,
   built: "2026-04-26T00:00:00Z",
   repo: null,
+  commit_url: "https://github.com/jphein/familiar.realm.watch/commit/deadbeef",
 };
 
 const okBreaker = (): CircuitBreaker => ({
