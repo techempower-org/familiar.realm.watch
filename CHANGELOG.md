@@ -7,6 +7,30 @@ versions follow [SemVer](https://semver.org/spec/v2.0.0.html) and the
 [realm-sigil](https://github.com/jphein/realm-sigil) convention used across
 the realm.watch ecosystem.
 
+## [0.3.3] — 2026-04-26 — *the familiar's seams hold*
+
+### Fixed
+
+- **Sigil word stuck at `wildwood` across all releases** (`src/sigil.ts`,
+  `ops/scripts/deploy-familiar.sh`, `.gitignore`). The deploy excludes
+  `.git` from rsync, so `git rev-parse HEAD` returned empty in
+  production and the word fell back to a hardcoded literal. Now the
+  deploy script bakes a `sigil.json` with `{hash, branch, dirty}`
+  before rsync; sigil.ts reads it first, falls back to live git for
+  dev. Word now rotates with each commit. v0.3.2 retroactively reads
+  as `quillhearth`.
+- **Code fences directly below headings rendered as raw text**
+  (`web/app.js`). When the model emitted `#### app/__init__.py\n\`\`\`python\n…`
+  with no blank line between, `splitBlocks` glued heading + fence into
+  one block, neither parser branch matched, and the paragraph fallback
+  dumped the literal backticks + code body as text. `splitBlocks` now
+  force-flushes at fence openers, heading lines, and horizontal-rule
+  lines (matches CommonMark on these boundaries).
+
+### Changed
+
+- Service worker cache `v7 → v8`.
+
 ## [0.3.2] — 2026-04-26 — *the familiar speaks plainly*
 
 PWA polish + grounding voice fix. Same evening as v0.3.1; the sigil
