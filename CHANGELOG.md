@@ -7,6 +7,18 @@ versions follow [SemVer](https://semver.org/spec/v2.0.0.html) and the
 [realm-sigil](https://github.com/jphein/realm-sigil) convention used across
 the realm.watch ecosystem.
 
+## [0.3.5] — 2026-04-26 — *named in full*
+
+### Fixed
+
+- **Sigil sidebar showed only the noun** ("EMBER", "KEYSTONE") instead
+  of the full two-word realm-sigil name ("NOBLE EMBER", "GILDED
+  KEYSTONE"). `extractWord` was carried over from the v0.2 single-word
+  fallback ("wildwood") and never updated to match the canonical
+  realm-sigil contract. Now extracts everything before " · hash"
+  (the magical name half), so the PWA matches `/api/version`'s
+  `version` field.
+
 ## [0.3.4] — 2026-04-26 — *the familiar knows the hour*
 
 Two integrations landed: realm-sigil canonical contract (replaces the

@@ -61,18 +61,17 @@ function readPackageMetadata(): { name: string; version: string; description: st
 const PKG = readPackageMetadata();
 
 /**
- * Extract the noun half of a realm-sigil name. Names have the shape
- * "Adjective Noun · hash"; we split on the last bullet, then take the
- * second word of the prefix. Conservative: returns "wildwood" if the
- * shape isn't what we expect.
+ * Extract the magical-name half of a realm-sigil version string —
+ * everything before the " · hash" suffix. realm-sigil names have the
+ * shape "Adjective Noun · hash" (e.g. "Noble Ember · 491e206"); the
+ * sidebar shows the two-word phrase, the hash lives separately.
  */
 function extractWord(name: string, realm: string): string {
-  const beforeBullet = name.split(" · ")[0] ?? "";
-  const parts = beforeBullet.trim().split(/\s+/);
-  if (parts.length >= 2) return parts[1].toLowerCase();
-  // Defensive fallback — try the realm's noun list directly.
+  const beforeBullet = name.split(" · ")[0]?.trim();
+  if (beforeBullet) return beforeBullet;
+  // Defensive fallback — pick a stable name from the realm's word lists.
   const r = REALMS[realm] ?? REALMS["fantasy"];
-  return r.nouns?.[0]?.toLowerCase() ?? "wildwood";
+  return `${r.adjectives?.[0] ?? "Wild"} ${r.nouns?.[0] ?? "Wood"}`;
 }
 
 export function readSigil(realm: string): SigilInfo {
