@@ -78,9 +78,21 @@
         </svg>
       </button>
       <div class="hdr-title-mobile">familiar</div>
+      <nav class="hdr-tabs" role="tablist">
+        <button class="hdr-tab active" id="tab-chat" type="button" role="tab" aria-selected="true">chat</button>
+        <button class="hdr-tab" id="tab-palace" type="button" role="tab" aria-selected="false">palace</button>
+      </nav>
       <div class="status" id="status" title="connection state">quiet</div>
     </header>
     <div id="log" class="log" aria-live="polite"></div>
+    <div id="palace-view" class="palace-view" hidden>
+      <div class="palace-toolbar">
+        <span class="palace-stats" id="palace-stats">loading…</span>
+        <button class="palace-refresh" id="palace-refresh" type="button" title="refresh">↻</button>
+      </div>
+      <div class="palace-treemap" id="palace-treemap"></div>
+      <div class="palace-tunnels" id="palace-tunnels"></div>
+    </div>
     <form id="form" class="form" autocomplete="off">
       <input id="input" name="msg" placeholder="speak to the familiar..." autofocus required>
       <button type="submit" title="send" aria-label="send">

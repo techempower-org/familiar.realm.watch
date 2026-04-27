@@ -985,6 +985,139 @@ form.addEventListener("submit", async (e) => {
   }
 });
 
+// ---- Palace view (treemap of wings + rooms + tunnels) ----
+const tabChat = document.getElementById("tab-chat");
+const tabPalace = document.getElementById("tab-palace");
+const palaceView = document.getElementById("palace-view");
+const palaceStats = document.getElementById("palace-stats");
+const palaceTreemap = document.getElementById("palace-treemap");
+const palaceTunnels = document.getElementById("palace-tunnels");
+const palaceRefresh = document.getElementById("palace-refresh");
+
+let palaceCache = null;
+
+async function fetchPalaceGraph(force = false) {
+  if (palaceCache && !force) return palaceCache;
+  const r = await fetch("/api/familiar/graph");
+  if (!r.ok) throw new Error(`HTTP ${r.status}`);
+  palaceCache = await r.json();
+  return palaceCache;
+}
+
+function renderPalace(graph) {
+  const wings = graph.wings || {};
+  const roomsByWing = Object.fromEntries((graph.rooms || []).map((r) => [r.wing, r.rooms || {}]));
+  const wingEntries = Object.entries(wings).sort(([, a], [, b]) => b - a);
+  const total = wingEntries.reduce((s, [, n]) => s + n, 0);
+  const maxWing = wingEntries[0]?.[1] ?? 1;
+
+  if (palaceStats) {
+    const triples = graph.kg_stats?.triples ?? graph.kg_triples?.length ?? 0;
+    palaceStats.textContent = `${total.toLocaleString()} drawers · ${wingEntries.length} wings · ${graph.tunnels?.length ?? 0} tunnels · ${triples} kg triples`;
+  }
+
+  // Treemap
+  while (palaceTreemap.firstChild) palaceTreemap.removeChild(palaceTreemap.firstChild);
+  for (const [wing, count] of wingEntries) {
+    const card = document.createElement("div");
+    card.className = "wing-card";
+
+    const head = document.createElement("div");
+    head.className = "wing-card-head";
+    const name = document.createElement("span");
+    name.className = "wing-name";
+    name.textContent = wing.replace(/^wing_/, "");
+    head.appendChild(name);
+    const cnt = document.createElement("span");
+    cnt.className = "wing-count";
+    cnt.textContent = count.toLocaleString();
+    head.appendChild(cnt);
+    card.appendChild(head);
+
+    const bar = document.createElement("div");
+    bar.className = "wing-bar";
+    const fill = document.createElement("div");
+    fill.className = "wing-bar-fill";
+    fill.style.width = `${Math.max(2, (count / maxWing) * 100)}%`;
+    bar.appendChild(fill);
+    card.appendChild(bar);
+
+    const rooms = roomsByWing[wing] || {};
+    const roomEntries = Object.entries(rooms).sort(([, a], [, b]) => b - a).slice(0, 6);
+    if (roomEntries.length > 0) {
+      const list = document.createElement("div");
+      list.className = "wing-rooms";
+      for (const [room, n] of roomEntries) {
+        const chip = document.createElement("span");
+        chip.className = "wing-room-chip";
+        const label = document.createTextNode(room.replace(/_/g, " "));
+        chip.appendChild(label);
+        const c = document.createElement("span");
+        c.className = "wing-room-chip-count";
+        c.textContent = n;
+        chip.appendChild(c);
+        list.appendChild(chip);
+      }
+      card.appendChild(list);
+    }
+    palaceTreemap.appendChild(card);
+  }
+
+  // Tunnels
+  while (palaceTunnels.firstChild) palaceTunnels.removeChild(palaceTunnels.firstChild);
+  const tunnels = (graph.tunnels || []).sort((a, b) => (b.wings?.length ?? 0) - (a.wings?.length ?? 0));
+  if (tunnels.length > 0) {
+    const h3 = document.createElement("h3");
+    h3.textContent = `tunnels — rooms shared across multiple wings`;
+    palaceTunnels.appendChild(h3);
+    for (const t of tunnels) {
+      const row = document.createElement("div");
+      row.className = "tunnel-row";
+      const room = document.createElement("span");
+      room.className = "tunnel-room";
+      room.textContent = t.room;
+      row.appendChild(room);
+      const wingsBox = document.createElement("div");
+      wingsBox.className = "tunnel-wings";
+      for (const w of (t.wings || [])) {
+        const ws = document.createElement("span");
+        ws.className = "tunnel-wing";
+        ws.textContent = w.replace(/^wing_/, "");
+        wingsBox.appendChild(ws);
+      }
+      row.appendChild(wingsBox);
+      palaceTunnels.appendChild(row);
+    }
+  }
+}
+
+async function showPalace(force = false) {
+  if (palaceStats) palaceStats.textContent = "loading…";
+  try {
+    const graph = await fetchPalaceGraph(force);
+    renderPalace(graph);
+  } catch (err) {
+    if (palaceStats) palaceStats.textContent = `error: ${err.message}`;
+  }
+}
+
+function setTab(name) {
+  const isChat = name === "chat";
+  tabChat.classList.toggle("active", isChat);
+  tabChat.setAttribute("aria-selected", String(isChat));
+  tabPalace.classList.toggle("active", !isChat);
+  tabPalace.setAttribute("aria-selected", String(!isChat));
+  log.hidden = !isChat;
+  log.style.display = isChat ? "" : "none";
+  form.hidden = !isChat;
+  form.style.display = isChat ? "" : "none";
+  palaceView.hidden = isChat;
+  if (!isChat) showPalace(false);
+}
+tabChat.addEventListener("click", () => setTab("chat"));
+tabPalace.addEventListener("click", () => setTab("palace"));
+if (palaceRefresh) palaceRefresh.addEventListener("click", () => showPalace(true));
+
 if ("serviceWorker" in navigator) {
   navigator.serviceWorker.register("/sw.js").catch(() => {});
 }

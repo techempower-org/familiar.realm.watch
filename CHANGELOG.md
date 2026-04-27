@@ -7,6 +7,37 @@ versions follow [SemVer](https://semver.org/spec/v2.0.0.html) and the
 [realm-sigil](https://github.com/jphein/realm-sigil) convention used across
 the realm.watch ecosystem.
 
+## [0.3.10] — 2026-04-26 — *the familiar shows the palace*
+
+### Added — palace tab
+
+- **chat / palace tabs in the header** (`web/index.html`,
+  `web/style.css`). Toggle between the chat transcript and a
+  palace-structure view. Active tab gold-highlighted; matches
+  realm-sigil's accent color.
+- **Palace treemap** (`web/app.js`). Wings as cards sorted by
+  drawer count, each card shows: wing name, drawer count, a
+  proportional gold progress bar, and the top 6 rooms with
+  per-room counts. Auto-fills the screen on a 240px grid.
+- **Tunnels list.** `palace_graph.tunnels` (rooms that span
+  multiple wings, like `technical` appearing in 17 wings) renders
+  beneath the treemap as a one-line-per-room view with wing chips.
+- **Stats line** at the top of the tab: total drawers, wing count,
+  tunnel count, kg triple count. On JP's 151K-drawer palace it
+  reads `150,891 drawers · 36 wings · 9 tunnels · 3 kg triples`.
+- **`/api/familiar/graph` is already cached server-side** (5min TTL
+  via `handleGraph`). The PWA caches in-memory per session;
+  manual `↻` button forces a refetch.
+
+### Why now
+
+Reflect made write-side visible (v0.3.6/0.3.7), edit/delete made
+it curatable (v0.3.9), but operator awareness of the *whole* palace
+was still text-only via `/api/familiar/health`. The palace tab
+gives you a structural map you can scan at a glance — see where
+the volume actually is, which rooms thread across wings, which
+wings are growing.
+
 ## [0.3.9] — 2026-04-26 — *the familiar lets you curate*
 
 ### Added — memory editing
