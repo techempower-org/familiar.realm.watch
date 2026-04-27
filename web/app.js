@@ -13,6 +13,8 @@ const hdrMenu = document.getElementById("hdr-menu");
 const sidebarScrim = document.getElementById("sidebar-scrim");
 const memoriesList = document.getElementById("memories-list");
 const memoriesRefresh = document.getElementById("memories-refresh");
+const voiceEnabled = document.getElementById("voice-enabled");
+const voicePicker = document.getElementById("voice-picker");
 
 // Citation rendering — converts [drawer_xxx] markers AND verbatim source-
 // header markers (echoed from the system prompt) into styled chips. DOM-
@@ -614,7 +616,11 @@ function renderTranscript() {
   if (!activeSession || activeSession.turns.length === 0) return;
   for (const t of activeSession.turns) {
     const el = appendMessage(t.role, t.content);
-    if (t.role === "assistant") renderWithCitations(el, t.content);
+    if (t.role === "assistant") {
+      renderWithCitations(el, t.content);
+      // Reloaded turns also get a speak button so you can replay them.
+      el.appendChild(buildSpeakButton(() => t.content));
+    }
   }
 }
 
@@ -888,6 +894,8 @@ form.addEventListener("submit", async (e) => {
   e.preventDefault();
   const text = input.value.trim();
   if (!text) return;
+  // Stop any ongoing TTS so the familiar doesn't talk over the next exchange.
+  if (currentUtterance) cancelSpeech();
   input.value = "";
   submit.disabled = true;
 
@@ -959,11 +967,16 @@ form.addEventListener("submit", async (e) => {
     appendTurnToSession("assistant", full);
     assistantEl.classList.remove("streaming");
     renderWithCitations(assistantEl, full);
+    // Speak button — always added; visible on hover or on touch.
+    const speakBtn = buildSpeakButton(() => full);
+    assistantEl.appendChild(speakBtn);
     // Always render the footer so the user can see the pipeline (memories
     // grounded, reflect outcome) even when reflect was skipped/timed-out.
     assistantEl.appendChild(buildTurnFooter(tracePayload, reflectPayload));
     // Refresh memories sidebar if reflect wrote anything this turn.
     if (reflectPayload?.summary?.written > 0) refreshMemories();
+    // Auto-speak when the voice toggle is on.
+    if (voiceState.enabled && speechSupported()) speakText(full, speakBtn);
   } catch (err) {
     assistantEl.textContent = `(the familiar did not respond: ${err.message})`;
   } finally {
@@ -974,6 +987,163 @@ form.addEventListener("submit", async (e) => {
 
 if ("serviceWorker" in navigator) {
   navigator.serviceWorker.register("/sw.js").catch(() => {});
+}
+
+// ---- Voice (Web Speech API) ----
+//
+// Browser-native TTS. Toggle in sidebar; choice + on/off persist in
+// localStorage. Speaks assistant turns either automatically (toggle on)
+// or per-message via the speak button. Markdown markers + citation
+// chips are stripped before TTS so we don't read "asterisk asterisk
+// bold asterisk asterisk" or "drawer underscore xyz".
+
+const VOICE_KEY = "familiar_voice_state"; // {enabled: bool, voiceURI: string}
+const voiceState = (() => {
+  try {
+    const raw = localStorage.getItem(VOICE_KEY);
+    if (raw) return { enabled: false, voiceURI: "", ...JSON.parse(raw) };
+  } catch { /* fall through */ }
+  return { enabled: false, voiceURI: "" };
+})();
+
+function persistVoiceState() {
+  try { localStorage.setItem(VOICE_KEY, JSON.stringify(voiceState)); } catch { /* quota */ }
+}
+
+function speechSupported() {
+  return typeof window !== "undefined" && "speechSynthesis" in window && typeof window.SpeechSynthesisUtterance === "function";
+}
+
+let availableVoices = [];
+function loadVoices() {
+  if (!speechSupported()) return;
+  availableVoices = window.speechSynthesis.getVoices();
+  // Populate picker — sort by lang then name. Prefer en-* voices first.
+  if (!voicePicker) return;
+  const cur = voicePicker.value;
+  while (voicePicker.firstChild) voicePicker.removeChild(voicePicker.firstChild);
+  const sorted = availableVoices.slice().sort((a, b) => {
+    const aEn = a.lang?.startsWith("en") ? 0 : 1;
+    const bEn = b.lang?.startsWith("en") ? 0 : 1;
+    if (aEn !== bEn) return aEn - bEn;
+    return (a.name || "").localeCompare(b.name || "");
+  });
+  for (const v of sorted) {
+    const opt = document.createElement("option");
+    opt.value = v.voiceURI;
+    opt.textContent = `${v.name} · ${v.lang}${v.default ? " (default)" : ""}`;
+    voicePicker.appendChild(opt);
+  }
+  if (voiceState.voiceURI && sorted.find((v) => v.voiceURI === voiceState.voiceURI)) {
+    voicePicker.value = voiceState.voiceURI;
+  } else if (cur && sorted.find((v) => v.voiceURI === cur)) {
+    voicePicker.value = cur;
+  }
+}
+
+if (speechSupported()) {
+  loadVoices();
+  // Voices load async on Chrome; fires onvoiceschanged once available.
+  if (typeof window.speechSynthesis.onvoiceschanged !== "undefined") {
+    window.speechSynthesis.onvoiceschanged = loadVoices;
+  }
+} else if (voicePicker) {
+  voicePicker.disabled = true;
+  voicePicker.appendChild(Object.assign(document.createElement("option"), {
+    textContent: "speech not supported in this browser",
+  }));
+  if (voiceEnabled) voiceEnabled.disabled = true;
+}
+
+if (voiceEnabled) {
+  voiceEnabled.checked = !!voiceState.enabled;
+  voiceEnabled.addEventListener("change", () => {
+    voiceState.enabled = voiceEnabled.checked;
+    persistVoiceState();
+    if (!voiceState.enabled) cancelSpeech();
+  });
+}
+if (voicePicker) {
+  voicePicker.addEventListener("change", () => {
+    voiceState.voiceURI = voicePicker.value;
+    persistVoiceState();
+  });
+}
+
+/**
+ * Strip markdown + citation markers from text so TTS reads natural prose.
+ * Runs the same markers our renderer handles, in inverse: code fences,
+ * inline code, emphasis, citation chips, source chips, headings, hr.
+ */
+function stripForSpeech(text) {
+  let s = text;
+  // Drop fenced code blocks entirely — reading them aloud is noise.
+  s = s.replace(/```[\s\S]*?```/g, " (code block omitted) ");
+  // Inline code → unwrap.
+  s = s.replace(/`([^`\n]+)`/g, "$1");
+  // Bold/italic/strikethrough markers (asterisks only — we don't render underscores).
+  s = s.replace(/\*\*([^*\n]+)\*\*/g, "$1");
+  s = s.replace(/\*([^*\n]+)\*/g, "$1");
+  s = s.replace(/~~([^~\n]+)~~/g, "$1");
+  // Markdown links [text](url) → just the text.
+  s = s.replace(/!?\[([^\]\n]+)\]\([^)\s]+\)/g, "$1");
+  // Citation drawer markers [drawer_xxx] → drop entirely.
+  s = s.replace(/\[drawer_[a-z0-9]+\]/gi, "");
+  // Source-header markers [wing=… · room=… · …] → drop.
+  s = s.replace(/\[wing=[^\]]+\]/g, "");
+  // Headings (# / ## / etc) → drop the marker, keep text.
+  s = s.replace(/^#{1,6}\s+/gm, "");
+  // Horizontal rules → silence.
+  s = s.replace(/^[-*_]{3,}\s*$/gm, "");
+  // Collapse runs of whitespace.
+  s = s.replace(/\s+/g, " ").trim();
+  return s;
+}
+
+let currentUtterance = null;
+
+function cancelSpeech() {
+  if (!speechSupported()) return;
+  window.speechSynthesis.cancel();
+  currentUtterance = null;
+  document.querySelectorAll(".speak-btn.speaking").forEach((b) => b.classList.remove("speaking"));
+}
+
+function speakText(text, btn) {
+  if (!speechSupported()) return;
+  cancelSpeech();
+  const clean = stripForSpeech(text);
+  if (!clean) return;
+  const utt = new SpeechSynthesisUtterance(clean);
+  if (voiceState.voiceURI) {
+    const v = availableVoices.find((x) => x.voiceURI === voiceState.voiceURI);
+    if (v) utt.voice = v;
+  }
+  utt.rate = 1.0;
+  utt.pitch = 1.0;
+  utt.onstart = () => { if (btn) btn.classList.add("speaking"); };
+  utt.onend = () => { if (btn) btn.classList.remove("speaking"); currentUtterance = null; };
+  utt.onerror = () => { if (btn) btn.classList.remove("speaking"); currentUtterance = null; };
+  currentUtterance = utt;
+  window.speechSynthesis.speak(utt);
+}
+
+function buildSpeakButton(getText) {
+  const btn = document.createElement("button");
+  btn.type = "button";
+  btn.className = "speak-btn";
+  btn.title = "speak this turn aloud";
+  btn.setAttribute("aria-label", "speak");
+  btn.textContent = "♪";
+  btn.addEventListener("click", (e) => {
+    e.stopPropagation();
+    if (btn.classList.contains("speaking")) {
+      cancelSpeech();
+      return;
+    }
+    speakText(getText(), btn);
+  });
+  return btn;
 }
 
 // ---- Memories: list reflect-written drawers in the sidebar ----

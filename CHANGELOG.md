@@ -7,6 +7,36 @@ versions follow [SemVer](https://semver.org/spec/v2.0.0.html) and the
 [realm-sigil](https://github.com/jphein/realm-sigil) convention used across
 the realm.watch ecosystem.
 
+## [0.3.8] — 2026-04-26 — *the familiar speaks aloud*
+
+### Added — voice (Web Speech API)
+
+- **Voice section in sidebar** with auto-speak toggle + system-voice
+  picker. Both persist in `localStorage` under `familiar_voice_state`.
+  Picker prefers en-* voices first, sorted by name. Falls back gracefully
+  on browsers without Web Speech API (toggle disabled, picker shows
+  "speech not supported").
+- **Per-message ♪ speak button** on every assistant turn (visible on
+  hover, always shown on touch). Click once to speak; click while
+  speaking to stop. Reloaded session transcripts get speak buttons too.
+- **Auto-speak when toggle is on** — every newly streamed assistant
+  turn is read aloud as soon as the stream completes.
+- **Stop on submit** — sending a new message cancels in-flight speech
+  so the familiar doesn't talk over the next exchange.
+- **Markdown stripped before TTS** — code blocks dropped (read as
+  "code block omitted"), inline code unwrapped, asterisk emphasis
+  removed, citation chips and `[wing=…]` source headers excluded,
+  headings flattened. No more "drawer underscore xyz" mid-sentence.
+
+### Why browser-native and not speech-to-cli?
+
+Web Speech API is built in, works offline, requires zero server
+plumbing, and ships with quality voices on every modern OS. The
+v0.1 design spec earmarks "new voice in speech-to-cli roster for
+the familiar" as a v1.0 polish item — that's where the custom-voice
+work goes. For v0.3 the right move is to surface the capability
+now with what every browser already has.
+
 ## [0.3.7] — 2026-04-26 — *the memories list works*
 
 ### Fixed

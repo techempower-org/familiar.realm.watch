@@ -1,6 +1,6 @@
 {
   "name": "familiar-realm-watch",
-  "version": "0.3.7",
+  "version": "0.3.8",
   "type": "module",
   "description": "Local-first AI companion — reads mempalace before speaking, writes it after.",
   "scripts": {

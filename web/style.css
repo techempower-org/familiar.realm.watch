@@ -262,6 +262,79 @@ body {
   list-style: none;
 }
 
+/* Voice section: TTS toggle + system-voice picker. */
+.voice-section { padding-bottom: 0.6rem; }
+.voice-toggle {
+  display: inline-flex;
+  align-items: center;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+.voice-toggle input { position: absolute; opacity: 0; width: 0; height: 0; }
+.voice-toggle-track {
+  width: 32px;
+  height: 18px;
+  background: var(--border);
+  border-radius: 999px;
+  position: relative;
+  transition: background 150ms ease;
+}
+.voice-toggle-knob {
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 14px;
+  height: 14px;
+  background: var(--fg-muted);
+  border-radius: 50%;
+  transition: transform 150ms ease, background 150ms ease;
+}
+.voice-toggle input:checked + .voice-toggle-track { background: color-mix(in srgb, var(--accent) 35%, transparent); }
+.voice-toggle input:checked + .voice-toggle-track .voice-toggle-knob {
+  transform: translateX(14px);
+  background: var(--accent);
+}
+.voice-picker {
+  display: block;
+  width: calc(100% - 1rem);
+  margin: 0.4rem 0.5rem 0;
+  padding: 0.3rem 0.4rem;
+  background: var(--user-bg);
+  border: 1px solid var(--border);
+  color: var(--fg);
+  border-radius: 4px;
+  font-family: var(--mono);
+  font-size: 0.7rem;
+}
+.voice-picker:focus { outline: 1px solid var(--accent); border-color: var(--accent); }
+
+/* Per-message speak button. */
+.speak-btn {
+  position: absolute;
+  top: 0.5rem;
+  right: 0.5rem;
+  background: transparent;
+  border: 1px solid transparent;
+  color: var(--fg-muted);
+  border-radius: 50%;
+  width: 1.6rem;
+  height: 1.6rem;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  opacity: 0;
+  transition: opacity 150ms ease, color 150ms ease, border-color 150ms ease;
+  font-size: 0.85rem;
+  padding: 0;
+}
+.msg.assistant:hover .speak-btn { opacity: 1; }
+.speak-btn:hover { color: var(--accent); border-color: var(--accent); }
+.speak-btn.speaking { opacity: 1; color: var(--accent); border-color: var(--accent); }
+@media (max-width: 720px) {
+  .speak-btn { opacity: 0.6; }
+}
+
 /* Memories section: drawers reflect has written. */
 .memories-section { border-top: 1px solid var(--border); margin-top: 0.5rem; }
 .memories-list { list-style: none; margin: 0; padding: 0; max-height: 30vh; overflow-y: auto; }
