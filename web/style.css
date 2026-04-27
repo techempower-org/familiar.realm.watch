@@ -382,6 +382,77 @@ body {
   font-size: inherit;
 }
 
+/* Code-block wrapper hosts the copy button. */
+.code-wrap {
+  position: relative;
+  margin: 0.5em 0;
+}
+.code-wrap pre { margin: 0; }
+.code-copy {
+  position: absolute;
+  top: 0.4rem;
+  right: 0.4rem;
+  background: color-mix(in srgb, var(--bg) 80%, transparent);
+  border: 1px solid var(--border);
+  color: var(--fg-muted);
+  font-family: var(--mono);
+  font-size: 0.7em;
+  padding: 0.15rem 0.5rem;
+  border-radius: 4px;
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity 150ms ease, color 150ms ease, border-color 150ms ease;
+  letter-spacing: 0.04em;
+}
+.code-wrap:hover .code-copy { opacity: 1; }
+.code-copy:hover { color: var(--accent); border-color: var(--accent); }
+.code-copy.copied { color: var(--accent); border-color: var(--accent); opacity: 1; }
+@media (max-width: 720px) {
+  .code-copy { opacity: 0.7; } /* always visible on touch */
+}
+.msg.assistant blockquote {
+  margin: 0.5em 0;
+  padding: 0.4em 0.85em;
+  border-left: 3px solid var(--accent);
+  background: color-mix(in srgb, var(--accent) 4%, transparent);
+  color: var(--fg-muted);
+  font-style: italic;
+}
+.msg.assistant blockquote p { margin: 0.2em 0; }
+.msg.assistant hr {
+  border: none;
+  border-top: 1px solid var(--border);
+  margin: 1em 0;
+}
+.msg.assistant s, .msg.assistant del {
+  text-decoration: line-through;
+  text-decoration-color: var(--fg-muted);
+  color: var(--fg-muted);
+}
+.msg.assistant table {
+  border-collapse: collapse;
+  margin: 0.7em 0;
+  font-size: 0.92em;
+  width: 100%;
+}
+.msg.assistant th,
+.msg.assistant td {
+  padding: 0.35em 0.7em;
+  border-bottom: 1px solid var(--border);
+  text-align: left;
+  vertical-align: top;
+}
+.msg.assistant th {
+  font-family: var(--sans);
+  font-weight: 600;
+  color: var(--fg);
+  border-bottom: 1px solid var(--accent);
+  background: color-mix(in srgb, var(--accent) 5%, transparent);
+}
+.msg.assistant tbody tr:hover {
+  background: color-mix(in srgb, var(--accent) 4%, transparent);
+}
+
 /* ===================== Form ===================== */
 .form {
   display: flex;

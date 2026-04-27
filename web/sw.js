@@ -1,8 +1,11 @@
 // Minimal service worker for offline PWA shell.
 // Caches only the static shell — API calls always hit the network.
 // Bump CACHE name on shell file changes so old clients pick up new HTML/CSS/JS.
-const CACHE = "familiar-shell-v5";
-const SHELL = ["/", "/index.html", "/style.css", "/app.js", "/favicon.svg", "/manifest.webmanifest"];
+const CACHE = "familiar-shell-v7";
+const SHELL = [
+  "/", "/index.html", "/style.css", "/app.js", "/favicon.svg", "/manifest.webmanifest",
+  "/highlight.min.js", "/highlight-dark.css", "/highlight-light.css",
+];
 
 self.addEventListener("install", (e) => {
   e.waitUntil(caches.open(CACHE).then((c) => c.addAll(SHELL)));

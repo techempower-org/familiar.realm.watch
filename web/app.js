@@ -168,12 +168,36 @@ function parseBlock(parent, block) {
     return;
   }
 
+  // Horizontal rule: --- *** ___ alone on a line.
+  if (/^[-*_]{3,}\s*$/.test(block)) {
+    parent.appendChild(document.createElement("hr"));
+    return;
+  }
+
   // Heading (single-line block).
   const heading = block.match(/^(#{1,6})\s+(.*)$/);
   if (heading && !block.includes("\n")) {
     const h = document.createElement(`h${heading[1].length}`);
     parseInline(h, heading[2]);
     parent.appendChild(h);
+    return;
+  }
+
+  // Blockquote: every non-empty line starts with `> `.
+  const quoteLines = block.split("\n");
+  if (quoteLines.every((l) => /^>\s?/.test(l))) {
+    const bq = document.createElement("blockquote");
+    const inner = quoteLines.map((l) => l.replace(/^>\s?/, "")).join("\n");
+    // Recursively parse the unwrapped content so quoted lists/paragraphs work.
+    parseBlock(bq, inner);
+    parent.appendChild(bq);
+    return;
+  }
+
+  // Table: line 1 has | separators, line 2 is | --- | --- | divider.
+  const tableMatch = parseTable(block);
+  if (tableMatch) {
+    parent.appendChild(tableMatch);
     return;
   }
 
@@ -195,51 +219,120 @@ function parseBlock(parent, block) {
     return;
   }
 
-  // Default: paragraph. Newlines inside become <br>.
+  // Default: paragraph. "  \n" forces hard break; otherwise newlines become <br>.
   const p = document.createElement("p");
-  const segments = block.split("\n");
+  const segments = block.split(/\n/);
   segments.forEach((seg, i) => {
-    parseInline(p, seg);
+    parseInline(p, seg.replace(/\s{2,}$/, ""));
     if (i < segments.length - 1) p.appendChild(document.createElement("br"));
   });
   parent.appendChild(p);
 }
 
+function parseTable(block) {
+  const lines = block.split("\n");
+  if (lines.length < 2) return null;
+  const headerRow = lines[0];
+  const dividerRow = lines[1];
+  // header must contain a pipe; divider must be a row of |---|---| (with optional :)
+  if (!headerRow.includes("|")) return null;
+  if (!/^\s*\|?\s*:?-+:?\s*(\|\s*:?-+:?\s*)+\|?\s*$/.test(dividerRow)) return null;
+
+  function splitRow(row) {
+    let r = row.trim();
+    if (r.startsWith("|")) r = r.slice(1);
+    if (r.endsWith("|")) r = r.slice(0, -1);
+    return r.split("|").map((c) => c.trim());
+  }
+
+  const headers = splitRow(headerRow);
+  const aligns = splitRow(dividerRow).map((cell) => {
+    const left = cell.startsWith(":");
+    const right = cell.endsWith(":");
+    if (left && right) return "center";
+    if (right) return "right";
+    if (left) return "left";
+    return null;
+  });
+  const rows = lines.slice(2).map(splitRow);
+
+  const table = document.createElement("table");
+  const thead = document.createElement("thead");
+  const headTr = document.createElement("tr");
+  headers.forEach((h, i) => {
+    const th = document.createElement("th");
+    if (aligns[i]) th.style.textAlign = aligns[i];
+    parseInline(th, h);
+    headTr.appendChild(th);
+  });
+  thead.appendChild(headTr);
+  table.appendChild(thead);
+
+  const tbody = document.createElement("tbody");
+  for (const row of rows) {
+    const tr = document.createElement("tr");
+    row.forEach((cell, i) => {
+      const td = document.createElement("td");
+      if (aligns[i]) td.style.textAlign = aligns[i];
+      parseInline(td, cell);
+      tr.appendChild(td);
+    });
+    tbody.appendChild(tr);
+  }
+  table.appendChild(tbody);
+  return table;
+}
+
 // Inline parser — single-pass alternation regex. Order matters: longer
 // patterns before shorter ones (e.g. **bold** before *italic*).
+//
+// NOTE: We deliberately omit `_italic_` and `__bold__`. Underscores are
+// load-bearing in identifiers (snake_case Python, mempalace_search,
+// url_for) — letting the parser eat them turns prose like
+// "mempalace_search calls" into "mempalace<em>search</em> calls" and
+// strips the underscores from the visible text. CommonMark guards
+// against this with word-boundary rules, but the cost of getting that
+// right is more than the value of supporting underscore-emphasis here.
+// Stick with asterisk forms only; the model uses them more anyway.
 const INLINE_RE = new RegExp([
-  "(\\*\\*[^*\\n]+\\*\\*)",         // **bold**
-  "(__[^_\\n]+__)",                  // __bold__
-  "(`[^`\\n]+`)",                    // `code`
-  "(\\*[^*\\n]+\\*)",                // *italic*
-  "(_[^_\\n]+_)",                    // _italic_
+  "(\\*\\*[^*\\n]+\\*\\*)",            // **bold**
+  "(`[^`\\n]+`)",                       // `code`
+  "(~~[^~\\n]+~~)",                     // ~~strikethrough~~
+  "(\\*[^*\\n]+\\*)",                   // *italic*
   "(!?\\[[^\\]\\n]+\\]\\([^)\\s]+\\))", // [text](url) or ![alt](url)
-  "(https?://[^\\s<>]+)",            // bare URL
+  "(https?://[^\\s<>]+)",               // bare URL
 ].join("|"), "g");
 
 function parseInline(parent, text) {
+  // Capture group order matches INLINE_RE alternation:
+  //   1: **bold**   2: `code`   3: ~~strike~~   4: *italic*
+  //   5: [text](url) or ![alt](url)   6: bare URL
   let lastIdx = 0;
   for (const m of text.matchAll(INLINE_RE)) {
     const idx = m.index;
     if (idx > lastIdx) parent.appendChild(document.createTextNode(text.slice(lastIdx, idx)));
-    if (m[1] || m[2]) {
+    if (m[1]) {
       const s = document.createElement("strong");
-      s.textContent = (m[1] || m[2]).slice(2, -2);
+      s.textContent = m[1].slice(2, -2);
       parent.appendChild(s);
-    } else if (m[3]) {
+    } else if (m[2]) {
       const c = document.createElement("code");
-      c.textContent = m[3].slice(1, -1);
+      c.textContent = m[2].slice(1, -1);
       parent.appendChild(c);
-    } else if (m[4] || m[5]) {
+    } else if (m[3]) {
+      const s = document.createElement("s");
+      s.textContent = m[3].slice(2, -2);
+      parent.appendChild(s);
+    } else if (m[4]) {
       const e = document.createElement("em");
-      e.textContent = (m[4] || m[5]).slice(1, -1);
+      e.textContent = m[4].slice(1, -1);
       parent.appendChild(e);
-    } else if (m[6]) {
-      const linkMatch = m[6].match(/^!?\[([^\]]+)\]\(([^)]+)\)$/);
+    } else if (m[5]) {
+      const linkMatch = m[5].match(/^!?\[([^\]]+)\]\(([^)]+)\)$/);
       if (linkMatch) parent.appendChild(buildLink(linkMatch[1], linkMatch[2]));
-      else parent.appendChild(document.createTextNode(m[6]));
-    } else if (m[7]) {
-      parent.appendChild(buildLink(m[7], m[7]));
+      else parent.appendChild(document.createTextNode(m[5]));
+    } else if (m[6]) {
+      parent.appendChild(buildLink(m[6], m[6]));
     }
     lastIdx = idx + m[0].length;
   }
@@ -305,6 +398,56 @@ function applyCitationsInPlace(root) {
   }
 }
 
+// ---- Code-block enhancers: syntax highlight + copy-to-clipboard ----
+//
+// hljs (highlight.js) is loaded as a global via /highlight.min.js. We call
+// it after markdown parsing so each <code> inside a <pre> picks up
+// language detection and class-based coloring. Copy buttons are pure DOM.
+
+function enhanceCodeBlocks(root) {
+  const pres = root.querySelectorAll("pre");
+  for (const pre of pres) {
+    const code = pre.querySelector("code");
+    if (!code) continue;
+
+    // Highlight (best-effort — never throw).
+    if (typeof hljs !== "undefined" && hljs.highlightElement) {
+      try { hljs.highlightElement(code); } catch { /* skip */ }
+    }
+
+    // Wrap pre so the copy button can position absolutely above it.
+    if (pre.parentNode && !pre.parentNode.classList?.contains("code-wrap")) {
+      const wrap = document.createElement("div");
+      wrap.className = "code-wrap";
+      pre.parentNode.insertBefore(wrap, pre);
+      wrap.appendChild(pre);
+
+      const copyBtn = document.createElement("button");
+      copyBtn.type = "button";
+      copyBtn.className = "code-copy";
+      copyBtn.title = "copy code";
+      copyBtn.setAttribute("aria-label", "copy code");
+      copyBtn.textContent = "copy";
+      copyBtn.addEventListener("click", async () => {
+        const text = code.textContent || "";
+        try {
+          await navigator.clipboard.writeText(text);
+          copyBtn.textContent = "copied";
+          copyBtn.classList.add("copied");
+          setTimeout(() => {
+            copyBtn.textContent = "copy";
+            copyBtn.classList.remove("copied");
+          }, 1500);
+        } catch {
+          copyBtn.textContent = "failed";
+          setTimeout(() => { copyBtn.textContent = "copy"; }, 1500);
+        }
+      });
+      wrap.appendChild(copyBtn);
+    }
+  }
+}
+
 /**
  * Replace the assistant element's content with markdown-parsed DOM, then
  * apply citation/chip overlays. Called once after streaming completes.
@@ -313,6 +456,7 @@ function renderWithCitations(container, text) {
   while (container.firstChild) container.removeChild(container.firstChild);
   const md = parseMarkdown(text);
   applyCitationsInPlace(md);
+  enhanceCodeBlocks(md);
   // Hoist md children into container — avoid extra wrapper element.
   while (md.firstChild) container.appendChild(md.firstChild);
 }
