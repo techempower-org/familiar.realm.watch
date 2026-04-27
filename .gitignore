@@ -8,3 +8,4 @@ dist/
 .bun/
 coverage/
 .DS_Store
+sigil.json

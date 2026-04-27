@@ -14,6 +14,14 @@ ssh "${DEST_HOST}" "id ${DEST_USER} >/dev/null 2>&1 || sudo useradd -r -m -s /bi
 echo ">>> Ensuring Bun is installed for ${DEST_USER}..."
 ssh "${DEST_HOST}" "sudo -u ${DEST_USER} bash -c 'test -x ~/.bun/bin/bun || curl -fsSL https://bun.sh/install | bash'"
 
+echo ">>> Bake sigil.json so realm-sigil keeps its git state across the .git-excluded rsync..."
+HASH=$(git -C "${REPO_ROOT}" rev-parse HEAD 2>/dev/null | cut -c1-12 || echo "")
+BRANCH=$(git -C "${REPO_ROOT}" rev-parse --abbrev-ref HEAD 2>/dev/null || echo "")
+DIRTY=$([ -z "$(git -C "${REPO_ROOT}" status --porcelain 2>/dev/null)" ] && echo "false" || echo "true")
+cat > "${REPO_ROOT}/sigil.json" <<EOF
+{"hash":"${HASH}","branch":"${BRANCH}","dirty":${DIRTY}}
+EOF
+
 echo ">>> rsync source to ${DEST_HOST}:${DEST_ROOT}/..."
 ssh "${DEST_HOST}" "sudo mkdir -p ${DEST_ROOT} && sudo chown ${DEST_USER}:${DEST_USER} ${DEST_ROOT}"
 rsync -avP --delete \

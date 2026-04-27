@@ -76,13 +76,39 @@ function readPackageMetadata(): { name: string; version: string; description: st
 
 const PKG = readPackageMetadata();
 
+/**
+ * Try a baked deploy artifact first (sigil.json), then fall back to live git.
+ * The deploy script writes sigil.json with the source-tree's git state at
+ * deploy time, because the deploy excludes .git from the rsync — running
+ * `git rev-parse` in /srv/familiar/ otherwise returns nothing and the word
+ * falls back to a literal placeholder.
+ */
+function readBakedSigil(): { hash: string; branch: string; dirty: boolean } | null {
+  try {
+    const proc = Bun.spawnSync({ cmd: ["cat", "sigil.json"], stdout: "pipe" });
+    if (!proc.success) return null;
+    const parsed = JSON.parse(new TextDecoder().decode(proc.stdout)) as {
+      hash?: string; branch?: string; dirty?: boolean;
+    };
+    if (typeof parsed.hash !== "string") return null;
+    return {
+      hash: parsed.hash,
+      branch: typeof parsed.branch === "string" ? parsed.branch : "",
+      dirty: parsed.dirty === true,
+    };
+  } catch {
+    return null;
+  }
+}
+
 export function readSigil(realm: string): SigilInfo {
-  const hash = safeGit(["rev-parse", "HEAD"]).slice(0, 12);
-  const branch = safeGit(["rev-parse", "--abbrev-ref", "HEAD"]);
-  const dirty = safeGit(["status", "--porcelain"]).length > 0;
+  const baked = readBakedSigil();
+  const hash = baked?.hash ?? safeGit(["rev-parse", "HEAD"]).slice(0, 12);
+  const branch = baked?.branch ?? safeGit(["rev-parse", "--abbrev-ref", "HEAD"]);
+  const dirty = baked?.dirty ?? safeGit(["status", "--porcelain"]).length > 0;
   const word = hash
     ? FANTASY_WORDS[hashToIndex(hash, FANTASY_WORDS.length)]
-    : "wildwood"; // fallback when outside a git repo
+    : "wildwood"; // fallback when neither baked sigil nor git is available
   return {
     name: PKG.name,
     description: PKG.description,
