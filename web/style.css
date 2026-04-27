@@ -679,8 +679,10 @@ body {
   font-size: 0.85em;
   pointer-events: none;
 }
-/* Plain-text streaming state: preserve newlines until markdown renders. */
-.msg.assistant.streaming { white-space: pre-wrap; }
+/* During streaming the trailing in-flight text is a span.stream-tail
+ * with pre-wrap so partial sentences keep their spacing. The stable
+ * (already-paragraph-bounded) prefix renders as proper markdown. */
+.msg.assistant .stream-tail { white-space: pre-wrap; }
 
 /* ===================== Markdown rendering ===================== */
 .msg.assistant p { margin: 0 0 0.7em; }

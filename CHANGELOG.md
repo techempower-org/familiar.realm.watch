@@ -7,6 +7,28 @@ versions follow [SemVer](https://semver.org/spec/v2.0.0.html) and the
 [realm-sigil](https://github.com/jphein/realm-sigil) convention used across
 the realm.watch ecosystem.
 
+## [0.3.11] — 2026-04-26 — *streamed markdown*
+
+### Changed — chat surface
+
+- **Markdown renders during stream, not just at `[DONE]`**
+  (`web/app.js`, `web/style.css`). Previously chunks updated
+  `textContent` and the parser ran once at the end, causing a
+  visible "snap" as headings, bullets, and code blocks resolved
+  all at once. Now `streamingMarkdownRender` finds the last
+  paragraph boundary outside any open code fence, parses
+  everything before it as markdown DOM, and appends the trailing
+  in-flight text as a `stream-tail` span with `pre-wrap`. Every
+  paragraph crystallizes into proper markdown the moment its
+  closing `\n\n` arrives.
+- **rAF coalescing** — many SSE chunks per frame collapse to one
+  parse via `requestAnimationFrame`. Markdown parse is sub-ms on
+  typical assistant turns; this keeps the UI smooth without
+  re-parsing per token.
+- **Citations + source chips + syntax highlighting + copy buttons
+  still apply once at stream end.** They depend on the final text
+  being stable and aren't worth flickering during stream.
+
 ## [0.3.10] — 2026-04-26 — *the familiar shows the palace*
 
 ### Added — palace tab

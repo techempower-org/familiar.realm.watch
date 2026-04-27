@@ -500,6 +500,57 @@ function renderWithCitations(container, text) {
   while (md.firstChild) container.appendChild(md.firstChild);
 }
 
+/**
+ * Streaming-aware partial markdown render.
+ *
+ * During an SSE stream we get chunks like "**bold tex" then "t** more".
+ * Naïvely parsing every chunk would flicker as ** open/close states
+ * resolve. Instead, find the last "stable" boundary — a paragraph break
+ * `\n\n` outside any open code fence — render markdown for everything
+ * before it, and append the trailing "still in flight" remainder as a
+ * plain-text node. The plain-text remainder gets the streaming class
+ * so it preserves whitespace.
+ *
+ * Citations / source chips / code highlighting / copy buttons are
+ * *not* applied during streaming — they need the final text to be
+ * stable. They're added by the post-stream renderWithCitations call.
+ */
+function streamingMarkdownRender(container, text) {
+  // Find the last safe boundary: a `\n\n` that's outside any open code fence.
+  let inFence = false;
+  let lastSafe = 0;
+  const lines = text.split("\n");
+  let charPos = 0;
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i];
+    // Treat any line of just ``` as toggling fence.
+    if (/^\s*```/.test(line)) inFence = !inFence;
+    // Blank line outside a fence is a safe block boundary.
+    if (!inFence && i > 0 && line.trim() === "" && lines[i - 1].trim() !== "") {
+      // charPos points at the start of THIS blank line; the safe boundary
+      // is that point, which means everything BEFORE it is renderable.
+      lastSafe = charPos;
+    }
+    charPos += line.length + 1; // +1 for the \n
+  }
+
+  const stable = lastSafe > 0 ? text.slice(0, lastSafe) : "";
+  const trailing = lastSafe > 0 ? text.slice(lastSafe) : text;
+
+  while (container.firstChild) container.removeChild(container.firstChild);
+
+  if (stable) {
+    const md = parseMarkdown(stable);
+    while (md.firstChild) container.appendChild(md.firstChild);
+  }
+  if (trailing) {
+    const tail = document.createElement("span");
+    tail.className = "stream-tail";
+    tail.textContent = trailing;
+    container.appendChild(tail);
+  }
+}
+
 // Close any open popover when clicking outside.
 document.addEventListener("click", () => {
   document.querySelectorAll(".citation--open").forEach((el) => el.classList.remove("citation--open"));
@@ -903,7 +954,6 @@ form.addEventListener("submit", async (e) => {
   appendTurnToSession("user", text);
 
   const assistantEl = appendMessage("assistant", "");
-  assistantEl.classList.add("streaming");
 
   // Build the full history payload from the active session's turns.
   const history = activeSession.turns.map((t) => ({ role: t.role, content: t.content }));
@@ -926,6 +976,20 @@ form.addEventListener("submit", async (e) => {
     let full = "";
     let tracePayload = null;
     let reflectPayload = null;
+    // Coalesce stream-render to one rAF tick — many chunks per frame
+    // collapse to one parse. Markdown parse is sub-millisecond on
+    // typical assistant turns; this keeps the UI smooth without
+    // re-parsing per token.
+    let renderScheduled = false;
+    const scheduleRender = () => {
+      if (renderScheduled) return;
+      renderScheduled = true;
+      requestAnimationFrame(() => {
+        renderScheduled = false;
+        streamingMarkdownRender(assistantEl, full);
+        log.scrollTop = log.scrollHeight;
+      });
+    };
     while (true) {
       const { done, value } = await reader.read();
       if (done) break;
@@ -958,14 +1022,14 @@ form.addEventListener("submit", async (e) => {
           const delta = obj.choices?.[0]?.delta?.content;
           if (delta) {
             full += delta;
-            assistantEl.textContent = full;
-            log.scrollTop = log.scrollHeight;
+            scheduleRender();
           }
         } catch { /* skip malformed */ }
       }
     }
     appendTurnToSession("assistant", full);
-    assistantEl.classList.remove("streaming");
+    // Final pass: full markdown + citation chips + code highlighting.
+    // The streaming render skipped overlays for stability; now apply them.
     renderWithCitations(assistantEl, full);
     // Speak button — always added; visible on hover or on touch.
     const speakBtn = buildSpeakButton(() => full);
