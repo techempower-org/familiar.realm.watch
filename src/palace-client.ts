@@ -1,4 +1,4 @@
-import type { PalaceGraph, PalaceSearchKind, PalaceSearchResult } from "./types.ts";
+import type { PalaceDrawer, PalaceGraph, PalaceSearchKind, PalaceSearchResult } from "./types.ts";
 
 export interface PalaceClientOptions {
   baseUrl: string;
@@ -77,6 +77,39 @@ export class PalaceClient {
     } finally {
       if (timer) clearTimeout(timer);
     }
+  }
+
+  /**
+   * List drawers by metadata (wing/room) — no search query.
+   * palace-daemon ≥1.7.x exposes this; older daemons return 404 and
+   * callers should fall back to /search with post-filtering.
+   *
+   * Normalizes the daemon's `{drawers: [{drawer_id, content_preview, ...}]}`
+   * shape to PalaceSearchResult so consumers can treat search and list
+   * results uniformly.
+   */
+  async listDrawers(opts: { wing?: string; room?: string; limit?: number; offset?: number }): Promise<PalaceSearchResult> {
+    const params = new URLSearchParams();
+    if (opts.wing) params.set("wing", opts.wing);
+    if (opts.room) params.set("room", opts.room);
+    params.set("limit", String(opts.limit ?? 20));
+    if (opts.offset) params.set("offset", String(opts.offset));
+    const url = `${this.baseUrl}/list?${params.toString()}`;
+    const res = await this.fetchFn(url, { method: "GET", headers: this.headers() });
+    if (!res.ok) throw new Error(`palace-daemon list: ${res.status} ${res.statusText}`);
+    const raw = (await res.json()) as { drawers?: Array<{
+      drawer_id?: string; id?: string; wing?: string; room?: string;
+      content_preview?: string; text?: string; created_at?: string; topic?: string;
+    }> };
+    const results: PalaceDrawer[] = (raw.drawers ?? []).map((d) => ({
+      id: d.drawer_id ?? d.id,
+      text: d.text ?? d.content_preview ?? "",
+      wing: d.wing ?? "",
+      room: d.room ?? "",
+      created_at: d.created_at,
+      topic: d.topic,
+    }));
+    return { query: "", results };
   }
 
   async writeMemory(opts: WriteMemoryOpts): Promise<void> {

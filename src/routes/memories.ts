@@ -28,22 +28,29 @@ export async function handleMemories(req: Request, deps: MemoriesRouteDeps): Pro
   const limit = Math.min(100, Math.max(1, Number(url.searchParams.get("limit") ?? "50")));
 
   try {
-    const search = await deps.palace.search({
-      // Empty/wildcard query: the daemon returns rows that match the wing filter
-      // ranked by recency when the query has no informational content.
-      query: "*",
+    // palace-daemon ≥1.7 exposes /list — query-free metadata listing
+    // by wing/room. That's the right path for browsing reflect-wing
+    // drawers (the /search wing filter is honored only on vector
+    // matches; with no embeddable content it falls back to BM25 and
+    // ignores the filter).
+    const result = await deps.palace.listDrawers({
       wing: deps.reflectWing,
       room: sessionId ?? undefined,
       limit,
-      kind: "content",
     });
-    const drawers = (search.results ?? []).map((d) => ({
+    const list = (result.results ?? []).slice();
+    // Sort by created_at descending (most recent first).
+    list.sort((a, b) => {
+      const at = a.created_at ? Date.parse(a.created_at) : 0;
+      const bt = b.created_at ? Date.parse(b.created_at) : 0;
+      return bt - at;
+    });
+    const drawers = list.map((d) => ({
       id: d.id,
       text: d.text,
       room: d.room,
       wing: d.wing,
       created_at: d.created_at,
-      similarity: d.similarity,
     }));
     return new Response(
       JSON.stringify({ wing: deps.reflectWing, count: drawers.length, drawers }, null, 2),

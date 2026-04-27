@@ -7,6 +7,32 @@ versions follow [SemVer](https://semver.org/spec/v2.0.0.html) and the
 [realm-sigil](https://github.com/jphein/realm-sigil) convention used across
 the realm.watch ecosystem.
 
+## [0.3.7] — 2026-04-26 — *the memories list works*
+
+### Fixed
+
+- **Memories panel returned wing=projects drawers** instead of
+  wing=reflect. palace-daemon's `/search` route silently dropped
+  the `wing` query param (route signature only accepted q/limit/kind),
+  so the filter never reached mempalace's searcher. Even if it had,
+  the filter is honored only on vector matches and falls back to
+  BM25-across-everything when the query has no embeddable content.
+
+  Fix has two parts:
+  - palace-daemon got a new `GET /list?wing=&room=&limit=&offset=`
+    route that wraps `mempalace_list_drawers` (already existed in
+    mempalace; the daemon just hadn't exposed it). Query-free,
+    metadata-only browse. Verified via verify-routes.sh.
+  - familiar's `palace-client.ts` gained `listDrawers()` which
+    normalizes the daemon's `{drawers: [{drawer_id, content_preview}]}`
+    shape to PalaceSearchResult so call sites stay uniform.
+  - `/api/familiar/memories` now uses the list path. The reflect
+    panel renders actual reflect drawers sorted by recency.
+
+### Cross-repo
+
+- `palace-daemon@1.7.x` ([ec0eb82](https://github.com/jphein/palace-daemon/commit/ec0eb82))
+
 ## [0.3.6] — 2026-04-26 — *the familiar shows its work*
 
 ### Added — reflect observability
