@@ -7,6 +7,35 @@ versions follow [SemVer](https://semver.org/spec/v2.0.0.html) and the
 [realm-sigil](https://github.com/jphein/realm-sigil) convention used across
 the realm.watch ecosystem.
 
+## [0.3.6] — 2026-04-26 — *the familiar shows its work*
+
+### Added — reflect observability
+
+- **`GET /api/familiar/memories`** (`src/routes/memories.ts`).
+  Returns reflect-written drawers from `wing="reflect"` ranked by
+  recency. Optional `session_id` (filters by `room`) and `limit`
+  (default 50, max 100) query params. Read-only.
+- **Memories panel in the sidebar** (`web/index.html`,
+  `web/style.css`, `web/app.js`). Shows the most recent reflect
+  drawers under the sessions list with their text, room, and
+  relative date. Refreshes after each chat turn that wrote
+  drawers, on visibility-change, and on manual `↻` click.
+- **Per-stage timing** (`src/reflect/types.ts`,
+  `src/reflect/writer.ts`, `src/routes/chat.ts`,
+  `web/app.js`). Reflect now reports `{extract_ms, gate_ms,
+  dedup_ms, write_ms, total_ms}` per turn. SSE event includes
+  it; the reflect pill renders a small mono line beneath the
+  summary like `extract 1240ms · dedup 380ms · write 90ms · total 1710ms`
+  so the operator can see where the budget goes.
+- **Decision metadata** (`src/reflect/types.ts`). Each
+  `ReflectDecision` now carries `ts` and `session_id` so a future
+  audit log can render across-session views without correlating
+  by drawer body.
+
+### Test suite
+
+- 184 tests, ~402 expect() calls, 0 failures, typecheck clean.
+
 ## [0.3.5] — 2026-04-26 — *named in full*
 
 ### Fixed

@@ -13,7 +13,10 @@ import { handleVersion, handleHealth } from "./routes/api.ts";
 import { handleEval } from "./routes/eval.ts";
 import { handleGraph } from "./routes/graph.ts";
 import { handleReflect } from "./routes/reflect.ts";
+import { handleMemories } from "./routes/memories.ts";
 import { ReflectWriter } from "./reflect/writer.ts";
+
+const REFLECT_WING = "reflect";
 import { DiaryBuffer } from "./diary-buffer.ts";
 import { mountFamiliarMcp } from "./mcp-server.ts";
 
@@ -81,7 +84,7 @@ const reflectWriter = new ReflectWriter({
   inference: inferenceRouter,
   threshold: 0.85,
   maxFactsPerTurn: 5,
-  wing: "reflect",
+  wing: REFLECT_WING,
 });
 
 function log(event: string, data: Record<string, unknown> = {}): void {
@@ -130,6 +133,9 @@ const server = Bun.serve({
       }
       if (url.pathname === "/api/familiar/reflect" && req.method === "POST") {
         return await handleReflect(req, { writer: reflectWriter });
+      }
+      if (url.pathname === "/api/familiar/memories" && req.method === "GET") {
+        return await handleMemories(req, { palace, reflectWing: REFLECT_WING });
       }
       if (url.pathname === "/mcp" || url.pathname.startsWith("/mcp/")) {
         return await mcp.handle(req);

@@ -26,4 +26,26 @@ export interface ReflectDecision {
   drawer_id?: string;
   /** When status === "duplicate", the existing drawer's id. */
   existing_drawer_id?: string;
+  /** ISO 8601 timestamp of the decision. */
+  ts?: string;
+  /** Source session — set by the writer; lets the memories list filter by session. */
+  session_id?: string;
+}
+
+/**
+ * Per-stage timing for a single reflect run. Surfaces where the budget
+ * goes (extraction LLM vs per-fact dedup vs palace writes), so the
+ * memories panel can show "extract took 3.2s, dedup 0.4s, write 0.1s".
+ */
+export interface ReflectTiming {
+  /** Time spent in the extractor LLM call (ms). */
+  extract_ms: number;
+  /** Total time across all gate calls (cheap, usually <1ms). */
+  gate_ms: number;
+  /** Total time across all per-fact palace.search dedup calls. */
+  dedup_ms: number;
+  /** Total time across all palace.writeMemory calls. */
+  write_ms: number;
+  /** Wall-clock total — sum may differ if any stage overlapped. */
+  total_ms: number;
 }

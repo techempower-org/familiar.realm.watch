@@ -262,6 +262,56 @@ body {
   list-style: none;
 }
 
+/* Memories section: drawers reflect has written. */
+.memories-section { border-top: 1px solid var(--border); margin-top: 0.5rem; }
+.memories-list { list-style: none; margin: 0; padding: 0; max-height: 30vh; overflow-y: auto; }
+.memories-list li {
+  padding: 0.4rem 0.5rem;
+  border-radius: 4px;
+  font-size: 0.8rem;
+  color: var(--fg-muted);
+  margin-bottom: 0.1rem;
+  border: 1px solid transparent;
+  transition: background 100ms ease, color 100ms ease, border-color 100ms ease;
+  position: relative;
+}
+.memories-list li:hover {
+  background: var(--user-bg);
+  color: var(--fg);
+  border-color: var(--border);
+}
+.memories-list .memory-fact {
+  display: block;
+  font-family: var(--serif);
+  font-size: 0.95em;
+  line-height: 1.35;
+  color: var(--fg);
+  /* Truncate long facts */
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+.memories-list .memory-meta {
+  display: flex;
+  gap: 0.4rem;
+  margin-top: 0.2rem;
+  font-family: var(--mono);
+  font-size: 0.7em;
+  color: var(--fg-muted);
+}
+.memories-list .memory-meta .memory-date { color: var(--accent); opacity: 0.7; }
+
+/* Reflect-pill timing line, shown beneath the summary. */
+.reflect-timing {
+  display: block;
+  font-family: var(--mono);
+  font-size: 0.7em;
+  color: var(--fg-muted);
+  margin-top: 0.1rem;
+  letter-spacing: 0.04em;
+}
+
 /* ===================== Main column ===================== */
 .main {
   display: flex;

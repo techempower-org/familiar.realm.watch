@@ -11,6 +11,8 @@ const sessionsList = document.getElementById("sessions-list");
 const sessionsNew = document.getElementById("sessions-new");
 const hdrMenu = document.getElementById("hdr-menu");
 const sidebarScrim = document.getElementById("sidebar-scrim");
+const memoriesList = document.getElementById("memories-list");
+const memoriesRefresh = document.getElementById("memories-refresh");
 
 // Citation rendering — converts [drawer_xxx] markers AND verbatim source-
 // header markers (echoed from the system prompt) into styled chips. DOM-
@@ -787,6 +789,13 @@ function buildTurnFooter(traceData, reflectData) {
       txt.textContent = parts.join(" · ");
     }
     pill.appendChild(txt);
+    if (reflectData.timing) {
+      const t = reflectData.timing;
+      const timing = document.createElement("span");
+      timing.className = "reflect-timing";
+      timing.textContent = `extract ${t.extract_ms}ms · dedup ${t.dedup_ms}ms · write ${t.write_ms}ms · total ${t.total_ms}ms`;
+      pill.appendChild(timing);
+    }
     wrap.appendChild(pill);
 
     const detail = document.createElement("div");
@@ -953,6 +962,8 @@ form.addEventListener("submit", async (e) => {
     // Always render the footer so the user can see the pipeline (memories
     // grounded, reflect outcome) even when reflect was skipped/timed-out.
     assistantEl.appendChild(buildTurnFooter(tracePayload, reflectPayload));
+    // Refresh memories sidebar if reflect wrote anything this turn.
+    if (reflectPayload?.summary?.written > 0) refreshMemories();
   } catch (err) {
     assistantEl.textContent = `(the familiar did not respond: ${err.message})`;
   } finally {
@@ -965,10 +976,71 @@ if ("serviceWorker" in navigator) {
   navigator.serviceWorker.register("/sw.js").catch(() => {});
 }
 
+// ---- Memories: list reflect-written drawers in the sidebar ----
+async function fetchMemories(limit = 30) {
+  try {
+    const r = await fetch(`/api/familiar/memories?limit=${limit}`);
+    if (!r.ok) return [];
+    const d = await r.json();
+    return Array.isArray(d.drawers) ? d.drawers : [];
+  } catch {
+    return [];
+  }
+}
+
+function renderMemories(drawers) {
+  if (!memoriesList) return;
+  while (memoriesList.firstChild) memoriesList.removeChild(memoriesList.firstChild);
+  if (drawers.length === 0) {
+    const empty = document.createElement("li");
+    empty.className = "sessions-empty";
+    empty.textContent = "no reflect drawers yet — chat to fill them";
+    memoriesList.appendChild(empty);
+    return;
+  }
+  for (const d of drawers) {
+    const li = document.createElement("li");
+    const fact = document.createElement("span");
+    fact.className = "memory-fact";
+    fact.textContent = d.text || "(empty)";
+    li.appendChild(fact);
+    const meta = document.createElement("div");
+    meta.className = "memory-meta";
+    if (d.created_at) {
+      const date = document.createElement("span");
+      date.className = "memory-date";
+      date.textContent = relTime(new Date(d.created_at).getTime());
+      meta.appendChild(date);
+    }
+    if (d.room) {
+      const room = document.createElement("span");
+      room.textContent = d.room.length > 12 ? d.room.slice(0, 12) + "…" : d.room;
+      meta.appendChild(room);
+    }
+    li.appendChild(meta);
+    li.title = (d.id || "") + "\n" + (d.text || "");
+    memoriesList.appendChild(li);
+  }
+}
+
+async function refreshMemories() {
+  const drawers = await fetchMemories(30);
+  renderMemories(drawers);
+}
+if (memoriesRefresh) {
+  memoriesRefresh.addEventListener("click", (e) => { e.stopPropagation(); refreshMemories(); });
+}
+
 // Boot: render the active session's transcript so reload doesn't lose state.
 renderTranscript();
 checkHealth();
 setInterval(checkHealth, 60_000);
+refreshMemories();
+// Refresh memories when the page regains focus (catches reflect writes
+// that happened while the tab was backgrounded).
+document.addEventListener("visibilitychange", () => {
+  if (document.visibilityState === "visible") refreshMemories();
+});
 
 // ---- Clock (adapted from clock.realm.watch — same h:mm:ss + weekday-
 // date + tz format the model sees in its "── Now ──" system-prompt

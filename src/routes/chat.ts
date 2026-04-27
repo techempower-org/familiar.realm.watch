@@ -48,8 +48,8 @@ function reflectSummary(decisions: ReflectDecision[]) {
 }
 
 type ReflectOutcome =
-  | { skipped: "no_writer" | "too_short" | "timeout" | "error"; decisions: [] }
-  | { skipped: null; decisions: ReflectDecision[] };
+  | { skipped: "no_writer" | "too_short" | "timeout" | "error"; decisions: []; timing?: undefined }
+  | { skipped: null; decisions: ReflectDecision[]; timing: import("../reflect/types.ts").ReflectTiming };
 
 async function runReflect(
   deps: ChatRouteDeps,
@@ -61,8 +61,8 @@ async function runReflect(
     return { skipped: "too_short", decisions: [] };
   }
   try {
-    const decisions = await deps.reflectWriter.review({ sessionId, assistantTurn });
-    return { skipped: null, decisions };
+    const result = await deps.reflectWriter.reviewWithTiming({ sessionId, assistantTurn });
+    return { skipped: null, decisions: result.decisions, timing: result.timing };
   } catch {
     return { skipped: "error", decisions: [] };
   }
@@ -203,7 +203,12 @@ function streamResponse(opts: GenOpts): Response {
               );
               const outcome = await Promise.race([reflectPromise, timeoutPromise]);
               const summary = reflectSummary(outcome.decisions);
-              const payload = { summary, decisions: outcome.decisions, skipped: outcome.skipped };
+              const payload = {
+                summary,
+                decisions: outcome.decisions,
+                skipped: outcome.skipped,
+                ...(outcome.timing ? { timing: outcome.timing } : {}),
+              };
               controller.enqueue(enc.encode(`event: reflect\ndata: ${JSON.stringify(payload)}\n\n`));
               controller.enqueue(enc.encode("data: [DONE]\n\n"));
             }
