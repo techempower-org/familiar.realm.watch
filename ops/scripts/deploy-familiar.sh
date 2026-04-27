@@ -8,6 +8,25 @@ DEST_HOST="familiar"
 DEST_ROOT="/srv/familiar"
 DEST_USER="familiar"
 
+# ---- Compute the sigil up front so the realm-word is the first thing
+# the operator sees. Same logic as the bake step below; we duplicate the
+# small computation rather than reorder the file structure to keep the
+# bake step adjacent to the rsync it feeds.
+HASH=$(git -C "${REPO_ROOT}" rev-parse HEAD 2>/dev/null | cut -c1-12 || echo "")
+BRANCH=$(git -C "${REPO_ROOT}" rev-parse --abbrev-ref HEAD 2>/dev/null || echo "")
+DIRTY=$([ -z "$(git -C "${REPO_ROOT}" status --porcelain 2>/dev/null)" ] && echo "false" || echo "true")
+VERSION=$(grep -oP '"version":\s*"\K[^"]+' "${REPO_ROOT}/package.json" 2>/dev/null || echo "?")
+# Same word table + index as src/sigil.ts. If you edit one, edit the other.
+WORDS=(lantern oakheart embertide glimmer whisper tarn hollow spindle cinder moth sigil talon quillhearth greengage fernstep moss thistle woolgather hedgerow moonwort smaragd willowshade)
+sum=0
+for ((i=0; i<${#HASH}; i++)); do
+  ord=$(printf '%d' "'${HASH:$i:1}")
+  sum=$(( (sum + ord) % 100003 ))
+done
+WORD=${WORDS[$(( sum % ${#WORDS[@]} ))]}
+DIRTY_FLAG=""; [ "$DIRTY" = "true" ] && DIRTY_FLAG=" *dirty*"
+printf '\n  ✦ \033[1;33m%s\033[0m  v%s  %s  (%s%s)\n\n' "$WORD" "$VERSION" "$HASH" "$BRANCH" "$DIRTY_FLAG"
+
 echo ">>> Ensuring service user exists on ${DEST_HOST}..."
 ssh "${DEST_HOST}" "id ${DEST_USER} >/dev/null 2>&1 || sudo useradd -r -m -s /bin/bash ${DEST_USER}"
 
@@ -15,9 +34,8 @@ echo ">>> Ensuring Bun is installed for ${DEST_USER}..."
 ssh "${DEST_HOST}" "sudo -u ${DEST_USER} bash -c 'test -x ~/.bun/bin/bun || curl -fsSL https://bun.sh/install | bash'"
 
 echo ">>> Bake sigil.json so realm-sigil keeps its git state across the .git-excluded rsync..."
-HASH=$(git -C "${REPO_ROOT}" rev-parse HEAD 2>/dev/null | cut -c1-12 || echo "")
-BRANCH=$(git -C "${REPO_ROOT}" rev-parse --abbrev-ref HEAD 2>/dev/null || echo "")
-DIRTY=$([ -z "$(git -C "${REPO_ROOT}" status --porcelain 2>/dev/null)" ] && echo "false" || echo "true")
+# HASH/BRANCH/DIRTY were computed at the top of this script so the realm
+# word could be the first line of output. Reuse them here.
 cat > "${REPO_ROOT}/sigil.json" <<EOF
 {"hash":"${HASH}","branch":"${BRANCH}","dirty":${DIRTY}}
 EOF
