@@ -3,13 +3,14 @@
 const log = document.getElementById("log");
 const form = document.getElementById("form");
 const input = document.getElementById("input");
-const submit = form.querySelector("button");
+const submit = form.querySelector('button[type="submit"]');
 const status = document.getElementById("status");
 const word = document.getElementById("word");
 const sigilBtn = document.getElementById("sigil");
-const sessionsPanel = document.getElementById("sessions");
 const sessionsList = document.getElementById("sessions-list");
 const sessionsNew = document.getElementById("sessions-new");
+const hdrMenu = document.getElementById("hdr-menu");
+const sidebarScrim = document.getElementById("sidebar-scrim");
 
 // Citation rendering — converts [drawer_xxx] markers AND verbatim source-
 // header markers (echoed from the system prompt) into styled chips. DOM-
@@ -107,34 +108,213 @@ function buildCitationSpan(rawId, meta) {
   return wrapper;
 }
 
+// ------------------------ Minimal markdown ------------------------
+// Vanilla parser — no dependencies. Handles the patterns Qwen 2.5 actually
+// produces in chat: paragraphs, bold/italic, inline + fenced code, headings,
+// bullet & numbered lists, autolinks, [text](url) links. Skip tables,
+// footnotes, blockquotes — model doesn't use them. All output uses textContent
+// so HTML in model responses can never escape into innerHTML.
+
+function parseMarkdown(text) {
+  const root = document.createElement("div");
+  root.className = "md";
+  // Block-level split: blank line(s) separate blocks. Keep code fences intact
+  // by walking lines and grouping fenced regions before the blank-line split.
+  const blocks = splitBlocks(text);
+  for (const block of blocks) parseBlock(root, block);
+  return root;
+}
+
+function splitBlocks(text) {
+  const lines = text.split("\n");
+  const blocks = [];
+  let buf = [];
+  let inFence = false;
+  let fenceTag = "";
+  for (const line of lines) {
+    const fence = line.match(/^(\s*)(```+)(.*)$/);
+    if (fence) {
+      const tag = fence[2];
+      if (!inFence) { inFence = true; fenceTag = tag; buf.push(line); continue; }
+      // Close fence iff equal-or-greater backtick count.
+      if (line.trim().startsWith(fenceTag)) { inFence = false; buf.push(line); continue; }
+      buf.push(line);
+      continue;
+    }
+    if (inFence) { buf.push(line); continue; }
+    if (line.trim() === "") {
+      if (buf.length) { blocks.push(buf.join("\n")); buf = []; }
+    } else {
+      buf.push(line);
+    }
+  }
+  if (buf.length) blocks.push(buf.join("\n"));
+  return blocks;
+}
+
+function parseBlock(parent, block) {
+  block = block.replace(/^\n+|\n+$/g, "");
+  if (!block) return;
+
+  // Fenced code block.
+  const fence = block.match(/^```([\w-]*)\n([\s\S]*?)\n?```$/);
+  if (fence) {
+    const pre = document.createElement("pre");
+    const code = document.createElement("code");
+    if (fence[1]) code.className = `language-${fence[1]}`;
+    code.textContent = fence[2];
+    pre.appendChild(code);
+    parent.appendChild(pre);
+    return;
+  }
+
+  // Heading (single-line block).
+  const heading = block.match(/^(#{1,6})\s+(.*)$/);
+  if (heading && !block.includes("\n")) {
+    const h = document.createElement(`h${heading[1].length}`);
+    parseInline(h, heading[2]);
+    parent.appendChild(h);
+    return;
+  }
+
+  // Lists: every line matches a list-item shape.
+  const lines = block.split("\n");
+  const ulRe = /^\s*[-*+]\s+(.*)$/;
+  const olRe = /^\s*(\d+)\.\s+(.*)$/;
+  if (lines.every((l) => ulRe.test(l) || olRe.test(l))) {
+    const isOrdered = olRe.test(lines[0]);
+    const list = document.createElement(isOrdered ? "ol" : "ul");
+    for (const line of lines) {
+      const m = isOrdered ? line.match(olRe) : line.match(ulRe);
+      const itemText = m ? (isOrdered ? m[2] : m[1]) : line;
+      const li = document.createElement("li");
+      parseInline(li, itemText);
+      list.appendChild(li);
+    }
+    parent.appendChild(list);
+    return;
+  }
+
+  // Default: paragraph. Newlines inside become <br>.
+  const p = document.createElement("p");
+  const segments = block.split("\n");
+  segments.forEach((seg, i) => {
+    parseInline(p, seg);
+    if (i < segments.length - 1) p.appendChild(document.createElement("br"));
+  });
+  parent.appendChild(p);
+}
+
+// Inline parser — single-pass alternation regex. Order matters: longer
+// patterns before shorter ones (e.g. **bold** before *italic*).
+const INLINE_RE = new RegExp([
+  "(\\*\\*[^*\\n]+\\*\\*)",         // **bold**
+  "(__[^_\\n]+__)",                  // __bold__
+  "(`[^`\\n]+`)",                    // `code`
+  "(\\*[^*\\n]+\\*)",                // *italic*
+  "(_[^_\\n]+_)",                    // _italic_
+  "(!?\\[[^\\]\\n]+\\]\\([^)\\s]+\\))", // [text](url) or ![alt](url)
+  "(https?://[^\\s<>]+)",            // bare URL
+].join("|"), "g");
+
+function parseInline(parent, text) {
+  let lastIdx = 0;
+  for (const m of text.matchAll(INLINE_RE)) {
+    const idx = m.index;
+    if (idx > lastIdx) parent.appendChild(document.createTextNode(text.slice(lastIdx, idx)));
+    if (m[1] || m[2]) {
+      const s = document.createElement("strong");
+      s.textContent = (m[1] || m[2]).slice(2, -2);
+      parent.appendChild(s);
+    } else if (m[3]) {
+      const c = document.createElement("code");
+      c.textContent = m[3].slice(1, -1);
+      parent.appendChild(c);
+    } else if (m[4] || m[5]) {
+      const e = document.createElement("em");
+      e.textContent = (m[4] || m[5]).slice(1, -1);
+      parent.appendChild(e);
+    } else if (m[6]) {
+      const linkMatch = m[6].match(/^!?\[([^\]]+)\]\(([^)]+)\)$/);
+      if (linkMatch) parent.appendChild(buildLink(linkMatch[1], linkMatch[2]));
+      else parent.appendChild(document.createTextNode(m[6]));
+    } else if (m[7]) {
+      parent.appendChild(buildLink(m[7], m[7]));
+    }
+    lastIdx = idx + m[0].length;
+  }
+  if (lastIdx < text.length) parent.appendChild(document.createTextNode(text.slice(lastIdx)));
+}
+
+function buildLink(label, href) {
+  const a = document.createElement("a");
+  // Only allow safe protocols; fall back to text if anything weird.
+  if (!/^(https?:|\/|#|mailto:)/.test(href)) {
+    const span = document.createElement("span");
+    span.textContent = label;
+    return span;
+  }
+  a.href = href;
+  a.target = "_blank";
+  a.rel = "noopener noreferrer";
+  a.textContent = label;
+  return a;
+}
+
+// ------------- Citation overlay on markdown DOM -------------
+// After markdown parsing produces a tree of element nodes, walk text nodes
+// and replace [drawer_xxx] / [wing=...] markers with their styled spans.
+
+function applyCitationsInPlace(root) {
+  const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
+  const textNodes = [];
+  let node;
+  while ((node = walker.nextNode())) {
+    // Skip text inside <code>/<pre> — those are literal.
+    let p = node.parentNode;
+    let inCode = false;
+    while (p && p !== root) {
+      if (p.tagName === "CODE" || p.tagName === "PRE") { inCode = true; break; }
+      p = p.parentNode;
+    }
+    if (!inCode) textNodes.push(node);
+  }
+  for (const tn of textNodes) {
+    const text = tn.nodeValue;
+    if (!text.includes("[")) continue;
+    const fragment = document.createDocumentFragment();
+    let lastIdx = 0;
+    let any = false;
+    for (const match of text.matchAll(CITATION_PATTERN)) {
+      any = true;
+      const idx = match.index ?? 0;
+      if (idx > lastIdx) fragment.appendChild(document.createTextNode(text.slice(lastIdx, idx)));
+      if (match[1]) {
+        const drawerId = match[1];
+        const rawId = drawerId.slice(7);
+        const meta = traceLookup.get(drawerId) || null;
+        fragment.appendChild(buildCitationSpan(rawId, meta));
+      } else {
+        fragment.appendChild(buildSourceChip(match[2], match[3], match[4], match[5], match[6]));
+      }
+      lastIdx = idx + match[0].length;
+    }
+    if (!any) continue;
+    if (lastIdx < text.length) fragment.appendChild(document.createTextNode(text.slice(lastIdx)));
+    tn.parentNode.replaceChild(fragment, tn);
+  }
+}
+
 /**
- * Replace the assistant element's content with a sequence of text nodes
- * and citation spans. Called once after streaming completes. Uses matchAll
- * so we never touch regex .lastIndex state.
+ * Replace the assistant element's content with markdown-parsed DOM, then
+ * apply citation/chip overlays. Called once after streaming completes.
  */
 function renderWithCitations(container, text) {
   while (container.firstChild) container.removeChild(container.firstChild);
-  let lastIndex = 0;
-  for (const match of text.matchAll(CITATION_PATTERN)) {
-    const idx = match.index ?? 0;
-    if (idx > lastIndex) {
-      container.appendChild(document.createTextNode(text.slice(lastIndex, idx)));
-    }
-    if (match[1]) {
-      // Variant A: [drawer_xxx]
-      const drawerId = match[1];
-      const rawId = drawerId.slice(7); // strip "drawer_"
-      const meta = traceLookup.get(drawerId) || null;
-      container.appendChild(buildCitationSpan(rawId, meta));
-    } else {
-      // Variant B: [wing=X · room=Y · date=Z · similarity=N · matched_via=M]
-      container.appendChild(buildSourceChip(match[2], match[3], match[4], match[5], match[6]));
-    }
-    lastIndex = idx + match[0].length;
-  }
-  if (lastIndex < text.length) {
-    container.appendChild(document.createTextNode(text.slice(lastIndex)));
-  }
+  const md = parseMarkdown(text);
+  applyCitationsInPlace(md);
+  // Hoist md children into container — avoid extra wrapper element.
+  while (md.firstChild) container.appendChild(md.firstChild);
 }
 
 // Close any open popover when clicking outside.
@@ -210,7 +390,7 @@ function createSession() {
   const sess = { id: newSessionId(), label: defaultLabel(new Date()), createdAt: Date.now(), lastSeenAt: Date.now(), turns: [] };
   state.list.unshift(sess);
   setActiveSession(sess.id);
-  closeSessionsPanel();
+  closeSidebar();
   input.focus();
 }
 
@@ -307,7 +487,7 @@ function renderSessionsList() {
     });
     li.appendChild(delBtn);
 
-    li.addEventListener("click", () => { setActiveSession(sess.id); closeSessionsPanel(); });
+    li.addEventListener("click", () => { setActiveSession(sess.id); closeSidebar(); });
     sessionsList.appendChild(li);
   }
 }
@@ -320,18 +500,14 @@ function relTime(ts) {
   return `${Math.floor(ms / 86400_000)}d`;
 }
 
-function toggleSessionsPanel() { sessionsPanel.hidden ? openSessionsPanel() : closeSessionsPanel(); }
-function openSessionsPanel() { renderSessionsList(); sessionsPanel.hidden = false; }
-function closeSessionsPanel() { sessionsPanel.hidden = true; }
+// Sidebar drawer toggle (mobile only — desktop has sidebar always visible).
+function toggleSidebar() { document.body.classList.toggle("sidebar-open"); }
+function closeSidebar() { document.body.classList.remove("sidebar-open"); }
 
-sigilBtn.addEventListener("click", (e) => { e.stopPropagation(); toggleSessionsPanel(); });
+sigilBtn.addEventListener("click", (e) => { e.stopPropagation(); toggleSidebar(); });
+hdrMenu.addEventListener("click", (e) => { e.stopPropagation(); toggleSidebar(); });
+sidebarScrim.addEventListener("click", () => closeSidebar());
 sessionsNew.addEventListener("click", (e) => { e.stopPropagation(); createSession(); });
-// Click outside closes panel.
-document.addEventListener("click", (e) => {
-  if (sessionsPanel.hidden) return;
-  if (sessionsPanel.contains(e.target)) return;
-  closeSessionsPanel();
-});
 
 // ---------- Reflect pill ----------
 
@@ -531,6 +707,7 @@ form.addEventListener("submit", async (e) => {
   appendTurnToSession("user", text);
 
   const assistantEl = appendMessage("assistant", "");
+  assistantEl.classList.add("streaming");
 
   // Build the full history payload from the active session's turns.
   const history = activeSession.turns.map((t) => ({ role: t.role, content: t.content }));
@@ -592,6 +769,7 @@ form.addEventListener("submit", async (e) => {
       }
     }
     appendTurnToSession("assistant", full);
+    assistantEl.classList.remove("streaming");
     renderWithCitations(assistantEl, full);
     // Always render the footer so the user can see the pipeline (memories
     // grounded, reflect outcome) even when reflect was skipped/timed-out.
