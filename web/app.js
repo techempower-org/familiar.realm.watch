@@ -131,24 +131,59 @@ function splitBlocks(text) {
   let buf = [];
   let inFence = false;
   let fenceTag = "";
+
+  const flush = () => {
+    if (buf.length) { blocks.push(buf.join("\n")); buf = []; }
+  };
+
   for (const line of lines) {
     const fence = line.match(/^(\s*)(```+)(.*)$/);
     if (fence) {
       const tag = fence[2];
-      if (!inFence) { inFence = true; fenceTag = tag; buf.push(line); continue; }
+      if (!inFence) {
+        // Force a block boundary so a fence touching the line above (e.g. a
+        // heading or paragraph with no blank line between) doesn't get
+        // glued into a single block that no parser branch matches.
+        flush();
+        inFence = true;
+        fenceTag = tag;
+        buf.push(line);
+        continue;
+      }
       // Close fence iff equal-or-greater backtick count.
-      if (line.trim().startsWith(fenceTag)) { inFence = false; buf.push(line); continue; }
+      if (line.trim().startsWith(fenceTag)) {
+        inFence = false;
+        buf.push(line);
+        flush();
+        continue;
+      }
       buf.push(line);
       continue;
     }
     if (inFence) { buf.push(line); continue; }
+
+    // Headings stand alone — split above and below so `parseBlock`'s
+    // heading matcher (which rejects multi-line input) actually fires.
+    if (/^#{1,6}\s+\S/.test(line)) {
+      flush();
+      blocks.push(line);
+      continue;
+    }
+
+    // Horizontal rule on its own line — flush above + below.
+    if (/^\s*[-*_]{3,}\s*$/.test(line)) {
+      flush();
+      blocks.push(line);
+      continue;
+    }
+
     if (line.trim() === "") {
-      if (buf.length) { blocks.push(buf.join("\n")); buf = []; }
+      flush();
     } else {
       buf.push(line);
     }
   }
-  if (buf.length) blocks.push(buf.join("\n"));
+  flush();
   return blocks;
 }
 
