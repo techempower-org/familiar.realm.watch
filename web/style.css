@@ -374,6 +374,38 @@ body {
   color: var(--fg-muted);
 }
 .memories-list .memory-meta .memory-date { color: var(--accent); opacity: 0.7; }
+.memories-list .memory-actions {
+  position: absolute;
+  top: 0.4rem;
+  right: 0.4rem;
+  display: flex;
+  gap: 0.15rem;
+  opacity: 0;
+  transition: opacity 100ms ease;
+}
+.memories-list li:hover .memory-actions { opacity: 1; }
+.memories-list .memory-edit, .memories-list .memory-delete {
+  background: transparent;
+  border: 1px solid transparent;
+  color: var(--fg-muted);
+  cursor: pointer;
+  font-size: 0.85em;
+  padding: 0 0.25rem;
+  border-radius: 3px;
+  transition: color 100ms ease, border-color 100ms ease;
+}
+.memories-list .memory-edit:hover { color: var(--accent); border-color: var(--accent); }
+.memories-list .memory-delete:hover { color: #cc6666; border-color: #cc6666; }
+.memories-list .memory-fact[contenteditable="true"] {
+  outline: 1px solid var(--accent);
+  outline-offset: 2px;
+  border-radius: 3px;
+  padding: 0.1rem 0.2rem;
+  white-space: pre-wrap;
+  -webkit-line-clamp: unset;
+  display: block;
+  cursor: text;
+}
 
 /* Reflect-pill timing line, shown beneath the summary. */
 .reflect-timing {

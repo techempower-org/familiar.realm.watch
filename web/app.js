@@ -1158,6 +1158,26 @@ async function fetchMemories(limit = 30) {
   }
 }
 
+async function deleteMemory(drawerId, li) {
+  if (!confirm("delete this memory? it will be removed from palace.")) return;
+  try {
+    const r = await fetch(`/api/familiar/memories/${encodeURIComponent(drawerId)}`, { method: "DELETE" });
+    if (!r.ok) throw new Error(`HTTP ${r.status}`);
+    if (li) li.remove();
+  } catch (err) {
+    alert(`delete failed: ${err.message}`);
+  }
+}
+
+async function patchMemory(drawerId, content) {
+  const r = await fetch(`/api/familiar/memories/${encodeURIComponent(drawerId)}`, {
+    method: "PATCH",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ content }),
+  });
+  if (!r.ok) throw new Error(`HTTP ${r.status}`);
+}
+
 function renderMemories(drawers) {
   if (!memoriesList) return;
   while (memoriesList.firstChild) memoriesList.removeChild(memoriesList.firstChild);
@@ -1170,10 +1190,12 @@ function renderMemories(drawers) {
   }
   for (const d of drawers) {
     const li = document.createElement("li");
+
     const fact = document.createElement("span");
     fact.className = "memory-fact";
     fact.textContent = d.text || "(empty)";
     li.appendChild(fact);
+
     const meta = document.createElement("div");
     meta.className = "memory-meta";
     if (d.created_at) {
@@ -1188,6 +1210,58 @@ function renderMemories(drawers) {
       meta.appendChild(room);
     }
     li.appendChild(meta);
+
+    if (d.id) {
+      const actions = document.createElement("div");
+      actions.className = "memory-actions";
+
+      const editBtn = document.createElement("button");
+      editBtn.type = "button";
+      editBtn.className = "memory-edit";
+      editBtn.title = "edit";
+      editBtn.setAttribute("aria-label", "edit");
+      editBtn.textContent = "✎";
+      editBtn.addEventListener("click", (e) => {
+        e.stopPropagation();
+        const editing = fact.getAttribute("contenteditable") === "true";
+        if (editing) {
+          // Save path
+          const newText = fact.textContent || "";
+          if (newText !== d.text && newText.trim().length > 0) {
+            patchMemory(d.id, newText).then(() => { d.text = newText; }).catch((err) => {
+              alert(`save failed: ${err.message}`);
+              fact.textContent = d.text || "";
+            });
+          }
+          fact.removeAttribute("contenteditable");
+          editBtn.textContent = "✎";
+        } else {
+          fact.setAttribute("contenteditable", "true");
+          fact.focus();
+          editBtn.textContent = "✓";
+          // Place cursor at end
+          const range = document.createRange();
+          range.selectNodeContents(fact);
+          range.collapse(false);
+          const sel = window.getSelection();
+          sel.removeAllRanges();
+          sel.addRange(range);
+        }
+      });
+      actions.appendChild(editBtn);
+
+      const delBtn = document.createElement("button");
+      delBtn.type = "button";
+      delBtn.className = "memory-delete";
+      delBtn.title = "delete";
+      delBtn.setAttribute("aria-label", "delete");
+      delBtn.textContent = "✕";
+      delBtn.addEventListener("click", (e) => { e.stopPropagation(); deleteMemory(d.id, li); });
+      actions.appendChild(delBtn);
+
+      li.appendChild(actions);
+    }
+
     li.title = (d.id || "") + "\n" + (d.text || "");
     memoriesList.appendChild(li);
   }

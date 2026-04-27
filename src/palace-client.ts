@@ -112,6 +112,23 @@ export class PalaceClient {
     return { query: "", results };
   }
 
+  async deleteDrawer(drawerId: string): Promise<void> {
+    const res = await this.fetchFn(`${this.baseUrl}/memory/${encodeURIComponent(drawerId)}`, {
+      method: "DELETE",
+      headers: this.headers(),
+    });
+    if (!res.ok) throw new Error(`palace-daemon delete: ${res.status} ${res.statusText}`);
+  }
+
+  async updateDrawer(drawerId: string, patch: { content?: string; wing?: string; room?: string }): Promise<void> {
+    const res = await this.fetchFn(`${this.baseUrl}/memory/${encodeURIComponent(drawerId)}`, {
+      method: "PATCH",
+      headers: this.headers(),
+      body: JSON.stringify(patch),
+    });
+    if (!res.ok) throw new Error(`palace-daemon update: ${res.status} ${res.statusText}`);
+  }
+
   async writeMemory(opts: WriteMemoryOpts): Promise<void> {
     const res = await this.fetchFn(`${this.baseUrl}/memory`, {
       method: "POST",

@@ -7,6 +7,34 @@ versions follow [SemVer](https://semver.org/spec/v2.0.0.html) and the
 [realm-sigil](https://github.com/jphein/realm-sigil) convention used across
 the realm.watch ecosystem.
 
+## [0.3.9] — 2026-04-26 — *the familiar lets you curate*
+
+### Added — memory editing
+
+- **`DELETE /api/familiar/memories/{drawer_id}`** removes a drawer
+  from palace via the new daemon endpoint.
+- **`PATCH /api/familiar/memories/{drawer_id}`** updates content
+  (and optionally wing/room) on an existing drawer.
+- **Sidebar memory items get ✎/✕ buttons on hover.** Click ✎ to edit
+  inline (the fact becomes a `contenteditable` field with cursor
+  positioned at the end); click ✓ to save (persists via PATCH) or
+  click ✕ to delete (confirms first, then removes via DELETE).
+- **`palace-client.deleteDrawer()` + `updateDrawer()`** as typed
+  client methods backed by daemon's new endpoints.
+
+### Cross-repo
+
+- `palace-daemon@0d216a2` exposes DELETE /memory/{id} and PATCH
+  /memory/{id} (wraps `mempalace_delete_drawer` and
+  `mempalace_update_drawer` which already existed in mempalace).
+
+### Why this matters
+
+v0.3.6/0.3.7 made reflect *visible*; this release closes the trust
+loop — when the 7B extractor produces noisy facts, you can now drop
+them. Without delete/edit, palace fills up with whatever extraction
+happened to land. With it, reflect is a curated write surface.
+
 ## [0.3.8] — 2026-04-26 — *the familiar speaks aloud*
 
 ### Added — voice (Web Speech API)

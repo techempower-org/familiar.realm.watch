@@ -13,7 +13,7 @@ import { handleVersion, handleHealth } from "./routes/api.ts";
 import { handleEval } from "./routes/eval.ts";
 import { handleGraph } from "./routes/graph.ts";
 import { handleReflect } from "./routes/reflect.ts";
-import { handleMemories } from "./routes/memories.ts";
+import { handleMemories, handleMemoryDelete, handleMemoryPatch } from "./routes/memories.ts";
 import { ReflectWriter } from "./reflect/writer.ts";
 
 const REFLECT_WING = "reflect";
@@ -136,6 +136,17 @@ const server = Bun.serve({
       }
       if (url.pathname === "/api/familiar/memories" && req.method === "GET") {
         return await handleMemories(req, { palace, reflectWing: REFLECT_WING });
+      }
+      // /api/familiar/memories/<drawer_id> — DELETE/PATCH a single drawer.
+      const memoryMatch = url.pathname.match(/^\/api\/familiar\/memories\/(drawer_[a-z0-9_]+)$/);
+      if (memoryMatch) {
+        const drawerId = memoryMatch[1];
+        if (req.method === "DELETE") {
+          return await handleMemoryDelete(req, drawerId, { palace, reflectWing: REFLECT_WING });
+        }
+        if (req.method === "PATCH") {
+          return await handleMemoryPatch(req, drawerId, { palace, reflectWing: REFLECT_WING });
+        }
       }
       if (url.pathname === "/mcp" || url.pathname.startsWith("/mcp/")) {
         return await mcp.handle(req);
