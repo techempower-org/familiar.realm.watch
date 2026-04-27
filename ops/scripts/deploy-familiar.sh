@@ -20,8 +20,12 @@ if [ -r "${SIGIL_HELPER}" ]; then
   # shellcheck source=/dev/null
   . "${SIGIL_HELPER}"
   realm_sigil_git_info "${REPO_ROOT}/.git_info"
+  # Line 1 — sigil (magical name + hash); the realm word changes per commit.
   realm_sigil_pre "fantasy" "${REPO_ROOT}/.git_info"
-  echo ""
+  # Line 2 — semver from package.json. Two parallel cadences: sigil rotates
+  # per commit, semver rotates per release. Both fit one row of scrollback.
+  PKG_VERSION=$(grep -oP '"version":\s*"\K[^"]+' "${REPO_ROOT}/package.json" 2>/dev/null || echo "?")
+  printf '  \033[2mv%s · %s\033[0m\n\n' "${PKG_VERSION}" "${REPO_ROOT##*/}"
 else
   echo "WARN: realm-sigil helper not found at ${SIGIL_HELPER}; banner skipped."
 fi
