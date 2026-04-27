@@ -7,6 +7,92 @@ versions follow [SemVer](https://semver.org/spec/v2.0.0.html) and the
 [realm-sigil](https://github.com/jphein/realm-sigil) convention used across
 the realm.watch ecosystem.
 
+## [0.3.2] — 2026-04-26 — *the familiar speaks plainly*
+
+PWA polish + grounding voice fix. Same evening as v0.3.1; the sigil
+word changes with the version so this is the visible cue that the
+PWA shell has materially improved since you opened it last.
+
+### Added — chat surface
+
+- **Always-visible turn footer** (`web/app.js`, `web/style.css`).
+  Below every assistant message: `✦ N drawers grounded this turn`
+  (expandable to source list with snippet + similarity) and a reflect
+  pill that surfaces the actual pipeline state (`✦ N remembered` /
+  `no new memories` / `reflect skipped (turn brief)` /
+  `reflect still working…`). Replaces the previous "hidden when empty"
+  UI which made the pipeline invisible.
+- **Markdown rendering** (`web/app.js`). Inline parser, no deps,
+  ~250 lines. Handles paragraphs, **bold**, *italic*, `code`, fenced
+  code blocks, # headings, - / 1. lists, [text](url) links, bare URLs,
+  ~~strikethrough~~, `> blockquotes`, `---` horizontal rules, GFM
+  tables with `:---` alignment. Hard line break via trailing 2+ spaces.
+  Output is DOM nodes built via `textContent` and `appendChild` only —
+  no `innerHTML`, so model output can't smuggle HTML.
+- **Syntax highlighting** (`web/highlight.min.js`, themes). highlight.js
+  124KB bundled (not CDN) so the PWA still works offline. atom-one-dark
+  / atom-one-light themes via `prefers-color-scheme`. Service worker
+  pre-caches on install — no flash-of-unstyled-code.
+- **Copy button on code blocks** (`web/app.js`, `web/style.css`).
+  `navigator.clipboard.writeText`, vanilla. Fades in on hover (always
+  visible on touch). Flashes `copied` → `copy` on success.
+- **Sessions sidebar** (`web/index.html`, `web/style.css`,
+  `web/app.js`). Permanent 260px left sidebar on desktop with the
+  sigil + sigil-word + sessions list + new-session button. Mobile
+  (≤720px) collapses to a slide-out drawer behind a scrim, triggered
+  by a hamburger in the chat header.
+- **Source chips** for verbatim `[wing=X · room=Y · ...]` markers
+  the model echoes from the system prompt: render as a `❖ projects ·
+  technical` pill with full metadata in the title attribute.
+- **Themed scrollbars** — gold-tinted thin scrollbars (Firefox
+  `scrollbar-color/width` + WebKit `::-webkit-scrollbar*`).
+
+### Changed — chat surface
+
+- **Reflect race against a 4s budget.** `runReflect` returns a
+  `ReflectOutcome` with a `skipped` reason (`no_writer | too_short |
+  timeout | error | null`); the chat stream emits `event: reflect`
+  with the outcome before `[DONE]` regardless. Whatever's slower (the
+  extractor LLM call, per-fact dedup, palace writes) continues in the
+  background past the budget — drawers still get written, the stream
+  just doesn't block. Fixes the "submit button stuck after first
+  message" bug observed in v0.3.1.
+- **Status pill — finer-grained palace state.** Reads
+  `dependencies.palace_daemon.recall_quality` from
+  `/api/familiar/health`. States: `connected` (accent),
+  `palace slow` / `palace rebuilding` (warn yellow),
+  `palace busy` / `offline` (red).
+- **Citation discoverability.** `[d8a3ce]` markers now have a leading
+  `✦`, soft-fade-in animation, hover lift, open-state highlight.
+- **Grounding prompt rewritten** (`src/grounding.ts`). Old DIRECTIVES
+  said "answer ONLY from palace context, must use it for factual
+  claims" — so asking "what is your strength?" returned the literal
+  "strength level is set to 0.65" from a config drawer. New prompt:
+  - prefers palace for facts about JP/realm/projects/events
+  - answers from PERSONA on meta-questions about the familiar itself
+  - explicitly forbids literalizing technical config values as
+    personality traits
+  - allows honest "thin context" answers instead of forced citations
+    of system/infra drawers
+- **Drop `_italic_` and `__bold__` from markdown parser.** Underscores
+  are load-bearing in identifiers (snake_case Python,
+  `mempalace_search`, `url_for`); the parser was eating them in
+  prose. Asterisk forms only.
+
+### Changed — PWA basics
+
+- iOS install metadata: `apple-mobile-web-app-capable`,
+  `apple-touch-icon`, `mask-icon`, `viewport-fit=cover`,
+  safe-area-inset padding.
+- Manifest extended: `lang`, `dir`, `scope`, `orientation`,
+  `categories`, split `purpose` icons (`any` + `maskable`).
+- Service worker cache `familiar-shell-v1` → `v7` over the v0.3.2
+  release; SHELL list extended to include hjs assets.
+
+### Test suite
+
+- 183 tests, ~398 expect() calls, 0 failures, typecheck clean.
+
 ## [0.3.1] — 2026-04-26 — *the familiar's window*
 
 PWA polish patch: surfaces what reflect just remembered, distinguishes
