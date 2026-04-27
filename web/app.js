@@ -969,3 +969,32 @@ if ("serviceWorker" in navigator) {
 renderTranscript();
 checkHealth();
 setInterval(checkHealth, 60_000);
+
+// ---- Clock (adapted from clock.realm.watch — same h:mm:ss + weekday-
+// date + tz format the model sees in its "── Now ──" system-prompt
+// anchor, so the sidebar mirrors the server-side grounding.)
+const clockHm = document.getElementById("clock-hm");
+const clockSec = document.getElementById("clock-sec");
+const clockDate = document.getElementById("clock-date");
+const clockTz = document.getElementById("clock-tz");
+function updateClock() {
+  if (!clockHm) return;
+  const now = new Date();
+  const h = String(now.getHours()).padStart(2, "0");
+  const m = String(now.getMinutes()).padStart(2, "0");
+  const s = String(now.getSeconds()).padStart(2, "0");
+  clockHm.textContent = `${h}:${m}`;
+  clockSec.textContent = s;
+  clockDate.textContent = now.toLocaleDateString(undefined, {
+    weekday: "short", month: "short", day: "numeric",
+  });
+  let tz = "";
+  try {
+    const parts = new Intl.DateTimeFormat(undefined, { timeZoneName: "short" }).formatToParts(now);
+    tz = parts.find((p) => p.type === "timeZoneName")?.value ?? "";
+  } catch { /* fall through */ }
+  const zone = Intl.DateTimeFormat().resolvedOptions().timeZone;
+  clockTz.textContent = tz ? `${tz} · ${zone}` : zone;
+}
+updateClock();
+setInterval(updateClock, 1000);

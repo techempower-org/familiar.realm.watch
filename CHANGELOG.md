@@ -7,6 +7,62 @@ versions follow [SemVer](https://semver.org/spec/v2.0.0.html) and the
 [realm-sigil](https://github.com/jphein/realm-sigil) convention used across
 the realm.watch ecosystem.
 
+## [0.3.4] — 2026-04-26 — *the familiar knows the hour*
+
+Two integrations landed: realm-sigil canonical contract (replaces the
+hand-rolled `src/sigil.ts`) and clock.realm.watch (both visual + the
+time-anchor pattern that grounds the model in the current moment).
+
+### Added — clock integration
+
+- **"── Now ──" anchor in the system prompt** (`src/grounding.ts`).
+  Same pattern clock.realm.watch's `time-anchor.sh` SessionStart hook
+  uses for Claude Code: a single `Sunday 2026-04-26 18:13 PDT` line
+  prepended to every grounding prompt. The 7B model now answers
+  "what day is it?" with the actual current date instead of guessing
+  from training-data heuristics. Recomputed per turn (cheap), so a
+  session crossing midnight reflects the new date by the next message.
+- **Sidebar clock panel** (`web/index.html`, `web/style.css`,
+  `web/app.js`). Adapted from clock.realm.watch (stellar realm),
+  recolored to familiar's fantasy palette, scaled down to fit under
+  the sigil. Shows `HH:MM` + seconds + weekday-date + `TZ · zone`.
+  Same format the server-side anchor uses, so the sidebar mirrors
+  what the model sees.
+
+### Changed — realm-sigil integration (full canonical adoption)
+
+- `src/sigil.ts` rewritten to import from `realm-sigil` package
+  (vendored at `vendor/realm-sigil/` so the `file:` dep resolves on
+  the deployed host). Schema follows the canonical contract:
+  `version` is the magical name (`Noble Ember · 3495895`),
+  `pkg_version` is the semver, `commit_url` is populated. PWA's
+  `d.version.word` still works because we extract it from the noun
+  half of the magical name as a top-level convenience field.
+- `realm-sigil` itself bumped 1.0.0 → 1.1.0 with a new `bunHandler`,
+  `.git_info` reader in `gitInfo()`, runtime detection, and TS types.
+  See realm-sigil CHANGELOG for details.
+- `ops/scripts/deploy-familiar.sh` now sources the canonical
+  `~/Projects/realm-sigil/deploy-banner.sh` and uses
+  `realm_sigil_pre` (top of script — banner is the first line of
+  output) plus `realm_sigil_post` (after smoke test, fetches
+  `/api/version`). Removed bespoke bash word-table duplication.
+- `.git_info` baked at deploy time (instead of `sigil.json`); the
+  realm-sigil `gitInfo()` reads it on production.
+
+### Test suite
+
+- 184 tests, ~402 expect() calls, 0 failures, typecheck clean.
+
+### Cross-repo work this release
+
+- `realm-sigil@1.1.0` ([3dd90a0](https://github.com/jphein/realm-sigil/commit/3dd90a0))
+- `bestiary` now serves `/api/version` via the same `bunHandler`
+  ([2c2ad01](https://github.com/jphein/bestiary/commit/2c2ad01) — local commit)
+- Audit run across portfolio, oracle, realm-portal, status.realm.watch,
+  realmwatch, clock.realm.watch — all already canonically integrated.
+  `os.realm.watch` remains the one realm.watch project with no
+  realm-sigil integration.
+
 ## [0.3.3] — 2026-04-26 — *the familiar's seams hold*
 
 ### Fixed

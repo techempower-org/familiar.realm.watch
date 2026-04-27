@@ -130,6 +130,48 @@ body {
   .sigil { animation: none; }
 }
 
+/* Clock panel — adapted from clock.realm.watch (stellar realm),
+ * scaled down + recolored to match familiar's fantasy palette. Same
+ * pattern (h:mm:ss + weekday-date + tz) so the sidebar mirrors what
+ * the model sees in its "── Now ──" system-prompt anchor. */
+.clock-panel {
+  margin: 0.4rem 0.85rem 0.85rem;
+  padding: 0.6rem 0.75rem;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: color-mix(in srgb, var(--accent) 4%, transparent);
+  font-family: var(--mono);
+  text-align: center;
+  cursor: default;
+}
+.clock-time {
+  display: inline-flex;
+  align-items: baseline;
+  font-family: var(--serif);
+  font-size: 1.4rem;
+  color: var(--text-gold, var(--accent));
+  letter-spacing: 0.05em;
+  line-height: 1.1;
+}
+.clock-time .clock-seconds {
+  font-size: 0.7em;
+  color: var(--fg-muted);
+  margin-left: 0.25rem;
+}
+.clock-date {
+  font-size: 0.7rem;
+  color: var(--fg);
+  margin-top: 0.2rem;
+  letter-spacing: 0.04em;
+}
+.clock-tz {
+  font-size: 0.6rem;
+  color: var(--fg-muted);
+  margin-top: 0.15rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
 .sidebar-section { padding: 0.75rem 0.5rem; flex: 1; }
 .sessions-head {
   display: flex;

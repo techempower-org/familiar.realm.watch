@@ -8,6 +8,8 @@ export interface GroundingInput {
   wingScope: string | null;
   /** When true, append a system directive nudging the assistant to suggest rephrasing/scoping. */
   stuck?: boolean;
+  /** Override "now" for deterministic tests. Defaults to Date.now() at call site. */
+  now?: Date;
 }
 
 /**
@@ -44,6 +46,33 @@ speak plainly and never perform wisdom you don't have. The palace is your shared
 not a database to recite from. Use it as a friend would: as context for what you already know
 about them, not as the only thing you can say.`;
 
+/**
+ * Anchor the model in the current moment. Same pattern clock.realm.watch's
+ * SessionStart hook uses for Claude Code: a single timestamp line so the
+ * model never has to guess the date or weekday from training data.
+ *
+ * Format mirrors `date +"%A %Y-%m-%d %H:%M %Z"` for consistency across the
+ * realm.watch ecosystem. Recomputed per turn (cheap), so a session that
+ * spans midnight reflects the new date by the next message.
+ */
+function nowAnchor(now: Date): string {
+  const dayName = now.toLocaleDateString("en-US", { weekday: "long" });
+  const yyyy = now.getFullYear();
+  const mm = String(now.getMonth() + 1).padStart(2, "0");
+  const dd = String(now.getDate()).padStart(2, "0");
+  const hh = String(now.getHours()).padStart(2, "0");
+  const min = String(now.getMinutes()).padStart(2, "0");
+  // Time zone abbreviation via Intl — falls back gracefully on unsupported runtimes.
+  let tz = "";
+  try {
+    const parts = new Intl.DateTimeFormat("en-US", { timeZoneName: "short" }).formatToParts(now);
+    tz = parts.find((p) => p.type === "timeZoneName")?.value ?? "";
+  } catch {
+    // leave tz empty
+  }
+  return `── Now ──\n${dayName} ${yyyy}-${mm}-${dd} ${hh}:${min}${tz ? " " + tz : ""}`;
+}
+
 const DIRECTIVES = `── How to use the palace context ──
 - For factual claims about JP, their projects, their realm, or past events: prefer the palace context and cite the drawer it came from with [drawer_id].
 - For questions about you (the familiar) — your nature, role, what you can do, your strengths and quirks: answer from your persona above. Palace context is a supplement, not the source. Do not literalize technical config values as personality traits (e.g., a "strength: 0.65" knob in a config drawer is not your *strength* as a familiar).
@@ -55,6 +84,8 @@ const DIRECTIVES = `── How to use the palace context ──
 export function buildSystemPrompt(input: GroundingInput): string {
   const parts: string[] = [];
   parts.push(PERSONA);
+  parts.push("");
+  parts.push(nowAnchor(input.now ?? new Date()));
   parts.push("");
   parts.push(renderContextBlock(input));
   parts.push("");

@@ -87,6 +87,19 @@ describe("buildSystemPrompt", () => {
     expect(prompt).toMatch(/loop note|repeatedly/i);
   });
 
+  test("includes a Now anchor with weekday + date + time (clock pattern)", () => {
+    // Mid-day on a known date so toLocaleDateString returns deterministic weekday.
+    const fixedNow = new Date("2026-04-26T15:30:00");
+    const prompt = buildSystemPrompt({
+      drawers: [], warnings: [], availableInScope: 0, wingScope: null,
+      now: fixedNow,
+    });
+    expect(prompt).toContain("── Now ──");
+    expect(prompt).toContain("Sunday");
+    expect(prompt).toContain("2026-04-26");
+    expect(prompt).toMatch(/15:30/);
+  });
+
   test("omits loop note when stuck=false (default)", () => {
     const prompt = buildSystemPrompt({
       drawers: [{ text: "x", wing: "w", room: "r", similarity: 0.8 }],
