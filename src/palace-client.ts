@@ -54,9 +54,10 @@ export class PalaceClient {
     if (opts.wing) params.set("wing", opts.wing);
     if (opts.room) params.set("room", opts.room);
     if (opts.maxDistance !== undefined) params.set("max_distance", String(opts.maxDistance));
-    // Default to "content" — excludes Stop-hook checkpoints which otherwise
-    // dominate vector similarity on heavily-autobiographical palaces.
-    params.set("kind", opts.kind ?? "content");
+    // Default to "all" — include Stop-hook checkpoints. JP wants familiar to see
+    // everything in palace; if checkpoints dominate, we'll address it with reranking
+    // rather than blanket filtering.
+    params.set("kind", opts.kind ?? "all");
     const url = `${this.baseUrl}/search?${params.toString()}`;
 
     const ctl = new AbortController();
