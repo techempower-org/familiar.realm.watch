@@ -10,7 +10,8 @@ Local-first AI companion. Reads mempalace before speaking, writes it after. See 
 
 - TypeScript + Bun (runtime + test runner + package manager)
 - Ollama (chat + embeddings over HTTP)
-- palace-daemon (mempalace HTTP gateway) on katana for v0.1
+- palace-daemon (mempalace HTTP gateway) on `disks` at `:8085` — palace data lives in `/mnt/raid/projects/mempalace-data/palace`
+- familiar-api runs on `katana` for now (2080 Ti), migrating to `familiar` once its P102 GPUs are in
 - PWA served by Bun from `web/`
 
 ## Key conventions

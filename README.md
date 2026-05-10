@@ -13,8 +13,9 @@ Local-first AI companion — reads [mempalace](https://github.com/jphein/mempala
 
 ## Hosts
 
-- `familiar` (10.0.6.115) — 24/7 inference server (Ollama + familiar-api + web)
-- `katana` (10.0.6.129) — workstation + palace data home (palace-daemon for v0.1)
+- `katana` (10.0.6.129) — workstation, currently running Ollama + familiar-api on its 2080 Ti
+- `familiar` (10.0.6.115) — destination inference server once the P102 GPUs are installed; will take over Ollama + familiar-api from katana
+- `disks` (10.0.6.120) — palace-daemon + palace data home (`/mnt/raid/projects/mempalace-data/palace`)
 
 ## Quickstart (dev)
 
