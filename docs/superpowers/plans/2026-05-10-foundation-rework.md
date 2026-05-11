@@ -10,6 +10,79 @@
 
 ---
 
+## Status snapshot — 2026-05-11 (executed without ticking per-task boxes)
+
+**Verified-done** (evidence in commits + on disks):
+
+- **Step 0** — all four open questions resolved; findings in
+  `~/.claude/projects/-home-jp-Projects-familiar-realm-watch/scratch/foundation-rework.notes.md`.
+- **Layer 1** — palace-daemon runs as system unit on disks
+  (`/etc/systemd/system/palace-daemon.service`, enabled, `User=jp`,
+  port 8085 listening). User unit disabled. Verified live.
+- **Layer 2A + 2B** — Stop hook on katana routes through
+  palace-daemon HTTP (`~/.mempalace/hook_settings.json` →
+  `http://disks:8085`). Katana's local palace
+  (`~/Projects/mempalace-data/palace/chroma.sqlite3`) hasn't been
+  written since 2026-05-06, confirming the swap. Re-mine fallback
+  used because mempalace CLI lacks `import`.
+- **Layer 3** — `kind` parameter removed (familiar.realm.watch
+  commit `9797f08`); recall roundtrip smoke test landed (`ce0d7b9`);
+  `deploy-familiar.sh` made host-agnostic + ollama/familiar-api
+  units aligned (`d5d7bc4`); changelog populated (`137136a`).
+
+**Discovered + fixed 2026-05-11 (post-rework operational debugging):**
+
+- **palace-daemon hook auth bug** — hook.py never sent `X-API-Key`,
+  so every save from katana 401'd while logging "daemon
+  unreachable". Fixed in jphein/palace-daemon `1a843ca`.
+- **mempalace mine N+1 query perf bug** — mine_convos used per-file
+  `file_already_mined()` instead of the existing bulk helper;
+  2000-file sweep took >1h. Fixed in jphein/mempalace `248854a` via
+  new `prefetch_mined_set()` helper. Live timing: 225s bulk scan
+  instead of ~70min sequential. (Side finding: only 818 of 173,357
+  drawers carry `normalize_version >= 2`, so the gate marks 99.5% of
+  the palace as needing re-mine — a separate dataset-level concern.)
+
+**Open + filed as issues:**
+
+- jphein/palace-daemon#6 — regression tests for hook.py auth/error
+  classification
+- jphein/palace-daemon#7 — audit other request paths for swallowed
+  HTTPError → "unreachable" pattern
+- jphein/palace-daemon#8 — SIGTERM/SIGINT handler for clean
+  ChromaDB shutdown (root cause of the HNSW partial-flush loop —
+  see "loose ends" below)
+- jphein/mempalace#50 — original integrity-gate filing; commented
+  with self-correction (integrity gate is fine; bug is upstream)
+- jphein/mempalace#51 — `mempalace mine` CPU runaway investigation
+  (perf fix above mitigates but doesn't fully resolve)
+- jphein/mempalace#52 — lower `hnsw:sync_threshold` to shrink
+  partial-flush corruption window
+
+**In-flight (not yet verified)** as of 16:42 PDT:
+
+- `/repair?mode=rebuild` against disks palace, kicked off 16:39:09.
+  Rebuilds HNSW for the 173,357-drawer `mempalace_drawers`
+  collection from sqlite. Defensive sqlite snapshot taken pre-rebuild
+  (`/mnt/raid/projects/mempalace-data/chroma-pre-rebuild-20260511-164041.sqlite3`,
+  3.0GB, 173,360 rows verified). Hook saves queue during rebuild,
+  drain on completion.
+
+**Loose ends still owed** (not addressed this session):
+
+- The actual durability fix — palace-daemon#8 + mempalace#52 must
+  ship and be deployed before the next daemon restart, or we will
+  re-corrupt the rebuilt index. The /repair rebuild only fixes
+  today's symptom.
+- Post-rebuild verification: confirm the chromadb index metadata
+  file exists in the new HNSW segment, HNSW element count matches
+  sqlite, hook saves succeed end-to-end.
+- Plan checkboxes — left intentionally unticked. This block is the
+  truthful summary; the per-task boxes were never updated during
+  execution and ticking them retroactively would be theater.
+
+---
+
 ## Step 0 — Open question resolution (read-only)
 
 Before any deploys, verify the four unknowns flagged in the spec. Each is a quick read of an existing file or `--help` invocation.
