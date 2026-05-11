@@ -81,6 +81,17 @@
   truthful summary; the per-task boxes were never updated during
   execution and ticking them retroactively would be theater.
 
+**Correction to a Step 0 finding (added 2026-05-11):**
+
+- Step 0.4 declared `PALACE_DAEMON_PATH_MAP` "dead config" on
+  2026-05-10. That aged out: PR `70cbf3f` in palace-daemon
+  ("feat(/mine): translate client-side paths via
+  PALACE_DAEMON_PATH_MAP") landed afterward and made the env var
+  load-bearing for `/mine` path translation with a full test suite
+  in `tests/test_path_translation.py`. The original scratch note in
+  `~/.claude/projects/-home-jp-Projects-familiar-realm-watch/scratch/`
+  has been updated with the correction. **Keep the env var.**
+
 ---
 
 ## Step 0 — Open question resolution (read-only)
