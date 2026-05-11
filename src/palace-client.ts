@@ -1,4 +1,4 @@
-import type { PalaceDrawer, PalaceGraph, PalaceSearchKind, PalaceSearchResult } from "./types.ts";
+import type { PalaceDrawer, PalaceGraph, PalaceSearchResult } from "./types.ts";
 
 export interface PalaceClientOptions {
   baseUrl: string;
@@ -13,8 +13,6 @@ export interface SearchOpts {
   wing?: string;
   room?: string;
   maxDistance?: number;
-  /** Filter checkpoint vs content drawers. Defaults to "content" — see PalaceSearchKind. */
-  kind?: PalaceSearchKind;
 }
 
 export interface WriteMemoryOpts {
@@ -54,10 +52,6 @@ export class PalaceClient {
     if (opts.wing) params.set("wing", opts.wing);
     if (opts.room) params.set("room", opts.room);
     if (opts.maxDistance !== undefined) params.set("max_distance", String(opts.maxDistance));
-    // Default to "all" — include Stop-hook checkpoints. JP wants familiar to see
-    // everything in palace; if checkpoints dominate, we'll address it with reranking
-    // rather than blanket filtering.
-    params.set("kind", opts.kind ?? "all");
     const url = `${this.baseUrl}/search?${params.toString()}`;
 
     const ctl = new AbortController();

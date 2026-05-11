@@ -78,7 +78,7 @@ describe("PalaceClient", () => {
     expect(captured).not.toContain("wing=");
   });
 
-  test("search defaults kind=content (filters Stop-hook checkpoint noise)", async () => {
+  test("search does not pass a kind parameter (palace-daemon ignores it)", async () => {
     let captured: string = "";
     const fetchMock = mockFetch((req) => {
       captured = req.url;
@@ -86,30 +86,7 @@ describe("PalaceClient", () => {
     });
     const client = new PalaceClient({ baseUrl: "http://k:8085", apiKey: "", searchTimeoutMs: 2000, fetch: fetchMock as unknown as typeof fetch });
     await client.search({ query: "x", limit: 3 });
-    expect(captured).toContain("kind=content");
-  });
-
-  test("search passes explicit kind=checkpoint when requested", async () => {
-    let captured: string = "";
-    const fetchMock = mockFetch((req) => {
-      captured = req.url;
-      return new Response(JSON.stringify({ query: "x", results: [] }), { status: 200 });
-    });
-    const client = new PalaceClient({ baseUrl: "http://k:8085", apiKey: "", searchTimeoutMs: 2000, fetch: fetchMock as unknown as typeof fetch });
-    await client.search({ query: "x", limit: 3, kind: "checkpoint" });
-    expect(captured).toContain("kind=checkpoint");
-    expect(captured).not.toContain("kind=content");
-  });
-
-  test("search passes explicit kind=all when requested", async () => {
-    let captured: string = "";
-    const fetchMock = mockFetch((req) => {
-      captured = req.url;
-      return new Response(JSON.stringify({ query: "x", results: [] }), { status: 200 });
-    });
-    const client = new PalaceClient({ baseUrl: "http://k:8085", apiKey: "", searchTimeoutMs: 2000, fetch: fetchMock as unknown as typeof fetch });
-    await client.search({ query: "x", limit: 3, kind: "all" });
-    expect(captured).toContain("kind=all");
+    expect(captured).not.toContain("kind=");
   });
 
   test("search throws on non-2xx response", async () => {

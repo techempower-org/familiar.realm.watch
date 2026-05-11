@@ -1,5 +1,5 @@
 import type { PalaceClient } from "./palace-client.ts";
-import type { PalaceDrawer, PalaceSearchKind, SmeEntity } from "./types.ts";
+import type { PalaceDrawer, SmeEntity } from "./types.ts";
 import { buildSystemPrompt } from "./grounding.ts";
 import { allocateContext } from "./budget.ts";
 import { domainRerank } from "./retrieval/rerank.ts";
@@ -15,8 +15,6 @@ export interface RetrieveAndGroundOpts {
   retrievalLimit: number;
   contextBudgetTokens: number;
   recentCitations: string[];
-  /** Defaults to "content" inside palace-client; pass "checkpoint" for audit/recovery flows. */
-  kind?: PalaceSearchKind;
   /** When true, append a stuck-loop directive to the system prompt. Set by the chat route from session telemetry. */
   stuck?: boolean;
 }
@@ -57,7 +55,6 @@ export async function retrieveAndGround(opts: RetrieveAndGroundOpts): Promise<Re
       query: opts.userMessage.slice(0, 250),
       limit: opts.retrievalLimit,
       wing: opts.wingScope ?? undefined,
-      kind: opts.kind,  // undefined → palace-client defaults to "content"
     });
     drawers = search.results ?? [];
     availableInScope = search.available_in_scope;

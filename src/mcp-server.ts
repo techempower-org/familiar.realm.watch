@@ -68,7 +68,6 @@ export function createFamiliarMcp(deps: McpServerDeps): McpServer {
           query: query.slice(0, 250),
           limit: deps.cfg.retrievalLimit,
           wing: wing ?? undefined,
-          kind: "content",
         });
         const drawers = (result.results ?? []).filter((d) => typeof d.text === "string");
         return { content: [{ type: "text", text: formatDrawers(drawers) }] };

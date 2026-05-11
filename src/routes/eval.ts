@@ -62,7 +62,6 @@ export async function handleEval(req: Request, deps: EvalRouteDeps): Promise<Res
       retrievalLimit: limit,
       contextBudgetTokens: deps.cfg.tokenBudget.context,
       recentCitations: [],
-      kind: body.kind,
     });
     contextString = grounded.systemPrompt;
     entities = grounded.entities;

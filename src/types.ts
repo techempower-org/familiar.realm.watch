@@ -37,7 +37,6 @@ export interface Config {
  * are 5-word session summaries that dominate vector similarity unless filtered.
  * Default for chat retrieval is "content"; "checkpoint" is for audit/recovery.
  */
-export type PalaceSearchKind = "content" | "checkpoint" | "all";
 
 export interface PalaceDrawer {
   id?: string;
@@ -123,8 +122,6 @@ export interface SmeQueryRequest {
   query: string;
   /** Override retrievalLimit. */
   limit?: number;
-  /** Forwarded to palace-client; defaults to "content" there. */
-  kind?: PalaceSearchKind;
   /** Optional wing scope. */
   wing?: string;
   /** If true, skip inference, return a stub answer. context_string is still real. */

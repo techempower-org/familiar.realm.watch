@@ -26,7 +26,6 @@ export async function dedupCheck(
   const result = await opts.palace.search({
     query: candidate.fact,
     limit: 1,
-    kind: "content",
   });
   const top = result.results?.[0];
   if (!top) return { novel: true };

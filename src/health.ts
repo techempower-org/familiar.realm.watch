@@ -75,7 +75,7 @@ async function probePalaceRecall(palace: PalaceClient): Promise<{
   recall_warning?: string;
 }> {
   try {
-    const r = await palace.search({ query: "_health_probe", limit: 1, kind: "content" });
+    const r = await palace.search({ query: "_health_probe", limit: 1 });
     const warnings = r.warnings ?? [];
     const empty = warnings.find((w) => HNSW_EMPTY_PATTERN.test(w));
     if (empty) {
