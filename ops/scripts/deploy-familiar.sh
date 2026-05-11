@@ -1,12 +1,33 @@
 #!/bin/bash
-# Deploy familiar-api from katana → familiar. Run LOCALLY on katana.
-# Assumes: install-ollama-familiar.sh has been run.
+# Deploy familiar-api to a target host. Run LOCALLY on the build host
+# (typically katana). Assumes: ollama is set up on the target.
+#
+# Usage:
+#   deploy-familiar.sh                       # deploys to default host (familiar)
+#   deploy-familiar.sh --host katana         # deploys to katana
+#   deploy-familiar.sh --host <h> --user <u> --root <path>
 set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
 DEST_HOST="familiar"
 DEST_ROOT="/srv/familiar"
 DEST_USER="familiar"
+
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --host) DEST_HOST="$2"; shift 2 ;;
+    --root) DEST_ROOT="$2"; shift 2 ;;
+    --user) DEST_USER="$2"; shift 2 ;;
+    -h|--help)
+      echo "Usage: $0 [--host HOSTNAME] [--root PATH] [--user USER]"
+      echo "Defaults: --host familiar --root /srv/familiar --user familiar"
+      exit 0
+      ;;
+    *) echo "Unknown arg: $1" >&2; exit 1 ;;
+  esac
+done
+
+echo ">>> Target: ${DEST_USER}@${DEST_HOST}:${DEST_ROOT}"
 
 # ---- realm-sigil banner up front so the realm name is visible without
 # scrolling. Sources the canonical helper from ~/Projects/realm-sigil/.
@@ -112,19 +133,19 @@ ssh "${DEST_HOST}" "sudo systemctl enable familiar-api.service && sudo systemctl
 sleep 3
 
 echo ">>> Smoke test..."
-curl -s --max-time 5 http://familiar:8080/api/version | head -c 500 || { echo "FAIL: /api/version"; ssh "${DEST_HOST}" "sudo journalctl -u familiar-api -n 40"; exit 1; }
+curl -s --max-time 5 http://${DEST_HOST}:8080/api/version | head -c 500 || { echo "FAIL: /api/version"; ssh "${DEST_HOST}" "sudo journalctl -u familiar-api -n 40"; exit 1; }
 echo ""
 # Health endpoint can take up to ~4s under degraded conditions (2s palace
 # health probe + 2s search recall probe, both bounded by searchTimeoutMs).
 # 10s leaves headroom while still failing fast on real hangs.
-curl -s --max-time 10 http://familiar:8080/api/familiar/health | head -c 500 || { echo "FAIL: /api/familiar/health"; exit 1; }
+curl -s --max-time 10 http://${DEST_HOST}:8080/api/familiar/health | head -c 500 || { echo "FAIL: /api/familiar/health"; exit 1; }
 echo ""
 # Post-deploy banner from the canonical helper — fetches /api/version
 # and renders the live realm-sigil so the operator sees the running
 # sigil at the bottom of scrollback, matching what status.realm.watch
 # would see on its next poll.
 if declare -F realm_sigil_post >/dev/null 2>&1; then
-  realm_sigil_post "http://familiar:8080/api/version"
+  realm_sigil_post "http://${DEST_HOST}:8080/api/version"
 fi
 echo ""
 echo ">>> Deploy done."
