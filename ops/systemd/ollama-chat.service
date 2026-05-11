@@ -12,8 +12,9 @@ Environment="OLLAMA_MODELS=/var/cache/ollama"
 Environment="OLLAMA_KEEP_ALIVE=-1"
 Environment="OLLAMA_MAX_LOADED_MODELS=1"
 ExecStart=/usr/local/bin/ollama serve
-Restart=on-failure
+Restart=always
 RestartSec=5
+TimeoutStopSec=30
 User=ollama
 Group=ollama
 

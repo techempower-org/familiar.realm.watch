@@ -7,6 +7,84 @@ versions follow [SemVer](https://semver.org/spec/v2.0.0.html) and the
 [realm-sigil](https://github.com/jphein/realm-sigil) convention used across
 the realm.watch ecosystem.
 
+## [Unreleased] — 2026-05-10 — *foundation rework — kill the split-brain*
+
+A diagnostic session uncovered that Stop-hook checkpoints had been
+landing in katana local mempalace (`~/Projects/mempalace-data/palace`
+via the `~/.mempalace/palace` symlink) while familiar-api on katana
+reads from palace-daemon on disks. Same name, different host, different
+data — classic split-brain. Plus an underlying chromadb SEGV cascade
+that was crash-looping palace-daemon ~57 times before we noticed.
+
+### Added — design + plan + verification
+
+- **Foundation rework spec** (`docs/superpowers/specs/2026-05-10-foundation-rework-design.md`)
+  documenting the three-layer plan: palace-daemon stability →
+  kill split-brain → recall verification + cleanup.
+- **Implementation plan** (`docs/superpowers/plans/2026-05-10-foundation-rework.md`)
+  with step-by-step tasks, branching decisions for Layer 2B
+  (mempalace CLI export missing → re-mine fallback), and rollback
+  paths for each layer.
+- **Recall roundtrip smoke test** (`tests/recall-roundtrip.test.ts`)
+  writes a unique-marker drawer, waits for index, asks familiar to
+  recall it, asserts the marker comes back. Skips when
+  palace-daemon is unreachable so it does not fail mid-rework.
+  Would have caught the split-brain immediately.
+
+### Changed — palace client
+
+- **`kind` parameter removed** from `palace-client.ts`, `types.ts`,
+  `memory-protocol.ts`, and five call sites. Step 0.2 of the rework
+  verified palace-daemon /search route signature is (q, limit,
+  x_api_key) — it has never read kind. FastAPI silently ignored
+  the param. Removing it is pure dead-code cleanup; -38 LOC.
+- **`.env.example` palace URL fixed** from `katana:8085` to
+  `disks:8085` reflecting actual deployment.
+
+### Changed — ops
+
+- **`deploy-familiar.sh` accepts `--host` / `--root` / `--user`
+  flags.** Same script now deploys to katana (current home) and
+  familiar (future home once P102 GPUs arrive). Default behavior
+  unchanged for existing callers.
+- **systemd units aligned to `Restart=always` + `TimeoutStopSec=30`**
+  across `familiar-api.service`, `ollama-chat.service`,
+  `ollama-embed.service`. Matches the palace-daemon system-unit
+  pattern from Layer 1 of the rework.
+
+### Changed — docs
+
+- **CLAUDE.md + README.md** updated to reflect actual host layout
+  (palace-daemon on disks; familiar-api on katana for now,
+  migrating to familiar after P102 install).
+
+### Pending — Layers 1 + 2 (in flight)
+
+- palace-daemon migration from user systemd unit to system unit
+  with `User=jp`, `Restart=always`, explicit paths. System unit
+  file already written on disks via daemon-reload; not yet
+  switched live (waiting on `mempalace repair --mode rebuild`
+  to complete a full HNSW index rebuild from 151,478 drawers).
+- mempalace plugin Stop/PreCompact hooks to be routed through
+  `palace-daemon/clients/hook.py` (replaces subprocess-spawning
+  `mempalace hook run` approach that wrote to katana local
+  palace).
+- One-time re-mine of katana session transcripts into disks palace
+  to recover orphan drawers from the split-brain window.
+
+### Discovered — upstream issues drafted
+
+- **mempalace bug** (`~/Projects/memorypalace/scratch/`):
+  `quarantine_stale_hnsw` integrity gate does not check that
+  `link_lists.bin` is non-zero or that the metadata sidecar
+  exists. Two segments on disks had 0-byte `link_lists.bin` and
+  were repeatedly loaded by chromadb, causing SIGSEGV in the C
+  extension.
+- **palace-daemon issues** (`~/Projects/palace-daemon/scratch/`):
+  implement the on-roadmap /backup endpoint with integrity-check
+  and smoke-retrieval; add crash-loop detection with degraded-state
+  exposure via /health.
+
 ## [0.3.11] — 2026-04-26 — *streamed markdown*
 
 ### Changed — chat surface
