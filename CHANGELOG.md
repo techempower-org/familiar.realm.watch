@@ -7,6 +7,82 @@ versions follow [SemVer](https://semver.org/spec/v2.0.0.html) and the
 [realm-sigil](https://github.com/jphein/realm-sigil) convention used across
 the realm.watch ecosystem.
 
+## [Unreleased] — 2026-05-11/12 — *foundation rework continuation: operational fixes*
+
+A two-day debugging cascade after Layer 3 shipped. The original split-brain
+fix landed clean, but post-rework testing surfaced ~7 distinct issues in the
+palace-daemon / mempalace / chromadb stack that prevented full operation.
+Fixed all of them; documented each in `docs/superpowers/plans/2026-05-10-foundation-rework.md`
+and `~/.claude/projects/-home-jp-Projects-familiar-realm-watch/scratch/foundation-rework.notes.md`.
+
+### Fixed in palace-daemon (sister repo, jphein/palace-daemon)
+
+- **`1a843ca` Auth — hook.py never sent X-API-Key.** All hook saves
+  401'd while logging "daemon unreachable" (broad-except swallow).
+- **`938dd2f` Recursive `/mcp` self-call (#11).** Daemon's env file
+  was shared with hook clients, putting `PALACE_DAEMON_URL` in the
+  daemon's own environment → mempalace's mcp_server forwarded /mcp
+  envelopes back to the daemon → 120s recursive timeout. Pinned
+  `PALACE_DAEMON_STRICT=0` in the systemd unit. /health: 30s → 280ms.
+- **`255cace` Silent degradation on missing `hnswlib` (#10).** ChromaDB
+  falls back to brute-force with no log when hnswlib import fails.
+  Persistence layer becomes unreachable so segment files never get
+  the chromadb metadata file. Added import-time guard. Root-cause for
+  hours of "partial-flush" symptoms.
+- **`053a36c` `/repair?mode=rebuild` deadlock (#9).** Cache cleared
+  AFTER rebuild_index instead of before. Fresh PersistentClient
+  inside rebuild_index waited forever on the sqlite filelock the
+  cached client still held.
+- **`e714c76` Clean shutdown for #8.** Cancel watchdog with timeout,
+  drop cached client+collection refs, GC, `await asyncio.sleep(2.0)`.
+  Lets chromadb's background flush thread finish writing the index
+  metadata file before exit. 30s SIGKILL → 2.3s clean shutdown.
+- **`009694b` Audit follow-up (#7).** Found mempalace-mcp.py had the
+  same HTTPError-as-URLError swallow shape as hook.py originally did.
+- **`058c268` Regression tests (#6).** 9 unit tests for hook.py auth
+  header + error classification. Mocks urllib, asserts on captured
+  Request objects.
+
+### Fixed in mempalace (sister repo, jphein/mempalace; PR upstream as MemPalace#1474)
+
+- **`248854a` `mine_convos` N+1 chromadb query perf bug.** Per-file
+  `file_already_mined()` cost ~2.1s on a 150k-drawer palace (chromadb
+  metadata index scan). 2000-file sweep = >1h of pure skip-checking.
+  Replaced with one-shot `prefetch_mined_set()` bulk paginated scan
+  → set membership. Now ~30-60s total instead of >1h.
+
+### Operational changes on disks (palace host)
+
+- **Installed `chroma-hnswlib==0.7.6`** via uv into palace-daemon's
+  venv. Was missing for unknown reason; cause of #10 symptoms.
+- **Installed `build-essential`** to enable source builds for any
+  package that needs it (precondition for the above, though
+  chroma-hnswlib ended up being binary-wheel).
+- **Added `PALACE_DAEMON_STRICT=0` to** `/home/jp/.config/palace-daemon/env`
+  AND pinned it in `/etc/systemd/system/palace-daemon.service` via
+  the `Environment=` directive for belt+suspenders durability.
+- **Replayed the embeddings_queue** by wiping the segment dir + deleting
+  the `max_seq_id` row + restarting the daemon. Force-persisted via
+  `seg._persist()` after the in-memory replay completed. HNSW went from
+  unwritable to 25,900 vectors persisted (1.8 MB metadata + 43 MB data
+  + 218 KB link_lists).
+- **In-progress: full HNSW rebuild** via standalone Python script
+  (`/tmp/standalone-rebuild-fast.py`, systemd-run unit
+  `standalone-rebuild-v2.service`). Re-embeds all 182,953 drawers
+  from their documents in sqlite. ETA ~6 hours from 15:23 PDT.
+  Daemon stopped for the duration; will restart with full HNSW
+  coverage when rebuild completes.
+
+### Issues filed + closed during the session
+
+- 13 issues filed across jphein/palace-daemon and jphein/mempalace.
+  All 6 palace-daemon issues (#6-#11) shipped and auto-closed.
+  3 mempalace issues (#50, #51, #52, #55) closed as won't-do with
+  corrections after deeper reading proved my initial premise wrong.
+- 1 upstream PR open at MemPalace/mempalace#1474 (perf fix offered
+  for adoption), rebased onto upstream/develop, 6/6 CI green,
+  mergeable, awaiting maintainer review.
+
 ## [Unreleased] — 2026-05-10 — *foundation rework — kill the split-brain*
 
 A diagnostic session uncovered that Stop-hook checkpoints had been
