@@ -6,6 +6,8 @@ Project-specific instructions for Claude Code working in this repo.
 
 Local-first AI companion. Reads mempalace before speaking, writes it after. See [docs/superpowers/specs/2026-04-23-familiar-realm-watch-design.md](docs/superpowers/specs/2026-04-23-familiar-realm-watch-design.md) for the full design.
 
+**Palace storage model:** wing = project, room ∈ {architecture, decisions, problems, planning, sessions, references, discoveries}, drawer = entry. See [docs/superpowers/specs/2026-05-13-palace-room-taxonomy.md](docs/superpowers/specs/2026-05-13-palace-room-taxonomy.md). The `palace-taxonomy` skill carries the same content cross-project.
+
 ## Stack
 
 - TypeScript + Bun (runtime + test runner + package manager)
