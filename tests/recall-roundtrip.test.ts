@@ -12,18 +12,20 @@ import { test, expect, describe } from "bun:test";
 // automatically when palace-daemon isn't reachable, so unit-test runs don't
 // fail just because the daemon is down (useful during foundation work itself).
 
-const PALACE_URL = process.env.PALACE_DAEMON_URL ?? "http://disks:8085";
-const PALACE_KEY = process.env.PALACE_DAEMON_API_KEY ?? "";
-const FAMILIAR_URL = process.env.FAMILIAR_URL ?? "http://127.0.0.1:8080";
+// Read env inside test functions, not at module-top: other tests (notably
+// config.test.ts) wipe PALACE_*/FAMILIAR_*/etc. env vars in their beforeEach
+// to test default-value behavior. Module-top constants captured before that
+// wipe still work, but only if module load order happens to put us before
+// them. Reading env at test-run time makes this robust regardless of order.
 
 const MARKER = `roundtrip-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
 
-async function palaceUp(): Promise<boolean> {
+async function palaceUp(url: string, key: string): Promise<boolean> {
   try {
     const ctl = new AbortController();
     const t = setTimeout(() => ctl.abort(), 1500);
-    const r = await fetch(`${PALACE_URL}/health`, {
-      headers: PALACE_KEY ? { "x-api-key": PALACE_KEY } : {},
+    const r = await fetch(`${url}/health`, {
+      headers: key ? { "x-api-key": key } : {},
       signal: ctl.signal,
     });
     clearTimeout(t);
@@ -35,7 +37,11 @@ async function palaceUp(): Promise<boolean> {
 
 describe("recall roundtrip", () => {
   test("a drawer written to palace is recallable by familiar within 10s", async () => {
-    const up = await palaceUp();
+    const PALACE_URL = process.env.PALACE_DAEMON_URL ?? "http://disks:8085";
+    const PALACE_KEY = process.env.PALACE_DAEMON_API_KEY ?? "";
+    const FAMILIAR_URL = process.env.FAMILIAR_URL ?? "http://127.0.0.1:8080";
+
+    const up = await palaceUp(PALACE_URL, PALACE_KEY);
     if (!up) {
       // Skip rather than fail. Run with palace-daemon up to assert the foundation works.
       console.warn(`[skip] palace-daemon at ${PALACE_URL} not reachable; recall test skipped.`);

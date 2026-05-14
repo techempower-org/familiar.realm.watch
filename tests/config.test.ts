@@ -1,14 +1,35 @@
-import { test, expect, describe, beforeEach } from "bun:test";
+import { test, expect, describe, beforeEach, afterEach } from "bun:test";
 import { loadConfig } from "../src/config.ts";
 
+const ENV_PREFIXES = ["FAMILIAR_", "OLLAMA_", "PALACE_", "TOKEN_BUDGET_"];
+const ENV_EXACT = ["RETRIEVAL_LIMIT", "SESSION_TTL_MINUTES", "REALM_SIGIL_REALM", "LOG_LEVEL"];
+
+function shouldClear(key: string): boolean {
+  return ENV_PREFIXES.some((p) => key.startsWith(p)) || ENV_EXACT.includes(key);
+}
+
 describe("loadConfig", () => {
+  // Snapshot the original env so we can restore it after each test. Without
+  // this, the env wipe leaks into other test files (notably recall-roundtrip
+  // which reads PALACE_DAEMON_API_KEY at runtime) and causes spurious failures
+  // when bun's test runner reuses the process across files.
+  let snapshot: Record<string, string | undefined> = {};
+
   beforeEach(() => {
-    // Clear any stray env vars
+    snapshot = {};
     for (const key of Object.keys(process.env)) {
-      if (key.startsWith("FAMILIAR_") || key.startsWith("OLLAMA_") || key.startsWith("PALACE_") || key.startsWith("TOKEN_BUDGET_") || key === "RETRIEVAL_LIMIT" || key === "SESSION_TTL_MINUTES" || key === "REALM_SIGIL_REALM" || key === "LOG_LEVEL") {
+      if (shouldClear(key)) {
+        snapshot[key] = process.env[key];
         delete process.env[key];
       }
     }
+  });
+
+  afterEach(() => {
+    for (const [k, v] of Object.entries(snapshot)) {
+      if (v !== undefined) process.env[k] = v;
+    }
+    snapshot = {};
   });
 
   test("returns defaults when env is empty", () => {
