@@ -79,7 +79,38 @@ Two-stage mapping of room names to the canonical 7:
 
 The huge `technical` room (168k drawers) gets stage-2'd with much more careful prompt — likely splits across multiple canonical rooms by sampling per-wing/per-content.
 
-### Phase 1D — CHECK constraint + write-time enforcement
+### Architectural pivot (2026-05-14): single write path
+
+Decided after the room taxonomy direction question (JP: "I want hooks
+and mine to do the same things, in every way").
+
+Today there are two parallel write paths into the palace:
+1. Hook calls `mempalace_diary_write` (writes one summary drawer per
+   session checkpoint with AAAK-compressed content).
+2. Miner (`mempalace mine`) walks files and writes N chunk drawers
+   per file using `detect_convo_room()` keyword-scoring.
+
+These differ in wing derivation, room derivation, drawer ID format,
+output shape, content shaping, dedup mechanism, and metadata fields.
+The "same in every way" goal requires collapsing them to one write
+path.
+
+**Architecture: hook = trigger; miner = sole writer.**
+
+- Hook.py drops the `mempalace_diary_write` call entirely. Its only
+  job is "decide when to capture and POST `/mine` with the right mode."
+- Miner gains `--mode session` that produces ONE summary drawer per
+  session (replacing diary_write semantics), with AAAK content
+  compression moved from diary_write into the miner.
+- All wing/room/ID/dedup/validation logic lives in miner. Hook trusts
+  the miner.
+- `mempalace_diary_write` becomes a deprecated legacy shim calling
+  miner internally (back-compat for non-hook callers).
+
+Phase 1D below expands to cover this refactor in addition to the
+CHECK constraint work.
+
+### Phase 1D — Unified write path + CHECK constraint + enforcement
 
 ```sql
 -- Add as NOT VALID first (instant, no lock contention)
