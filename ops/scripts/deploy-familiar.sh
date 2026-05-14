@@ -91,8 +91,8 @@ rsync -avP --delete \
   --exclude node_modules --exclude .git --exclude .env --exclude '*.log' \
   -e "ssh" \
   "${REPO_ROOT}/" \
-  "${DEST_HOST}:/tmp/familiar-src/"
-ssh "${DEST_HOST}" "sudo rsync -a --delete --exclude .env --chown ${DEST_USER}:${DEST_USER} /tmp/familiar-src/ ${DEST_ROOT}/"
+  "${DEST_HOST}:/var/tmp/familiar-src/"
+ssh "${DEST_HOST}" "sudo rsync -a --delete --exclude .env --chown ${DEST_USER}:${DEST_USER} /var/tmp/familiar-src/ ${DEST_ROOT}/"
 
 echo ">>> Installing dependencies..."
 ssh "${DEST_HOST}" "sudo -u ${DEST_USER} bash -c 'cd ${DEST_ROOT} && ~/.bun/bin/bun install --production'"
