@@ -16,7 +16,7 @@ const SIGIL: SigilInfo = {
   dirty: false,
   built: "2026-04-26T00:00:00Z",
   repo: null,
-  commit_url: "https://github.com/jphein/familiar.realm.watch/commit/deadbeef",
+  commit_url: "https://github.com/techempower-org/familiar.realm.watch/commit/deadbeef",
 };
 
 const okBreaker = (): CircuitBreaker => ({

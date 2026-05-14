@@ -76,7 +76,7 @@ function extractWord(name: string, realm: string): string {
 
 export function readSigil(realm: string): SigilInfo {
   const git = gitInfo();
-  const repo = "https://github.com/jphein/familiar.realm.watch";
+  const repo = "https://github.com/techempower-org/familiar.realm.watch";
   // makeVersionResponse handles all the fiddly fields; we tag the package
   // version on top + the convenience `word` derivation.
   const v = makeVersionResponse(PKG.name, PKG.description, realm, repo);

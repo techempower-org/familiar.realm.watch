@@ -1,23 +1,30 @@
 #!/bin/bash
-# Install palace-daemon on katana with jphein-fork as the mempalace library.
+# Install palace-daemon on katana with our jphein fork as the mempalace library.
 # Run LOCALLY on katana.
+#
+# palace-daemon clone source defaults to our fork (techempower-org) — we
+# carry fork-only fixes that haven't reached upstream rboarescu yet
+# (hook detach, postgres backend gates, /cypher + /embed endpoints,
+# /search/keyword + /search/hybrid). Override PALACE_DAEMON_REMOTE if you
+# want to test against upstream.
 set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
 DEST="$HOME/Projects/palace-daemon"
 FORK_PATH="$HOME/Projects/memorypalace"
 PALACE_PATH="$HOME/Projects/mempalace-data/palace"
+PALACE_DAEMON_REMOTE="${PALACE_DAEMON_REMOTE:-https://github.com/techempower-org/palace-daemon.git}"
 
 echo ">>> Sanity checks..."
 [ -d "${FORK_PATH}" ] || { echo "FAIL: jphein fork not at ${FORK_PATH}"; exit 1; }
 [ -d "${PALACE_PATH}" ] || { echo "FAIL: palace data not at ${PALACE_PATH}"; exit 1; }
 
-echo ">>> Cloning palace-daemon to ${DEST}..."
+echo ">>> Cloning palace-daemon to ${DEST} (from ${PALACE_DAEMON_REMOTE})..."
 if [ -d "${DEST}" ]; then
     echo "    already exists — pulling latest"
     cd "${DEST}" && git pull --rebase
 else
-    git clone https://github.com/rboarescu/palace-daemon.git "${DEST}"
+    git clone "${PALACE_DAEMON_REMOTE}" "${DEST}"
 fi
 
 cd "${DEST}"
