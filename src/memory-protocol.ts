@@ -17,6 +17,16 @@ export interface RetrieveAndGroundOpts {
   recentCitations: string[];
   /** When true, append a stuck-loop directive to the system prompt. Set by the chat route from session telemetry. */
   stuck?: boolean;
+  /**
+   * Optional HyDE generator: given the user's query, produce a
+   * hypothetical answer to bridge query-document vocabulary gaps
+   * before retrieval. When provided, the hypothetical text is
+   * concatenated with the original query for the actual search.
+   * Best paired with a small fast model (gemma3:4b ~2s). Setting
+   * `PALACE_USE_HYDE=true` env var enables it from familiar.ts; off
+   * by default while we measure paraphrase quality improvement.
+   */
+  hydeGenerate?: (query: string) => Promise<string>;
 }
 
 export interface RetrieveAndGroundResult {
@@ -64,6 +74,7 @@ export async function retrieveAndGround(opts: RetrieveAndGroundOpts): Promise<Re
           query: opts.userMessage.slice(0, 250),
           limit: opts.retrievalLimit,
           wing: opts.wingScope ?? undefined,
+          hydeGenerate: opts.hydeGenerate,
         });
         drawers = search.results ?? [];
         availableInScope = search.available_in_scope;

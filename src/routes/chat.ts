@@ -32,6 +32,13 @@ export interface ChatRouteDeps {
   diaryBuffer: DiaryBuffer;
   /** Optional: when present, fires after each assistant turn (length-gated). */
   reflectWriter?: ReflectWriter;
+  /**
+   * Optional HyDE generator wired by familiar.ts when PALACE_USE_HYDE=true.
+   * Given a user query, returns a hypothetical answer that bridges
+   * paraphrase vocabulary gaps before retrieval. Short prompt → ollama
+   * /api/generate; ~2s on gemma3:4b. Off by default.
+   */
+  hydeGenerate?: (query: string) => Promise<string>;
   breakers: {
     palace: CircuitBreaker;
     ollama: CircuitBreaker;
@@ -120,6 +127,7 @@ export async function handleChat(req: Request, deps: ChatRouteDeps): Promise<Res
       contextBudgetTokens: deps.cfg.tokenBudget.context,
       recentCitations: session.recentCitations,
       stuck,
+      hydeGenerate: deps.hydeGenerate,
     }));
   } catch {
     // breaker open — still respond, just without palace context

@@ -88,4 +88,38 @@ export class OllamaClient {
       return false;
     }
   }
+
+  /**
+   * Non-streaming /api/generate — used for HyDE pre-search query
+   * expansion. Short prompt, short response, no streaming overhead.
+   * Returns "" on any failure so callers can use it as a non-fatal
+   * pre-step. Timeout is hard-capped at 5s to keep retrieval p99
+   * under control.
+   */
+  async generateShort(prompt: string, opts?: { model?: string; maxTokens?: number; timeoutMs?: number }): Promise<string> {
+    const timeoutMs = opts?.timeoutMs ?? 5000;
+    const body = {
+      model: opts?.model ?? this.defaultModel,
+      prompt,
+      stream: false,
+      options: { num_predict: opts?.maxTokens ?? 200 },
+    };
+    const ctl = new AbortController();
+    const timer = setTimeout(() => ctl.abort(), timeoutMs);
+    try {
+      const res = await this.fetchFn(`${this.baseUrl}/api/generate`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify(body),
+        signal: ctl.signal,
+      });
+      if (!res.ok) return "";
+      const data = (await res.json()) as { response?: string };
+      return (data.response ?? "").trim();
+    } catch {
+      return "";
+    } finally {
+      clearTimeout(timer);
+    }
+  }
 }

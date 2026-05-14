@@ -22,6 +22,17 @@ export interface HybridSearchOpts {
   room?: string;
   /** Attach per-source trace (matched_via counts) to the response. */
   includeTrace?: boolean;
+  /**
+   * HyDE (Hypothetical Document Embeddings) — if a generator is provided,
+   * call it with the query, get a hypothetical answer, embed THAT instead
+   * of (or in addition to) the literal query. Closes paraphrase vocabulary
+   * gaps where the query and target drawer share zero literal vocabulary.
+   * Best paired with a small fast model (gemma3:4b ~2s on 4GB VRAM).
+   * When provided, returns the original query merged with the hypothesis
+   * for the actual search; this consistently outperforms pure HyDE because
+   * the original query still anchors entity-specific tokens.
+   */
+  hydeGenerate?: (query: string) => Promise<string>;
 }
 
 export interface WriteMemoryOpts {
@@ -96,9 +107,26 @@ export class PalaceClient {
    * in that case).
    */
   async searchHybrid(opts: HybridSearchOpts): Promise<PalaceSearchResult> {
-    const normalizedQ = opts.query.replace(/[?!.,;:]+\s*$/, "").trim();
+    let effectiveQuery = opts.query.replace(/[?!.,;:]+\s*$/, "").trim();
+
+    // HyDE step — generate a hypothetical answer with a small LLM and
+    // concat it with the original query. The hypothesis bridges
+    // vocabulary gaps for paraphrase queries; the original query keeps
+    // entity-specific tokens anchored. Failure is non-fatal; if HyDE
+    // errors or times out we proceed with the literal query.
+    if (opts.hydeGenerate) {
+      try {
+        const hypothesis = await opts.hydeGenerate(effectiveQuery);
+        if (hypothesis && hypothesis.trim()) {
+          effectiveQuery = `${effectiveQuery}\n\n${hypothesis.trim().slice(0, 500)}`;
+        }
+      } catch {
+        // HyDE failure should not block search; original query stands.
+      }
+    }
+
     const body: Record<string, unknown> = {
-      query: normalizedQ,
+      query: effectiveQuery,
       limit: opts.limit,
     };
     if (opts.wing) body.wing = opts.wing;

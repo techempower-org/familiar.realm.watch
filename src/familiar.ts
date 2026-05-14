@@ -108,7 +108,16 @@ const server = Bun.serve({
     const t0 = Date.now();
     try {
       if (url.pathname === "/v1/chat/completions" && req.method === "POST") {
-        return await handleChat(req, { cfg, palace, ollama: inferenceRouter, sessions, diaryBuffer, reflectWriter, breakers: { palace: breakers.palace, ollama: breakers.ollamaChat } });
+        // HyDE: when PALACE_USE_HYDE=true env is set, route retrieval through
+        // a hypothesis-generating pre-step that bridges paraphrase vocab gaps.
+        // Cheap on gemma3:4b; default off until eval confirms it helps.
+        const hyde = (Bun.env.PALACE_USE_HYDE ?? "").toLowerCase() === "true"
+          ? async (query: string) => ollamaChat.generateShort(
+              `Write a concise (~80 words) hypothetical answer to: ${query}\nDo not say "hypothetically" or hedge — write as if you know.`,
+              { maxTokens: 150, timeoutMs: 4000 },
+            )
+          : undefined;
+        return await handleChat(req, { cfg, palace, ollama: inferenceRouter, sessions, diaryBuffer, reflectWriter, hydeGenerate: hyde, breakers: { palace: breakers.palace, ollama: breakers.ollamaChat } });
       }
       if (url.pathname === "/v1/embeddings" && req.method === "POST") {
         return await handleEmbeddings(req, { cfg, ollamaEmbed, breaker: breakers.ollamaEmbed });
