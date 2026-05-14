@@ -7,6 +7,72 @@ versions follow [SemVer](https://semver.org/spec/v2.0.0.html) and the
 [realm-sigil](https://github.com/jphein/realm-sigil) convention used across
 the realm.watch ecosystem.
 
+## [Unreleased] — 2026-05-14 (later) — *hybrid search + taxonomy + unified write path*
+
+Per the [hybrid-search-taxonomy spec](docs/superpowers/specs/2026-05-14-hybrid-search-taxonomy-spec.md),
+three coordinated reforms shipped end-to-end against the new postgres
+substrate:
+
+**Taxonomy reform** — wing = project slug (path-derived), room ∈ 7
+canonical names, FK-enforced. Configurable: the canonical set lives in
+`mempalace_canonical_rooms` postgres table (CRUD via SQL or
+forthcoming `mempalace rooms` CLI); keyword routing rules can be
+overridden in `~/.mempalace/config.yaml`. 273k existing drawers
+migrated via four phases:
+- 1A — wing slug normalize (33,633 rows): `wing_realmwatch` →
+  `realmwatch`, etc. 46 → 39 wings.
+- 1B — wing-from-room reassignment (34,316 rows): projects misused as
+  rooms (`bestiary`, `dreamspace`, `oracle`, …) moved to proper wings.
+- 1C — room canonicalization (rules + LLM-judged stub): 168k drawers
+  in the `technical` catch-all split by wing-content into `references`
+  vs `discoveries`; remaining non-canonical rooms hand-resolved.
+- 1D — `ALTER TABLE … ADD CONSTRAINT FOREIGN KEY (room) REFERENCES
+  mempalace_canonical_rooms(name) ON UPDATE CASCADE`. Daemon `/memory`
+  normalizes wing slug + validates room at the boundary, returning
+  the valid set on 400.
+
+**Unified write path** — hook becomes trigger-only; miner is the sole
+writer. `mempalace_diary_write` was a parallel write path that
+produced drawers with inconsistent wing/room/ID/metadata vs miner
+output. Phase 1D refactor:
+- `clients/hook.py` drops the `mempalace_diary_write` call entirely;
+  hook only POSTs `/mine` with the right wing.
+- `convo_miner.detect_convo_room` emits only canonical rooms; the
+  hardcoded `technical`/`general` legacy values are gone.
+
+**Hybrid search** — vector + BM25 + graph fused in one daemon round-trip.
+- Phase 2: `doc_tsv tsvector GENERATED ALWAYS AS to_tsvector(…)
+  STORED` + `GIN` index. 86 MB index, ~78µs query latency.
+  `_bm25_only_via_postgres` mirrors upstream's `_bm25_only_via_sqlite`
+  pattern (#1306) for backend-aware dispatch.
+- Phase 3: graph integration. Two channels feed into the candidate
+  pool — vector-seeded entity expansion (top-5 vector hits →
+  AGE entities → 1-hop drawers) and NER-driven entity lookup
+  (regex on capitalized phrases + known-entity catalog).
+- Phase 4: `candidate_strategy="hybrid"` registered in
+  `_CANDIDATE_MERGERS`; daemon `/search/hybrid` endpoint. Verified
+  end-to-end: 809ms total p50 on a 5-result hybrid query.
+- Phase 5: familiar `palace-client.searchHybrid()`; grounding defaults
+  to hybrid via `PALACE_SEARCH_MODE=hybrid` (graceful fallback to
+  vector on 503/404). Test suite 183 pass, 0 fail. Live e2e probe:
+  qwen2.5:14b correctly recalls today's pgvector race fix via
+  hybrid retrieval through the new substrate.
+
+### Upstream coordination
+
+- Adopts #1306's `candidate_strategy` architecture (in our fork via sync)
+- Supersedes #1053 (hooks auto-mine) and #1424 (hyphenated wing) — our
+  refactor is more general; both still open upstream
+- Explicit divergence from #490 (upstream `wing_*`/`hall_*` content-topic
+  taxonomy vs our `wing=project, room=topic` model)
+- Coordinates with #1480, #1481, #1433 (search strategy extensions)
+
+### Filed
+
+- `techempower-org/mempalace#73` (filed earlier) — pgvector lazy-index
+  race in `_maybe_create_vector_index`; fixed locally as `4566f8a`,
+  operator comment posted on upstream #665.
+
 ## [Unreleased] — 2026-05-13/14 — *pgvector cutover executed + lazy-index race surfaced*
 
 Per the migration plan from 2026-05-10, the postgres + pgvector + Apache AGE
