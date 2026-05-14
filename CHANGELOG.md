@@ -7,6 +7,81 @@ versions follow [SemVer](https://semver.org/spec/v2.0.0.html) and the
 [realm-sigil](https://github.com/jphein/realm-sigil) convention used across
 the realm.watch ecosystem.
 
+## [Unreleased] — 2026-05-13/14 — *pgvector cutover executed + lazy-index race surfaced*
+
+Per the migration plan from 2026-05-10, the postgres + pgvector + Apache AGE
+cutover finally ran on the homelab palace. 271,346 drawers + KG triples
+migrated to `mempalace_2026_05_13` on disks via a substrate-portable
+extraction pipeline (raw sqlite → JSONL → GPU embed on katana → pgvector
+bulk-load) — bypassing the chromadb SIGSEGV class that blocked `migrate-to-
+postgres` on the live palace (≈14 minutes wall, vs the >7 hours `repair
+--mode from-sqlite` would have taken on disks' 2011 i5).
+
+The cutover surfaced a concurrency bug in mempalace's PostgresBackend that
+hadn't shown up under single-writer test loads: three concurrent
+`CREATE INDEX hnsw` queries holding `ACCESS EXCLUSIVE` on `mempalace_drawers`,
+wedging the daemon for 28+ minutes. The wedge was self-perpetuating —
+every concurrent writer that crossed `VECTOR_INDEX_CHECK_INTERVAL_ROWS`
+issued its own `CREATE INDEX` (no advisory lock, no `IF NOT EXISTS`), and
+new ones kept arriving as fast as old ones were canceled.
+
+### Fixed in palace-daemon
+
+- **`d2569ca` Detached Stop/PreCompact hook in `hook.py`.** Daemon wedge
+  made every hook event eat 30–60s of urlopen timeout, blocking the
+  harness. Now `os.fork() + setsid()` at the top of `run_hook`; parent
+  returns in ~60ms while the child does the daemon round-trip in its own
+  session. Synchronous mode preserved via `PALACE_HOOK_NO_DETACH=1`.
+- **`04f4ba2` Also redirect stdout/stderr in the child.** First pass left
+  them inherited from the harness; claude waits for the hook's stdout/
+  stderr pipes to close before clearing the event, so the child holding
+  those FDs open during its 30s urlopen still blocked the harness even
+  though the parent returned in <100ms. `os.dup2` all three FDs to
+  `/dev/null`. `_log()` writes to `~/.mempalace/hook_state/hook.log`
+  directly, so daemon failures still get recorded.
+  Verified: `time (echo ... | python3 hook.py | cat)` — which mimics the
+  harness reading the stdout pipe — went from blocking on the round-trip
+  to 57 ms.
+- **Remote URL migrated** to `techempower-org/palace-daemon` (the old
+  `jphein/palace-daemon` redirects, but pushes printed a warning).
+
+### Surfaced in mempalace (upstream + fork)
+
+- **`techempower-org/mempalace#73`** filed — `PostgresBackend._maybe_create_vector_index`
+  has a lookup-vs-create race **and** a name-coupled existence check (our
+  pre-existing HNSW lived under `mempalace_drawers_embedding_hnsw`; the
+  lazy-check only looks for the literal `mempalace_drawers_vec_idx`, so it
+  always missed and always fired the CREATE INDEX path). Both bugs trip
+  under concurrent writers. Minimal hardening proposed:
+  `pg_advisory_xact_lock(hashtext('vec_idx:<table>'))` around the
+  lookup+create, plus `IF NOT EXISTS` as belt-and-suspenders.
+- **Operator comment posted on `MemPalace/mempalace#665`** with the
+  diagnosis and a fixup offer. Held off on a separate upstream PR — #665
+  is the canonical landing point for PostgresBackend and isn't merged
+  yet, so bug-fixes belong in that PR, not a competing one.
+
+### Operational changes on disks
+
+- **Postgres unwedged out-of-band.** Cancelled three duplicate `CREATE
+  INDEX` backends via `pg_cancel_backend`; let the in-flight build
+  finish; dropped the legacy-named 308 MB `mempalace_drawers_embedding_hnsw`
+  duplicate; preserved the new 371 MB `mempalace_drawers_vec_idx` (the
+  name mempalace's existence-check expects, so future lazy-checks will
+  short-circuit); created the missing `mempalace_drawers_room_idx`.
+  Daemon `/mcp` round-trip: 30 s timeout → **12 ms**.
+- **Daemon backend cut over** to `MEMPALACE_BACKEND=postgres` against
+  `mempalace_2026_05_13`. `psycopg2-binary` installed in the daemon venv
+  (was missing; cutover initially reported "degraded"). `/cypher` and
+  `/embed` endpoints added to the daemon (`feat(daemon): /cypher + /embed
+  endpoints`, palace-daemon `434e35e`).
+
+### Migration plan status
+
+- **Phases 4.1 + 4.2 — executed.** The plan previously said "Runbook
+  shipped / Documented"; today they actually ran. See
+  `~/Projects/memorypalace/docs/superpowers/plans/2026-05-10-pgvector-age-migration-impl.md`
+  for the 2026-05-14 status snapshot.
+
 ## [Unreleased] — 2026-05-11/12 — *foundation rework continuation: operational fixes*
 
 A two-day debugging cascade after Layer 3 shipped. The original split-brain
