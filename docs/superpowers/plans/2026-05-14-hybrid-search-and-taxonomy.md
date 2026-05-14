@@ -271,16 +271,28 @@ Implementation: run vector + keyword in parallel (`asyncio.gather`); graph runs 
 
 ## Phase order + commit map
 
-| Phase | Repo | Effort | Risk |
-|---|---|---|---|
-| 1A wing slug normalize | one-shot SQL on disks | small | low |
-| 1B wing-from-room | one-shot SQL on disks | medium | medium |
-| 1C room canonical (rules+LLM) | one-shot script on katana | medium | medium |
-| 1D CHECK + daemon enforce | palace-daemon, fork mempalace | small | low |
-| 2 BM25 schema + endpoint | mempalace fork, palace-daemon | medium | low |
-| 3 graph integration | palace-daemon | medium | medium |
-| 4 hybrid endpoint | palace-daemon | medium | low |
-| 5 familiar wiring | familiar.realm.watch | medium | low |
+All phases shipped 2026-05-14.
+
+| Phase | Status | Notes |
+|---|---|---|
+| 1A wing slug normalize | ✅ Done | 33,633 rows updated, 46→39 wings |
+| 1B wing-from-room | ✅ Done | 34,316 rows; project names extracted out of catch-all wings |
+| 1C room canonical (rules+LLM) | ✅ Done | 273k drawers in canonical 7 (references 127k, discoveries 86k, architecture 36k, problems 13k, planning 10k, sessions 870, decisions 427) |
+| 1D unified write path + FK | ✅ Done | mempalace_canonical_rooms lookup + FK ON UPDATE CASCADE; hook=trigger, miner=sole writer; daemon /memory validates |
+| 2 BM25 schema + endpoint | ✅ Done | doc_tsv generated column + 86MB GIN; daemon /search/keyword; ~78μs lookup |
+| 3 graph integration | ✅ Done | _graph_expand_from_seeds + _graph_expand_from_entities + _ner_from_query in mempalace/searcher.py |
+| 4 hybrid endpoint | ✅ Done | candidate_strategy="hybrid"; daemon /search/hybrid; verified 809ms p50 on 5-result hybrid query |
+| 5 familiar wiring | ✅ Done | palace-client.searchHybrid; default PALACE_SEARCH_MODE=hybrid; 183/183 tests pass |
+| 6 production deploy | ✅ Done | familiar host (10.0.6.124) on hash 44fd236; gemma3:4b chat model (4GB VRAM fit); familiar.jphe.in fronted by Caddy on ubox0; LICENSE GPL-3.0; repo public at techempower-org/familiar.realm.watch |
+
+A/B eval results post-shipping (16 probes, top-5):
+  vec total recall 0.50 → hyb 0.75 (Δ +0.25)
+  exact-match queries: 0.20 → 0.80 (Δ +0.60, BM25 catches commit hashes / identifiers)
+  entity-anchored: 0.67 → 1.00 (Δ +0.33)
+  narrative/paraphrase/rare: unchanged (vector already strong; paraphrase + rare remain
+  the open horizon for graph integration quality work)
+
+  Latency cost: vec p50 621ms → hyb p50 715ms (+15%, acceptable).
 
 ## Open questions deferred to implementation
 
