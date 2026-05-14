@@ -58,7 +58,9 @@ describe("recall roundtrip", () => {
       body: JSON.stringify({
         content: `Test marker for foundation rework: ${MARKER}. This is a unique drawer used by the recall roundtrip smoke test.`,
         wing: "test_recall_roundtrip",
-        room: "smoke",
+        // Phase 1D added FK enforcement; use a canonical room. 'sessions'
+        // fits the test-marker semantics (it's a test session checkpoint).
+        room: "sessions",
       }),
     });
     expect(writeRes.ok).toBe(true);

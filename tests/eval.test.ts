@@ -4,13 +4,15 @@ import type { PalaceClient } from "../src/palace-client.ts";
 import type { Config, OllamaChatChunk, PalaceDrawer } from "../src/types.ts";
 
 function mockPalace(drawers: PalaceDrawer[], availableInScope = drawers.length): PalaceClient {
+  const result = {
+    query: "",
+    available_in_scope: availableInScope,
+    results: drawers,
+    warnings: [],
+  };
   return {
-    search: async () => ({
-      query: "",
-      available_in_scope: availableInScope,
-      results: drawers,
-      warnings: [],
-    }),
+    search: async () => result,
+    searchHybrid: async () => result,
   } as unknown as PalaceClient;
 }
 
@@ -102,6 +104,9 @@ describe("/api/familiar/eval — SME adapter contract", () => {
   test("palace failure surfaces in warnings, error stays null", async () => {
     const palace = {
       search: async () => {
+        throw new Error("ECONNREFUSED");
+      },
+      searchHybrid: async () => {
         throw new Error("ECONNREFUSED");
       },
     } as unknown as PalaceClient;

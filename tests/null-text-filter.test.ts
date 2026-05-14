@@ -3,17 +3,19 @@ import { retrieveAndGround } from "../src/memory-protocol.ts";
 import type { PalaceClient } from "../src/palace-client.ts";
 
 test("retrieveAndGround filters drawers with null text + tags warning", async () => {
+  const fakeResult = {
+    query: "x",
+    available_in_scope: 100,
+    warnings: [],
+    results: [
+      // null text — must be filtered out, not throw
+      { id: "drawer_bad", text: null as unknown as string, wing: "w", room: "r", similarity: 0.9 },
+      { id: "drawer_good", text: "real content", wing: "w", room: "r", similarity: 0.8 },
+    ],
+  };
   const palace = {
-    search: async () => ({
-      query: "x",
-      available_in_scope: 100,
-      warnings: [],
-      results: [
-        // null text — must be filtered out, not throw
-        { id: "drawer_bad", text: null as unknown as string, wing: "w", room: "r", similarity: 0.9 },
-        { id: "drawer_good", text: "real content", wing: "w", room: "r", similarity: 0.8 },
-      ],
-    }),
+    search: async () => fakeResult,
+    searchHybrid: async () => fakeResult,
   } as unknown as PalaceClient;
   const out = await retrieveAndGround({
     palace,

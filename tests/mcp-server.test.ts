@@ -18,13 +18,15 @@ const baseCfg: Config = {
 };
 
 function mockPalace(drawers: PalaceDrawer[]): PalaceClient {
+  const result = {
+    query: "x",
+    available_in_scope: drawers.length,
+    warnings: [],
+    results: drawers,
+  };
   return {
-    search: async () => ({
-      query: "x",
-      available_in_scope: drawers.length,
-      warnings: [],
-      results: drawers,
-    }),
+    search: async () => result,
+    searchHybrid: async () => result,
   } as unknown as PalaceClient;
 }
 
@@ -172,6 +174,12 @@ describe("createFamiliarMcp", () => {
       let observedWing: string | undefined;
       const palace = {
         search: async (opts: { wing?: string }) => {
+          observedWing = opts.wing;
+          return { query: "x", available_in_scope: 0, warnings: [], results: [] };
+        },
+        // Phase 5: retrieveAndGround defaults to hybrid; capture wing here too
+        // so the assertion works regardless of which channel ran first.
+        searchHybrid: async (opts: { wing?: string }) => {
           observedWing = opts.wing;
           return { query: "x", available_in_scope: 0, warnings: [], results: [] };
         },

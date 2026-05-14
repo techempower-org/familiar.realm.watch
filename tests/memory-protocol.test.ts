@@ -5,6 +5,9 @@ import type { PalaceSearchResult } from "../src/types.ts";
 function fakePalace(result: PalaceSearchResult) {
   return {
     search: async () => result,
+    // Phase 5: retrieveAndGround defaults to hybrid; the fake returns the
+    // same result so tests don't have to assert on which channel ran.
+    searchHybrid: async () => result,
     writeMemory: async () => {},
     health: async () => ({ status: "ok" }),
   };
@@ -58,6 +61,7 @@ describe("retrieveAndGround", () => {
   test("returns empty drawers when palace times out", async () => {
     const palace = {
       search: async () => { throw new Error("aborted"); },
+      searchHybrid: async () => { throw new Error("aborted"); },
       writeMemory: async () => {},
       health: async () => ({ status: "ok" }),
     };

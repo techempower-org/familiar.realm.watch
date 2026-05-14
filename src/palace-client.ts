@@ -15,6 +15,15 @@ export interface SearchOpts {
   maxDistance?: number;
 }
 
+export interface HybridSearchOpts {
+  query: string;
+  limit: number;
+  wing?: string;
+  room?: string;
+  /** Attach per-source trace (matched_via counts) to the response. */
+  includeTrace?: boolean;
+}
+
 export interface WriteMemoryOpts {
   content: string;
   wing: string;
@@ -68,6 +77,53 @@ export class PalaceClient {
         timeoutPromise,
       ]);
       if (!res.ok) throw new Error(`palace-daemon search: ${res.status} ${res.statusText}`);
+      return (await res.json()) as PalaceSearchResult;
+    } finally {
+      if (timer) clearTimeout(timer);
+    }
+  }
+
+  /**
+   * Hybrid search: fuses vector + BM25 + graph retrieval in a single
+   * ranked result set. Calls palace-daemon's /search/hybrid endpoint
+   * which routes through mempalace's `candidate_strategy="hybrid"`
+   * path.
+   *
+   * Use over `search()` when retrieval quality matters more than raw
+   * latency — hybrid surfaces BM25-strong / graph-anchored drawers
+   * that vector alone misses. Requires postgres backend (daemon
+   * returns 503 on chroma; familiar should fall back to `search()`
+   * in that case).
+   */
+  async searchHybrid(opts: HybridSearchOpts): Promise<PalaceSearchResult> {
+    const normalizedQ = opts.query.replace(/[?!.,;:]+\s*$/, "").trim();
+    const body: Record<string, unknown> = {
+      query: normalizedQ,
+      limit: opts.limit,
+    };
+    if (opts.wing) body.wing = opts.wing;
+    if (opts.room) body.room = opts.room;
+    if (opts.includeTrace) body.include_trace = true;
+
+    const ctl = new AbortController();
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const timeoutPromise = new Promise<never>((_, reject) => {
+      timer = setTimeout(() => {
+        ctl.abort();
+        reject(new Error(`palace-daemon hybrid search: timeout after ${this.searchTimeoutMs}ms`));
+      }, this.searchTimeoutMs);
+    });
+    try {
+      const res = await Promise.race([
+        this.fetchFn(`${this.baseUrl}/search/hybrid`, {
+          method: "POST",
+          headers: this.headers(),
+          body: JSON.stringify(body),
+          signal: ctl.signal,
+        }),
+        timeoutPromise,
+      ]);
+      if (!res.ok) throw new Error(`palace-daemon hybrid search: ${res.status} ${res.statusText}`);
       return (await res.json()) as PalaceSearchResult;
     } finally {
       if (timer) clearTimeout(timer);

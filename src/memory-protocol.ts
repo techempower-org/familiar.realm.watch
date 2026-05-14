@@ -50,15 +50,47 @@ export async function retrieveAndGround(opts: RetrieveAndGroundOpts): Promise<Re
   let availableInScope: number | undefined;
   let palaceWarnings: string[] = [];
 
+  // Phase 5 of the hybrid-search-taxonomy initiative (familiar.realm.watch
+  // spec §3.8): default retrieval to hybrid when available. Hybrid fuses
+  // vector + BM25 + graph candidates server-side, addressing the
+  // vector-only failure modes (rare tokens, file paths, exact strings).
+  // PALACE_SEARCH_MODE=vector forces the legacy path; "hybrid" (default)
+  // tries hybrid first and falls back to vector on 503 (chroma backends).
+  const mode = (Bun.env.PALACE_SEARCH_MODE ?? "hybrid").toLowerCase();
   try {
-    const search = await opts.palace.search({
-      query: opts.userMessage.slice(0, 250),
-      limit: opts.retrievalLimit,
-      wing: opts.wingScope ?? undefined,
-    });
-    drawers = search.results ?? [];
-    availableInScope = search.available_in_scope;
-    palaceWarnings = search.warnings ?? [];
+    if (mode === "hybrid") {
+      try {
+        const search = await opts.palace.searchHybrid({
+          query: opts.userMessage.slice(0, 250),
+          limit: opts.retrievalLimit,
+          wing: opts.wingScope ?? undefined,
+        });
+        drawers = search.results ?? [];
+        availableInScope = search.available_in_scope;
+        palaceWarnings = search.warnings ?? [];
+      } catch (hybridErr) {
+        // Hybrid endpoint not available (older daemon or chroma backend).
+        // Fall back to vector path silently — the user gets results, just
+        // without the BM25/graph boost.
+        const msg = hybridErr instanceof Error ? hybridErr.message : String(hybridErr);
+        if (msg.includes("503") || msg.includes("404")) {
+          warnings.push("hybrid_fallback_vector");
+        } else {
+          throw hybridErr;
+        }
+      }
+    }
+    if (drawers.length === 0 && availableInScope === undefined) {
+      // Either mode=vector, or hybrid was unavailable. Use legacy /search.
+      const search = await opts.palace.search({
+        query: opts.userMessage.slice(0, 250),
+        limit: opts.retrievalLimit,
+        wing: opts.wingScope ?? undefined,
+      });
+      drawers = search.results ?? [];
+      availableInScope = search.available_in_scope;
+      palaceWarnings = search.warnings ?? [];
+    }
   } catch (err) {
     warnings.push("palace_unreachable");
   }
