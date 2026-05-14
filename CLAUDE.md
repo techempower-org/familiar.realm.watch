@@ -12,8 +12,10 @@ Local-first AI companion. Reads mempalace before speaking, writes it after. See 
 
 - TypeScript + Bun (runtime + test runner + package manager)
 - Ollama (chat + embeddings over HTTP)
-- palace-daemon (mempalace HTTP gateway) on `disks` at `:8085` — palace data lives in `/mnt/raid/projects/mempalace-data/palace`
-- familiar-api runs on `katana` for now (2080 Ti), migrating to `familiar` once its P102 GPUs are in
+- [palace-daemon](https://github.com/techempower-org/palace-daemon) (mempalace HTTP gateway) on `disks` at `:8085` — postgres backend (pgvector + AGE) at `disks:5433`, raid-backed at `/mnt/raid/projects/mempalace-data/palace`
+- [mempalace](https://github.com/techempower-org/mempalace) (techempower-org fork) pip-installed into palace-daemon's venv — adds postgres+pgvector+AGE backend, hybrid search, canonical room taxonomy
+- familiar-api: production on `familiar` host (10.0.6.124); dev/test on `katana` (10.0.6.129)
+- Caddy + Authelia edge on `ubox0` — public-facing `familiar.jphe.in` lands here
 - PWA served by Bun from `web/`
 
 ## Key conventions
