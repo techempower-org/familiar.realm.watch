@@ -1,6 +1,6 @@
 {
-  "name": "realm-sigil",
-  "version": "1.1.0",
+  "name": "sigil.realm.watch",
+  "version": "1.2.0",
   "description": "Deterministic magical version name generation for JP's projects",
   "main": "index.js",
   "types": "index.d.ts",
@@ -13,6 +13,11 @@
       "types": "./handler.d.ts",
       "default": "./handler.js"
     },
+    "./react": {
+      "types": "./Sigil.tsx",
+      "default": "./Sigil.tsx"
+    },
+    "./react/style.css": "./Sigil.module.css",
     "./package.json": "./package.json"
   },
   "files": [
@@ -20,7 +25,17 @@
     "index.d.ts",
     "handler.js",
     "handler.d.ts",
-    "realms.js"
+    "realms.js",
+    "Sigil.tsx",
+    "Sigil.module.css"
   ],
+  "peerDependencies": {
+    "react": "^18 || ^19"
+  },
+  "peerDependenciesMeta": {
+    "react": {
+      "optional": true
+    }
+  },
   "license": "GPL-3.0-only"
 }

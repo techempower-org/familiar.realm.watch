@@ -10,3 +10,9 @@ dist/
 coverage/
 .DS_Store
 .git_info
+
+# Test artifacts — playwright screenshots + traces (visual smoke tests)
+.playwright-mcp/
+*.png
+*.jpeg
+*.jpg

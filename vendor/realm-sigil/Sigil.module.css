@@ -1,0 +1,233 @@
+/* realm-sigil — React Sigil component styles.
+ *
+ * All visual properties are CSS custom properties prefixed `--rs-`.
+ * Override them on a parent (typically `:root`) to make the sigil
+ * match your project palette. Sensible cosmic-elegant defaults are
+ * provided below so the component looks coherent out of the box.
+ */
+
+.sigil {
+  /* Theming hooks. Override these on :root or any ancestor. */
+  --rs-bg: rgba(20, 24, 52, 0.72);
+  --rs-bg-deep: #0a0e2c;
+  --rs-fg: #f4f1e6;
+  --rs-fg-muted: rgba(244, 241, 230, 0.62);
+  --rs-fg-faint: rgba(244, 241, 230, 0.32);
+  --rs-stroke: rgba(244, 241, 230, 0.14);
+  --rs-accent: #f3c46b;
+  --rs-serif: "Cormorant Garamond", Georgia, serif;
+  --rs-sans: "Inter", system-ui, -apple-system, sans-serif;
+
+  position: fixed;
+  bottom: 14px;
+  z-index: 50;
+  font-family: var(--rs-sans);
+  color: var(--rs-fg);
+  pointer-events: auto;
+  display: flex;
+  flex-direction: column-reverse;
+  gap: 6px;
+}
+
+.pos_bottom-left {
+  left: 14px;
+  align-items: flex-start;
+}
+
+.pos_bottom-right {
+  right: 14px;
+  align-items: flex-end;
+}
+
+.handle {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 12px 6px 10px;
+  background: var(--rs-bg);
+  border: 1px solid var(--rs-stroke);
+  border-radius: 999px;
+  color: var(--rs-fg-muted);
+  font-family: var(--rs-sans);
+  font-size: 11px;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  cursor: pointer;
+  backdrop-filter: blur(14px) saturate(160%);
+  -webkit-backdrop-filter: blur(14px) saturate(160%);
+  box-shadow: 0 4px 18px rgba(0, 0, 0, 0.28);
+  transition:
+    color 200ms ease,
+    border-color 200ms ease,
+    transform 200ms ease;
+}
+.handle:hover,
+.sigil.open .handle {
+  color: var(--rs-fg);
+  border-color: var(--rs-accent);
+  transform: translateY(-1px);
+}
+
+.glyph {
+  display: inline-block;
+  color: var(--rs-accent);
+  font-size: 13px;
+  line-height: 1;
+  text-shadow: 0 0 8px var(--rs-accent);
+  animation: rsSigilPulse 4.6s ease-in-out infinite;
+  transform-origin: center;
+}
+
+.magicName {
+  /* Two-word realm-sigil name ("Distant Kuiper"). Project serif so it
+     reads as a proper title rather than a tracked code label. */
+  font-family: var(--rs-serif);
+  font-style: italic;
+  font-weight: 500;
+  letter-spacing: 0;
+  text-transform: none;
+  color: var(--rs-fg);
+  font-size: 13px;
+  line-height: 1;
+}
+
+.divider {
+  color: var(--rs-fg-faint);
+  font-weight: 400;
+}
+
+.hash {
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.08em;
+  text-transform: none;
+  font-size: 10.5px;
+  color: var(--rs-fg-muted);
+}
+
+.dirty {
+  display: inline-block;
+  margin-left: 4px;
+  color: var(--rs-accent);
+}
+
+.panel {
+  width: 240px;
+  padding: 14px 16px 12px;
+  background: var(--rs-bg);
+  border: 1px solid var(--rs-stroke);
+  border-radius: 14px;
+  box-shadow: 0 12px 36px rgba(0, 0, 0, 0.4);
+  backdrop-filter: blur(18px) saturate(160%);
+  -webkit-backdrop-filter: blur(18px) saturate(160%);
+  text-align: left;
+  opacity: 0;
+  transform: translateY(6px);
+  pointer-events: none;
+  transition:
+    opacity 220ms ease,
+    transform 220ms ease;
+}
+
+.sigil.open .panel {
+  opacity: 1;
+  transform: translateY(0);
+  pointer-events: auto;
+}
+
+.line {
+  margin: 0;
+  padding: 3px 0;
+  display: grid;
+  grid-template-columns: 64px 1fr;
+  align-items: baseline;
+  gap: 8px;
+  font-size: 11.5px;
+  line-height: 1.4;
+}
+
+.label {
+  font-family: var(--rs-sans);
+  font-size: 9.5px;
+  letter-spacing: 0.22em;
+  text-transform: uppercase;
+  color: var(--rs-fg-faint);
+}
+
+.value {
+  font-family: var(--rs-serif);
+  font-style: italic;
+  color: var(--rs-fg);
+  font-size: 13px;
+  word-break: break-word;
+}
+
+.valueMono {
+  font-family: var(--rs-sans);
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.04em;
+  font-size: 12px;
+  color: var(--rs-fg);
+  word-break: break-all;
+}
+
+.link {
+  display: inline-block;
+  margin-top: 10px;
+  padding: 6px 0 0;
+  border-top: 1px solid var(--rs-stroke);
+  width: 100%;
+  font-family: var(--rs-sans);
+  font-size: 10.5px;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--rs-accent);
+  text-decoration: none;
+  text-align: left;
+}
+.link:hover {
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+@keyframes rsSigilPulse {
+  0%, 100% {
+    transform: scale(1);
+    filter: brightness(1);
+  }
+  10%, 14% {
+    transform: scale(1.18);
+    filter: brightness(1.5);
+  }
+  50%, 54% {
+    transform: scale(1.08);
+    filter: brightness(1.25);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .glyph {
+    animation: none;
+  }
+  .panel {
+    transition: opacity 0ms;
+    transform: none;
+  }
+  .sigil.open .panel {
+    transform: none;
+  }
+}
+
+@media (max-width: 480px) {
+  .sigil {
+    bottom: 8px;
+  }
+  .pos_bottom-left {
+    left: 8px;
+  }
+  .pos_bottom-right {
+    right: 8px;
+  }
+  .panel {
+    width: 220px;
+  }
+}
