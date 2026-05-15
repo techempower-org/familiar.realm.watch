@@ -1523,13 +1523,21 @@ if ("serviceWorker" in navigator) {
 // chips are stripped before TTS so we don't read "asterisk asterisk
 // bold asterisk asterisk" or "drawer underscore xyz".
 
-const VOICE_KEY = "familiar_voice_state"; // {enabled: bool, voiceURI: string}
+// voiceState shape:
+//   enabled    — global on/off toggle
+//   voiceURI   — browser speechSynthesis voiceURI (used when gnome-speaks
+//                is unreachable; opaque per-engine string)
+//   azureVoice — gnome-speaks Azure ShortName (e.g. 'en-US-JennyNeural');
+//                stored separately so each device's preferred backend keeps
+//                its own pick across sessions even when the other isn't
+//                available right now.
+const VOICE_KEY = "familiar_voice_state";
 const voiceState = (() => {
   try {
     const raw = localStorage.getItem(VOICE_KEY);
-    if (raw) return { enabled: false, voiceURI: "", ...JSON.parse(raw) };
+    if (raw) return { enabled: false, voiceURI: "", azureVoice: "", ...JSON.parse(raw) };
   } catch { /* fall through */ }
-  return { enabled: false, voiceURI: "" };
+  return { enabled: false, voiceURI: "", azureVoice: "" };
 })();
 
 function persistVoiceState() {
@@ -1540,12 +1548,19 @@ function speechSupported() {
   return typeof window !== "undefined" && "speechSynthesis" in window && typeof window.SpeechSynthesisUtterance === "function";
 }
 
+// Which backend the picker is currently showing: "gnome" or "browser".
+// Set by loadGnomeVoices() / loadBrowserVoices() to control change-handler
+// routing.
+let voicePickerSource = "browser";
 let availableVoices = [];
-function loadVoices() {
+
+function loadBrowserVoices() {
   if (!speechSupported()) return;
   availableVoices = window.speechSynthesis.getVoices();
-  // Populate picker — sort by lang then name. Prefer en-* voices first.
   if (!voicePicker) return;
+  // If gnome-speaks already populated the picker, don't clobber it —
+  // browser TTS is the fallback and gnome-speaks is preferred everywhere.
+  if (voicePickerSource === "gnome") return;
   const cur = voicePicker.value;
   while (voicePicker.firstChild) voicePicker.removeChild(voicePicker.firstChild);
   const sorted = availableVoices.slice().sort((a, b) => {
@@ -1565,20 +1580,89 @@ function loadVoices() {
   } else if (cur && sorted.find((v) => v.voiceURI === cur)) {
     voicePicker.value = cur;
   }
+  voicePickerSource = "browser";
+}
+
+// Render gnome-speaks /voices into the picker, grouped by locale via
+// <optgroup>. The 653 Azure neural voices are unwieldy as a flat list;
+// optgroups let the browser's native <select> dropdown stay navigable.
+// en-* locales sort to the top.
+async function loadGnomeVoices() {
+  if (!voicePicker) return;
+  try {
+    const r = await fetch(`${GNOME_SPEAKS_URL}/voices`, {
+      signal: AbortSignal.timeout ? AbortSignal.timeout(2500) : undefined,
+    });
+    if (!r.ok) throw new Error(`HTTP ${r.status}`);
+    const voices = await r.json();
+    if (!Array.isArray(voices) || voices.length === 0) {
+      throw new Error("empty voices list");
+    }
+    // Group by locale, en-* first, then alphabetical.
+    const byLocale = new Map();
+    for (const v of voices) {
+      const loc = v.Locale || "xx-XX";
+      if (!byLocale.has(loc)) byLocale.set(loc, []);
+      byLocale.get(loc).push(v);
+    }
+    const locales = Array.from(byLocale.keys()).sort((a, b) => {
+      const aEn = a.startsWith("en-") ? 0 : 1;
+      const bEn = b.startsWith("en-") ? 0 : 1;
+      if (aEn !== bEn) return aEn - bEn;
+      return a.localeCompare(b);
+    });
+
+    while (voicePicker.firstChild) voicePicker.removeChild(voicePicker.firstChild);
+    voicePicker.disabled = false;
+    for (const loc of locales) {
+      const group = document.createElement("optgroup");
+      const sample = byLocale.get(loc)[0];
+      group.label = `${sample.LocaleName || loc} · ${loc}`;
+      const sorted = byLocale.get(loc).slice().sort((a, b) =>
+        (a.DisplayName || a.ShortName).localeCompare(b.DisplayName || b.ShortName)
+      );
+      for (const v of sorted) {
+        const opt = document.createElement("option");
+        opt.value = v.ShortName;
+        const gender = v.Gender ? ` (${v.Gender[0]})` : "";
+        opt.textContent = `${v.DisplayName || v.ShortName}${gender}`;
+        group.appendChild(opt);
+      }
+      voicePicker.appendChild(group);
+    }
+
+    // Restore prior pick if it still exists; otherwise default to en-US-AriaNeural
+    // (warm, well-tuned, a common Azure default), then to the first option.
+    const allShortNames = voices.map((v) => v.ShortName);
+    let pick = voiceState.azureVoice && allShortNames.includes(voiceState.azureVoice)
+      ? voiceState.azureVoice
+      : null;
+    if (!pick && allShortNames.includes("en-US-AriaNeural")) pick = "en-US-AriaNeural";
+    if (!pick) pick = allShortNames[0];
+    voicePicker.value = pick;
+    // Persist the resolved default so subsequent /speak calls have a voice.
+    if (pick !== voiceState.azureVoice) {
+      voiceState.azureVoice = pick;
+      persistVoiceState();
+    }
+    voicePickerSource = "gnome";
+    console.info(`[familiar] voice picker populated with ${voices.length} Azure voices`);
+  } catch (e) {
+    console.warn("[familiar] gnome-speaks /voices failed; falling back to browser picker:", e);
+    // Leave whatever loadBrowserVoices populated in place.
+  }
 }
 
 if (speechSupported()) {
-  loadVoices();
-  // Voices load async on Chrome; fires onvoiceschanged once available.
+  loadBrowserVoices();
   if (typeof window.speechSynthesis.onvoiceschanged !== "undefined") {
-    window.speechSynthesis.onvoiceschanged = loadVoices;
+    window.speechSynthesis.onvoiceschanged = loadBrowserVoices;
   }
 } else if (voicePicker) {
   voicePicker.disabled = true;
   voicePicker.appendChild(Object.assign(document.createElement("option"), {
     textContent: "speech not supported in this browser",
   }));
-  if (voiceEnabled) voiceEnabled.disabled = true;
 }
 
 if (voiceEnabled) {
@@ -1591,7 +1675,11 @@ if (voiceEnabled) {
 }
 if (voicePicker) {
   voicePicker.addEventListener("change", () => {
-    voiceState.voiceURI = voicePicker.value;
+    if (voicePickerSource === "gnome") {
+      voiceState.azureVoice = voicePicker.value;
+    } else {
+      voiceState.voiceURI = voicePicker.value;
+    }
     persistVoiceState();
   });
 }
@@ -1648,6 +1736,10 @@ async function probeGnomeSpeaks() {
       gnomeSpeaksAvailable = true;
       const d = await r.json();
       console.info("[familiar] gnome-speaks ready (state=" + d.state + ") — TTS will route through Azure Neural voices");
+      // Populate the picker with Azure voices now that we know gnome-speaks
+      // is reachable. This replaces the browser-voices list (if any was
+      // populated by loadBrowserVoices) — browser TTS becomes the fallback.
+      loadGnomeVoices();
     }
   } catch {
     gnomeSpeaksAvailable = false;
@@ -1659,10 +1751,14 @@ async function speakViaGnome(text, btn) {
   cancelSpeech();
   if (btn) btn.classList.add("speaking");
   try {
+    const body = { text };
+    // Per-utterance voice override — only send when user has picked one.
+    // Empty string would round-trip and confuse the sanitizer.
+    if (voiceState.azureVoice) body.voice = voiceState.azureVoice;
     const r = await fetch(`${GNOME_SPEAKS_URL}/speak`, {
       method: "POST",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ text }),
+      body: JSON.stringify(body),
     });
     if (!r.ok) throw new Error(`gnome-speaks /speak HTTP ${r.status}`);
     // Poll /status to clear .speaking when the service goes back to idle.
