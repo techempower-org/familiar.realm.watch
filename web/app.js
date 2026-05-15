@@ -941,6 +941,28 @@ async function checkHealth() {
   }
 }
 
+// Textarea auto-resize: grow with content, capped by CSS max-height.
+// Reset to 1 row on send so the field collapses back after submit.
+const autoResize = () => {
+  input.style.height = "auto";
+  input.style.height = `${Math.min(input.scrollHeight, 192)}px`;
+};
+input.addEventListener("input", autoResize);
+
+// Keyboard: Enter submits, Shift+Enter inserts a newline.
+input.addEventListener("keydown", (e) => {
+  if (e.key === "Enter" && !e.shiftKey && !e.isComposing) {
+    e.preventDefault();
+    form.requestSubmit();
+  }
+});
+
+// Typing indicator (pulsing dots) shown between submit and first token,
+// then until the stream completes. Lives just above the form.
+const typingIndicator = document.getElementById("typing-indicator");
+const showTyping = () => { if (typingIndicator) typingIndicator.hidden = false; };
+const hideTyping = () => { if (typingIndicator) typingIndicator.hidden = true; };
+
 form.addEventListener("submit", async (e) => {
   e.preventDefault();
   const text = input.value.trim();
@@ -948,7 +970,10 @@ form.addEventListener("submit", async (e) => {
   // Stop any ongoing TTS so the familiar doesn't talk over the next exchange.
   if (currentUtterance) cancelSpeech();
   input.value = "";
+  autoResize();
   submit.disabled = true;
+  showTyping();
+  setStatus("streaming", "thinking");
 
   appendMessage("user", text);
   appendTurnToSession("user", text);
@@ -1043,8 +1068,11 @@ form.addEventListener("submit", async (e) => {
     if (voiceState.enabled && speechSupported()) speakText(full, speakBtn);
   } catch (err) {
     assistantEl.textContent = `(the familiar did not respond: ${err.message})`;
+    setStatus("error", "error");
   } finally {
     submit.disabled = false;
+    hideTyping();
+    setStatus("connected", "connected");
     input.focus();
   }
 });
@@ -1068,9 +1096,14 @@ async function fetchPalaceGraph(force = false) {
   return palaceCache;
 }
 
+// Memory browser state — drill-down through wings → rooms → drawers.
+let browserState = { wing: null, room: null, drawer: null };
+let roomsByWingCache = {};
+
 function renderPalace(graph) {
   const wings = graph.wings || {};
   const roomsByWing = Object.fromEntries((graph.rooms || []).map((r) => [r.wing, r.rooms || {}]));
+  roomsByWingCache = roomsByWing;
   const wingEntries = Object.entries(wings).sort(([, a], [, b]) => b - a);
   const total = wingEntries.reduce((s, [, n]) => s + n, 0);
   const maxWing = wingEntries[0]?.[1] ?? 1;
@@ -1080,52 +1113,31 @@ function renderPalace(graph) {
     palaceStats.textContent = `${total.toLocaleString()} drawers · ${wingEntries.length} wings · ${graph.tunnels?.length ?? 0} tunnels · ${triples} kg triples`;
   }
 
-  // Treemap
+  // Wings column — each is a clickable browser-item with a sparkline.
   while (palaceTreemap.firstChild) palaceTreemap.removeChild(palaceTreemap.firstChild);
   for (const [wing, count] of wingEntries) {
-    const card = document.createElement("div");
-    card.className = "wing-card";
+    const item = document.createElement("button");
+    item.type = "button";
+    item.className = "browser-item";
+    item.dataset.wing = wing;
+    if (browserState.wing === wing) item.classList.add("active");
 
-    const head = document.createElement("div");
-    head.className = "wing-card-head";
-    const name = document.createElement("span");
-    name.className = "wing-name";
-    name.textContent = wing.replace(/^wing_/, "");
-    head.appendChild(name);
+    const label = document.createElement("span");
+    label.className = "browser-item-label";
+    label.textContent = wing.replace(/^wing_/, "") || "(unnamed)";
+    item.appendChild(label);
+
     const cnt = document.createElement("span");
-    cnt.className = "wing-count";
+    cnt.className = "browser-item-count";
     cnt.textContent = count.toLocaleString();
-    head.appendChild(cnt);
-    card.appendChild(head);
+    item.appendChild(cnt);
 
-    const bar = document.createElement("div");
-    bar.className = "wing-bar";
-    const fill = document.createElement("div");
-    fill.className = "wing-bar-fill";
-    fill.style.width = `${Math.max(2, (count / maxWing) * 100)}%`;
-    bar.appendChild(fill);
-    card.appendChild(bar);
-
-    const rooms = roomsByWing[wing] || {};
-    const roomEntries = Object.entries(rooms).sort(([, a], [, b]) => b - a).slice(0, 6);
-    if (roomEntries.length > 0) {
-      const list = document.createElement("div");
-      list.className = "wing-rooms";
-      for (const [room, n] of roomEntries) {
-        const chip = document.createElement("span");
-        chip.className = "wing-room-chip";
-        const label = document.createTextNode(room.replace(/_/g, " "));
-        chip.appendChild(label);
-        const c = document.createElement("span");
-        c.className = "wing-room-chip-count";
-        c.textContent = n;
-        chip.appendChild(c);
-        list.appendChild(chip);
-      }
-      card.appendChild(list);
-    }
-    palaceTreemap.appendChild(card);
+    item.addEventListener("click", () => selectWing(wing));
+    palaceTreemap.appendChild(item);
   }
+  // Suppress the unused-var warning; maxWing is still useful if we ever
+  // re-introduce the sparkline bar.
+  void maxWing;
 
   // Tunnels
   while (palaceTunnels.firstChild) palaceTunnels.removeChild(palaceTunnels.firstChild);
@@ -1163,6 +1175,308 @@ async function showPalace(force = false) {
   } catch (err) {
     if (palaceStats) palaceStats.textContent = `error: ${err.message}`;
   }
+}
+
+// ---- Memory browser: wings → rooms → drawers → detail ----
+const palaceRoomsCol = document.querySelector(".browser-col-rooms");
+const palaceRooms = document.getElementById("palace-rooms");
+const palaceRoomsTitle = document.getElementById("palace-rooms-title");
+const palaceRoomsBack = document.getElementById("palace-rooms-back");
+const palaceDrawersCol = document.querySelector(".browser-col-drawers");
+const palaceDrawersEl = document.getElementById("palace-drawers");
+const palaceDrawersTitle = document.getElementById("palace-drawers-title");
+const palaceDrawersBack = document.getElementById("palace-drawers-back");
+const palaceDetail = document.getElementById("palace-detail");
+const palaceDetailChain = document.getElementById("palace-detail-chain");
+const palaceDetailBody = document.getElementById("palace-detail-body");
+const palaceDetailClose = document.getElementById("palace-detail-close");
+
+function clearChildren(el) { while (el.firstChild) el.removeChild(el.firstChild); }
+
+// Canonical 7 rooms (post Phase 1D FK migration). Always show these
+// as clickable destinations so the user can browse empty rooms too —
+// the cached graph endpoint sometimes lags on which rooms have data.
+const CANONICAL_ROOMS = [
+  "architecture", "decisions", "discoveries", "planning",
+  "problems", "references", "sessions",
+];
+
+async function selectWing(wing) {
+  browserState = { wing, room: null, drawer: null };
+  // Mark active in wings column
+  palaceTreemap.querySelectorAll(".browser-item").forEach((el) => {
+    el.classList.toggle("active", el.dataset.wing === wing);
+  });
+  if (!palaceRoomsCol) return;
+  palaceRoomsCol.hidden = false;
+  palaceRoomsTitle.textContent = (wing.replace(/^wing_/, "") || "(unnamed)") + " · rooms";
+  clearChildren(palaceRooms);
+
+  // Optimistic render from the cached graph + canonical 7 (instant).
+  const cachedRooms = roomsByWingCache[wing] || {};
+  const seen = new Set();
+  const renderRoom = (room, count) => {
+    if (seen.has(room)) return;
+    seen.add(room);
+    const item = document.createElement("button");
+    item.type = "button";
+    item.className = "browser-item";
+    item.dataset.room = room;
+    const label = document.createElement("span");
+    label.className = "browser-item-label";
+    label.textContent = room.replace(/_/g, " ");
+    item.appendChild(label);
+    const cnt = document.createElement("span");
+    cnt.className = "browser-item-count";
+    cnt.dataset.kind = "room-count";
+    cnt.textContent = count == null ? "…" : count.toLocaleString();
+    item.appendChild(cnt);
+    item.addEventListener("click", () => selectRoom(wing, room));
+    palaceRooms.appendChild(item);
+  };
+  // Cached graph rooms first (most-populated)
+  for (const [room, count] of Object.entries(cachedRooms).sort(([, a], [, b]) => b - a)) {
+    renderRoom(room, count);
+  }
+  // Canonical 7 — fill any not in cache, with placeholder counts
+  for (const room of CANONICAL_ROOMS) renderRoom(room, null);
+
+  // Reset drawers + detail
+  if (palaceDrawersCol) palaceDrawersCol.hidden = true;
+  if (palaceDetail) palaceDetail.hidden = true;
+
+  // Live refresh: probe each canonical room's actual count in parallel
+  // so users see truth even when /api/familiar/graph is stale.
+  try {
+    const probes = CANONICAL_ROOMS.map(async (room) => {
+      const r = await fetch(`/api/familiar/memories?wing=${encodeURIComponent(wing)}&room=${encodeURIComponent(room)}&limit=1`);
+      if (!r.ok) return [room, null];
+      const data = await r.json();
+      // Prefer daemon-side `total` (real row count); fall back to limited
+      // `count` if older familiar-api version doesn't surface total.
+      return [room, data.total ?? data.count];
+    });
+    const results = await Promise.all(probes);
+    // Stop if user navigated away
+    if (browserState.wing !== wing) return;
+    for (const [room, count] of results) {
+      if (count == null) continue;
+      const item = palaceRooms.querySelector(`.browser-item[data-room="${room}"]`);
+      if (!item) continue;
+      const cnt = item.querySelector('[data-kind="room-count"]');
+      if (cnt) cnt.textContent = count.toLocaleString();
+    }
+  } catch { /* non-fatal — placeholder counts stay */ }
+}
+
+async function selectRoom(wing, room) {
+  browserState = { wing, room, drawer: null };
+  // Mark active in rooms column
+  palaceRooms.querySelectorAll(".browser-item").forEach((el) => {
+    el.classList.toggle("active", el.dataset.room === room);
+  });
+  // Show drawers column with loading state
+  if (!palaceDrawersCol) return;
+  palaceDrawersCol.hidden = false;
+  palaceDrawersTitle.textContent = `${wing.replace(/^wing_/, "")} · ${room} · drawers`;
+  clearChildren(palaceDrawersEl);
+  const loading = document.createElement("div");
+  loading.className = "browser-empty";
+  loading.textContent = "loading…";
+  palaceDrawersEl.appendChild(loading);
+  // Reset detail
+  if (palaceDetail) palaceDetail.hidden = true;
+
+  try {
+    const params = new URLSearchParams({ wing, room, limit: "50" });
+    const r = await fetch(`/api/familiar/memories?${params}`);
+    if (!r.ok) throw new Error(`HTTP ${r.status}`);
+    const data = await r.json();
+    clearChildren(palaceDrawersEl);
+    const drawers = data.drawers || [];
+    if (drawers.length === 0) {
+      const empty = document.createElement("div");
+      empty.className = "browser-empty";
+      empty.textContent = "no drawers in this room";
+      palaceDrawersEl.appendChild(empty);
+      return;
+    }
+    for (const d of drawers) {
+      const item = document.createElement("button");
+      item.type = "button";
+      item.className = "browser-item browser-drawer-item";
+      item.dataset.drawerId = d.id;
+
+      const meta = document.createElement("div");
+      meta.className = "browser-drawer-meta";
+      const idShort = document.createElement("span");
+      idShort.textContent = d.id.replace(/^drawer_/, "").slice(-16);
+      meta.appendChild(idShort);
+      const created = document.createElement("span");
+      if (d.created_at) {
+        const dt = new Date(d.created_at);
+        created.textContent = isNaN(dt) ? d.created_at.slice(0, 10) : dt.toISOString().slice(0, 10);
+      }
+      meta.appendChild(created);
+      item.appendChild(meta);
+
+      const snippet = document.createElement("div");
+      snippet.className = "browser-drawer-snippet";
+      snippet.textContent = (d.text || "").slice(0, 240);
+      item.appendChild(snippet);
+
+      item.addEventListener("click", () => selectDrawer(d));
+      palaceDrawersEl.appendChild(item);
+    }
+  } catch (err) {
+    clearChildren(palaceDrawersEl);
+    const e = document.createElement("div");
+    e.className = "browser-empty";
+    e.textContent = `error: ${err.message}`;
+    palaceDrawersEl.appendChild(e);
+  }
+}
+
+function selectDrawer(drawer) {
+  browserState.drawer = drawer.id;
+  // Mark active
+  palaceDrawersEl.querySelectorAll(".browser-item").forEach((el) => {
+    el.classList.toggle("active", el.dataset.drawerId === drawer.id);
+  });
+  if (!palaceDetail) return;
+  palaceDetail.hidden = false;
+  const chain = `palace → wing:${(drawer.wing || browserState.wing || "?").replace(/^wing_/, "")} → room:${drawer.room || browserState.room || "?"} → ${drawer.id.replace(/^drawer_/, "").slice(-20)}`;
+  palaceDetailChain.textContent = chain;
+  palaceDetailBody.textContent = drawer.text || "(empty drawer)";
+}
+
+if (palaceRoomsBack) {
+  palaceRoomsBack.addEventListener("click", () => {
+    if (palaceRoomsCol) palaceRoomsCol.hidden = true;
+    if (palaceDrawersCol) palaceDrawersCol.hidden = true;
+    if (palaceDetail) palaceDetail.hidden = true;
+    browserState = { wing: null, room: null, drawer: null };
+    palaceTreemap.querySelectorAll(".browser-item.active").forEach((el) => el.classList.remove("active"));
+  });
+}
+if (palaceDrawersBack) {
+  palaceDrawersBack.addEventListener("click", () => {
+    if (palaceDrawersCol) palaceDrawersCol.hidden = true;
+    if (palaceDetail) palaceDetail.hidden = true;
+    browserState.room = null;
+    browserState.drawer = null;
+    palaceRooms.querySelectorAll(".browser-item.active").forEach((el) => el.classList.remove("active"));
+  });
+}
+if (palaceDetailClose) {
+  palaceDetailClose.addEventListener("click", () => {
+    if (palaceDetail) palaceDetail.hidden = true;
+    palaceDrawersEl.querySelectorAll(".browser-item.active").forEach((el) => el.classList.remove("active"));
+    browserState.drawer = null;
+  });
+}
+
+// ---- Sidebar palace search ----
+const palaceSearch = document.getElementById("palace-search");
+const palaceSearchResults = document.getElementById("palace-search-results");
+let searchAbort = null;
+let searchDebounce = null;
+
+async function runPalaceSearch(query) {
+  if (searchAbort) searchAbort.abort();
+  searchAbort = new AbortController();
+  clearChildren(palaceSearchResults);
+  const loading = document.createElement("li");
+  loading.className = "search-results-empty";
+  loading.textContent = "searching…";
+  palaceSearchResults.appendChild(loading);
+  palaceSearchResults.hidden = false;
+
+  try {
+    // The /api/familiar/eval route runs the full grounding pipeline
+    // (vector + BM25 + graph hybrid retrieval) and returns SmeEntity
+    // shapes with content_snippet — exactly what we want for an
+    // inline search bar.
+    const r = await fetch("/api/familiar/eval", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ query, mock: true, limit: 8 }),
+      signal: searchAbort.signal,
+    });
+    if (!r.ok) throw new Error(`HTTP ${r.status}`);
+    const data = await r.json();
+    const entities = (data.retrieved_entities || []).slice(0, 8);
+    clearChildren(palaceSearchResults);
+    if (entities.length === 0) {
+      const empty = document.createElement("li");
+      empty.className = "search-results-empty";
+      empty.textContent = "no matches";
+      palaceSearchResults.appendChild(empty);
+      return;
+    }
+    for (const e of entities) {
+      const item = document.createElement("li");
+      item.className = "search-result-item";
+      const meta = document.createElement("div");
+      meta.className = "search-result-meta";
+      const wingTxt = (e.wing || "?").replace(/^wing_/, "");
+      const roomTxt = e.room || "?";
+      meta.textContent = `${wingTxt} · ${roomTxt}${e.cosine ? ` · ${e.cosine.toFixed(2)}` : ""}`;
+      item.appendChild(meta);
+      const snippet = document.createElement("div");
+      snippet.className = "search-result-snippet";
+      snippet.textContent = e.content_snippet || "";
+      item.appendChild(snippet);
+      item.addEventListener("click", () => {
+        // Open in palace view: switch tab, drill to wing/room, surface drawer
+        setTab("palace");
+        if (e.wing) {
+          selectWing(e.wing);
+          if (e.room) {
+            // Wait a tick for selectWing to render, then drill
+            setTimeout(() => {
+              selectRoom(e.wing, e.room).then(() => {
+                // Find this drawer in the list + open it
+                setTimeout(() => {
+                  const btn = palaceDrawersEl.querySelector(`[data-drawer-id="${e.id}"]`);
+                  if (btn) btn.click();
+                }, 50);
+              });
+            }, 50);
+          }
+        }
+      });
+      palaceSearchResults.appendChild(item);
+    }
+  } catch (err) {
+    if (err.name === "AbortError") return;
+    clearChildren(palaceSearchResults);
+    const e = document.createElement("li");
+    e.className = "search-results-empty";
+    e.textContent = `error: ${err.message}`;
+    palaceSearchResults.appendChild(e);
+  }
+}
+
+if (palaceSearch) {
+  palaceSearch.addEventListener("input", () => {
+    const q = palaceSearch.value.trim();
+    if (searchDebounce) clearTimeout(searchDebounce);
+    if (!q) {
+      palaceSearchResults.hidden = true;
+      clearChildren(palaceSearchResults);
+      return;
+    }
+    searchDebounce = setTimeout(() => runPalaceSearch(q), 320);
+  });
+  // Escape clears results
+  palaceSearch.addEventListener("keydown", (e) => {
+    if (e.key === "Escape") {
+      palaceSearch.value = "";
+      palaceSearchResults.hidden = true;
+      clearChildren(palaceSearchResults);
+    }
+  });
 }
 
 function setTab(name) {

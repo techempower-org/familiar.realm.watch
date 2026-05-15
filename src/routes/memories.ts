@@ -77,18 +77,25 @@ export async function handleMemoryPatch(req: Request, drawerId: string, deps: Me
 
 export async function handleMemories(req: Request, deps: MemoriesRouteDeps): Promise<Response> {
   const url = new URL(req.url);
+  // Backwards-compat: `session_id` was an alias for `room`. New callers
+  // should use `wing` + `room` directly; older callers (and the sidebar
+  // memories panel that only browses the reflect wing) still work because
+  // wing defaults to the configured reflect wing.
   const sessionId = url.searchParams.get("session_id");
-  const limit = Math.min(100, Math.max(1, Number(url.searchParams.get("limit") ?? "50")));
+  const wingParam = url.searchParams.get("wing");
+  const roomParam = url.searchParams.get("room") ?? sessionId ?? undefined;
+  const limit = Math.min(200, Math.max(1, Number(url.searchParams.get("limit") ?? "50")));
+  const wing = wingParam && wingParam.trim() ? wingParam.trim() : deps.reflectWing;
 
   try {
     // palace-daemon ≥1.7 exposes /list — query-free metadata listing
-    // by wing/room. That's the right path for browsing reflect-wing
-    // drawers (the /search wing filter is honored only on vector
-    // matches; with no embeddable content it falls back to BM25 and
-    // ignores the filter).
+    // by wing/room. That's the right path for browsing arbitrary
+    // wing/room slices of the palace (the /search wing filter is honored
+    // only on vector matches; with no embeddable content it falls back
+    // to BM25 and ignores the filter).
     const result = await deps.palace.listDrawers({
-      wing: deps.reflectWing,
-      room: sessionId ?? undefined,
+      wing,
+      room: roomParam,
       limit,
     });
     const list = (result.results ?? []).slice();
@@ -105,8 +112,12 @@ export async function handleMemories(req: Request, deps: MemoriesRouteDeps): Pro
       wing: d.wing,
       created_at: d.created_at,
     }));
+    // total is the daemon-side row count for this wing/room — not bounded
+    // by `limit` like drawers.length is. Surfacing both lets the UI show
+    // "showing N of M" affordances.
+    const total = result.total_before_filter ?? drawers.length;
     return new Response(
-      JSON.stringify({ wing: deps.reflectWing, count: drawers.length, drawers }, null, 2),
+      JSON.stringify({ wing, room: roomParam ?? null, total, count: drawers.length, drawers }, null, 2),
       { status: 200, headers: { "content-type": "application/json" } },
     );
   } catch (err) {

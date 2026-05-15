@@ -179,7 +179,7 @@ export class PalaceClient {
     const raw = (await res.json()) as { drawers?: Array<{
       drawer_id?: string; id?: string; wing?: string; room?: string;
       content_preview?: string; text?: string; created_at?: string; topic?: string;
-    }> };
+    }>; total?: number };
     const results: PalaceDrawer[] = (raw.drawers ?? []).map((d) => ({
       id: d.drawer_id ?? d.id,
       text: d.text ?? d.content_preview ?? "",
@@ -188,7 +188,7 @@ export class PalaceClient {
       created_at: d.created_at,
       topic: d.topic,
     }));
-    return { query: "", results };
+    return { query: "", results, total_before_filter: raw.total };
   }
 
   async deleteDrawer(drawerId: string): Promise<void> {
