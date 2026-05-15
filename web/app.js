@@ -963,6 +963,38 @@ const typingIndicator = document.getElementById("typing-indicator");
 const showTyping = () => { if (typingIndicator) typingIndicator.hidden = false; };
 const hideTyping = () => { if (typingIndicator) typingIndicator.hidden = true; };
 
+// AbortController for the in-flight chat stream. Module-level so the
+// abort button (and Esc shortcut) can reach it; reset to null after
+// each turn finishes so a stale signal can't cancel the next request.
+let chatAbort = null;
+const abortBtn = document.getElementById("abort-btn");
+const sendBtn = document.getElementById("send-btn");
+const formEl = document.getElementById("form");
+
+function enterStreamingState() {
+  if (formEl) formEl.classList.add("streaming");
+  if (abortBtn) abortBtn.hidden = false;
+  if (sendBtn) sendBtn.hidden = true;
+}
+function exitStreamingState() {
+  if (formEl) formEl.classList.remove("streaming");
+  if (abortBtn) abortBtn.hidden = true;
+  if (sendBtn) sendBtn.hidden = false;
+}
+
+if (abortBtn) {
+  abortBtn.addEventListener("click", () => {
+    if (chatAbort) chatAbort.abort();
+  });
+}
+// Esc anywhere also aborts — keyboard shortcut that matches the chat
+// pattern users expect from terminal/REPL UIs.
+document.addEventListener("keydown", (e) => {
+  if (e.key === "Escape" && chatAbort) {
+    chatAbort.abort();
+  }
+});
+
 form.addEventListener("submit", async (e) => {
   e.preventDefault();
   const text = input.value.trim();
@@ -974,6 +1006,8 @@ form.addEventListener("submit", async (e) => {
   submit.disabled = true;
   showTyping();
   setStatus("streaming", "thinking");
+  enterStreamingState();
+  chatAbort = new AbortController();
 
   appendMessage("user", text);
   appendTurnToSession("user", text);
@@ -992,6 +1026,7 @@ form.addEventListener("submit", async (e) => {
         user: activeSession.id,
         stream: true,
       }),
+      signal: chatAbort.signal,
     });
     if (!res.ok || !res.body) throw new Error(`HTTP ${res.status}`);
 
@@ -1067,12 +1102,29 @@ form.addEventListener("submit", async (e) => {
     // Auto-speak when the voice toggle is on.
     if (voiceState.enabled && speechSupported()) speakText(full, speakBtn);
   } catch (err) {
-    assistantEl.textContent = `(the familiar did not respond: ${err.message})`;
-    setStatus("error", "error");
+    if (err.name === "AbortError") {
+      // User-initiated abort — note the partial response if any survived
+      // and persist what we got so the session doesn't lose context.
+      if (assistantEl.textContent.trim()) {
+        assistantEl.classList.add("aborted");
+        appendTurnToSession("assistant", assistantEl.textContent + " (aborted)");
+      } else {
+        assistantEl.textContent = "(aborted)";
+        assistantEl.classList.add("aborted");
+      }
+      setStatus("connected", "aborted");
+    } else {
+      assistantEl.textContent = `(the familiar did not respond: ${err.message})`;
+      setStatus("error", "error");
+    }
   } finally {
     submit.disabled = false;
     hideTyping();
-    setStatus("connected", "connected");
+    exitStreamingState();
+    chatAbort = null;
+    if (!assistantEl.classList.contains("aborted")) {
+      setStatus("connected", "connected");
+    }
     input.focus();
   }
 });
@@ -1107,6 +1159,8 @@ function renderPalace(graph) {
   const wingEntries = Object.entries(wings).sort(([, a], [, b]) => b - a);
   const total = wingEntries.reduce((s, [, n]) => s + n, 0);
   const maxWing = wingEntries[0]?.[1] ?? 1;
+  // KG side panel — independent of the wing/room drill-down.
+  renderKgColumn(graph);
 
   if (palaceStats) {
     const triples = graph.kg_stats?.triples ?? graph.kg_triples?.length ?? 0;
@@ -1188,7 +1242,11 @@ const palaceDrawersTitle = document.getElementById("palace-drawers-title");
 const palaceDrawersBack = document.getElementById("palace-drawers-back");
 const palaceDetail = document.getElementById("palace-detail");
 const palaceDetailChain = document.getElementById("palace-detail-chain");
-const palaceDetailBody = document.getElementById("palace-detail-body");
+// Reassignable: edit mode swaps the <pre> for a <textarea> and back, so
+// this reference needs to track the live element. Use updatePalaceDetailBody()
+// after any DOM swap that replaces the element.
+let palaceDetailBody = document.getElementById("palace-detail-body");
+function updatePalaceDetailBody(el) { palaceDetailBody = el; }
 const palaceDetailClose = document.getElementById("palace-detail-close");
 
 function clearChildren(el) { while (el.firstChild) el.removeChild(el.firstChild); }
@@ -1352,6 +1410,126 @@ async function selectRoom(wing, room) {
   }
 }
 
+// ---- KG column ----
+//
+// /api/familiar/graph returns `kg_entities` (entity objects) and
+// `kg_triples` (subject/predicate/object rows valid at a point in
+// time). We render the entities here sorted by triple-degree desc
+// — anything appearing as subject or object in N triples gets N as
+// its sort key. Clicking opens that entity's triples in the
+// detail panel (kg-mode), independent of the wing/room/drawer flow.
+
+const palaceKgEl = document.getElementById("palace-kg");
+const palaceKgCount = document.getElementById("palace-kg-count");
+let kgState = { entities: [], triplesBySubject: new Map(), triplesByObject: new Map() };
+
+function renderKgColumn(graph) {
+  if (!palaceKgEl) return;
+  const entities = graph.kg_entities || [];
+  const triples = graph.kg_triples || [];
+
+  // Build adjacency for click-to-show-triples
+  const bySubject = new Map();
+  const byObject = new Map();
+  for (const t of triples) {
+    if (!bySubject.has(t.subject)) bySubject.set(t.subject, []);
+    bySubject.get(t.subject).push(t);
+    if (!byObject.has(t.object)) byObject.set(t.object, []);
+    byObject.get(t.object).push(t);
+  }
+  kgState = { entities, triplesBySubject: bySubject, triplesByObject: byObject };
+
+  if (palaceKgCount) {
+    palaceKgCount.textContent = `${entities.length} · ${triples.length}`;
+  }
+
+  while (palaceKgEl.firstChild) palaceKgEl.removeChild(palaceKgEl.firstChild);
+
+  if (entities.length === 0) {
+    const empty = document.createElement("div");
+    empty.className = "browser-empty";
+    empty.textContent = "no entities yet";
+    palaceKgEl.appendChild(empty);
+    return;
+  }
+
+  // Sort by triple-degree desc, then name asc.
+  const withDegree = entities.map((e) => {
+    const deg = (bySubject.get(e.id)?.length || 0) + (byObject.get(e.id)?.length || 0);
+    return { entity: e, deg };
+  });
+  withDegree.sort((a, b) => {
+    if (a.deg !== b.deg) return b.deg - a.deg;
+    return (a.entity.name || a.entity.id).localeCompare(b.entity.name || b.entity.id);
+  });
+
+  for (const { entity, deg } of withDegree) {
+    const item = document.createElement("button");
+    item.type = "button";
+    item.className = "browser-item";
+    item.dataset.entityId = entity.id;
+
+    const label = document.createElement("span");
+    label.className = "browser-item-label";
+    // entity.name can be very long for institutional-memory snippets;
+    // ellipsis is handled by CSS but trim aggressively here too.
+    label.textContent = entity.name || entity.id;
+    label.title = entity.name || entity.id;
+    item.appendChild(label);
+
+    const cnt = document.createElement("span");
+    cnt.className = "browser-item-count";
+    cnt.textContent = deg.toLocaleString();
+    cnt.title = `${deg} triples`;
+    item.appendChild(cnt);
+
+    item.addEventListener("click", () => selectEntity(entity));
+    palaceKgEl.appendChild(item);
+  }
+}
+
+function selectEntity(entity) {
+  if (!palaceDetail) return;
+  palaceDetail.hidden = false;
+  palaceDetail.classList.add("kg-mode");
+  // Highlight active item
+  palaceKgEl.querySelectorAll(".browser-item").forEach((el) => {
+    el.classList.toggle("active", el.dataset.entityId === entity.id);
+  });
+  const chain = `palace → kg → ${entity.name || entity.id}${entity.type && entity.type !== "unknown" ? ` (${entity.type})` : ""}`;
+  palaceDetailChain.textContent = chain;
+
+  const asSubject = kgState.triplesBySubject.get(entity.id) || [];
+  const asObject = kgState.triplesByObject.get(entity.id) || [];
+
+  // Render triples as a readable list rather than raw JSON.
+  const lines = [];
+  if (asSubject.length) {
+    lines.push("── as subject ──");
+    for (const t of asSubject) {
+      const span = t.valid_to ? ` (${t.valid_from} → ${t.valid_to})` : ` (since ${t.valid_from})`;
+      const conf = t.confidence != null ? ` [conf=${t.confidence}]` : "";
+      lines.push(`  ${t.predicate} → ${t.object}${span}${conf}`);
+    }
+    lines.push("");
+  }
+  if (asObject.length) {
+    lines.push("── as object ──");
+    for (const t of asObject) {
+      const span = t.valid_to ? ` (${t.valid_from} → ${t.valid_to})` : ` (since ${t.valid_from})`;
+      const conf = t.confidence != null ? ` [conf=${t.confidence}]` : "";
+      lines.push(`  ${t.subject} → ${t.predicate} → (this)${span}${conf}`);
+    }
+  }
+  if (lines.length === 0) lines.push("(no triples reference this entity)");
+
+  palaceDetailBody.textContent = lines.join("\n");
+
+  // Hide drawer actions in kg-mode
+  const actions = palaceDetail.querySelector(".palace-detail-actions");
+  if (actions) actions.remove();
+}
+
 function selectDrawer(drawer) {
   browserState.drawer = drawer.id;
   // Mark active
@@ -1360,9 +1538,109 @@ function selectDrawer(drawer) {
   });
   if (!palaceDetail) return;
   palaceDetail.hidden = false;
+  palaceDetail.classList.remove("kg-mode");
   const chain = `palace → wing:${(drawer.wing || browserState.wing || "?").replace(/^wing_/, "")} → room:${drawer.room || browserState.room || "?"} → ${drawer.id.replace(/^drawer_/, "").slice(-20)}`;
   palaceDetailChain.textContent = chain;
   palaceDetailBody.textContent = drawer.text || "(empty drawer)";
+  renderDrawerActions(drawer);
+}
+
+// Build the edit/delete action row inside the detail panel. Edit toggles
+// the <pre> into a <textarea> so the existing palace-detail-body styling
+// (mono font, scroll) carries over; save calls patchMemory and snaps the
+// state back. Delete prompts then calls /api/familiar/memories DELETE.
+function renderDrawerActions(drawer) {
+  if (!palaceDetail) return;
+  let actions = palaceDetail.querySelector(".palace-detail-actions");
+  if (!actions) {
+    actions = document.createElement("div");
+    actions.className = "palace-detail-actions";
+    palaceDetail.appendChild(actions);
+  }
+  while (actions.firstChild) actions.removeChild(actions.firstChild);
+
+  const editBtn = document.createElement("button");
+  editBtn.type = "button";
+  editBtn.className = "palace-detail-edit";
+  editBtn.textContent = "edit";
+  editBtn.title = "edit this drawer's content";
+  editBtn.addEventListener("click", () => enterEditMode(drawer));
+  actions.appendChild(editBtn);
+
+  const delBtn = document.createElement("button");
+  delBtn.type = "button";
+  delBtn.className = "palace-detail-delete";
+  delBtn.textContent = "delete";
+  delBtn.title = "delete this drawer";
+  delBtn.addEventListener("click", () => deleteDrawerFromDetail(drawer));
+  actions.appendChild(delBtn);
+}
+
+function enterEditMode(drawer) {
+  if (!palaceDetailBody) return;
+  const current = drawer.text || "";
+  // Replace the <pre> with a textarea anchored to the same content area.
+  const ta = document.createElement("textarea");
+  ta.className = "palace-detail-body editing";
+  ta.value = current;
+  ta.rows = Math.max(6, Math.min(30, current.split("\n").length + 2));
+  palaceDetailBody.replaceWith(ta);
+
+  // Swap action buttons to save/cancel.
+  const actions = palaceDetail.querySelector(".palace-detail-actions");
+  while (actions.firstChild) actions.removeChild(actions.firstChild);
+  const saveBtn = document.createElement("button");
+  saveBtn.type = "button";
+  saveBtn.className = "palace-detail-save";
+  saveBtn.textContent = "save";
+  saveBtn.addEventListener("click", async () => {
+    saveBtn.disabled = true;
+    saveBtn.textContent = "saving…";
+    try {
+      await patchMemory(drawer.id, ta.value);
+      drawer.text = ta.value;
+      // Restore <pre> with new content
+      const pre = document.createElement("pre");
+      pre.className = "palace-detail-body";
+      pre.id = "palace-detail-body";
+      pre.textContent = ta.value;
+      ta.replaceWith(pre);
+      updatePalaceDetailBody(pre);
+      renderDrawerActions(drawer);
+      // Refresh sidebar memories in case this drawer is visible there.
+      refreshMemories();
+    } catch (err) {
+      saveBtn.disabled = false;
+      saveBtn.textContent = "save";
+      alert(`save failed: ${err.message}`);
+    }
+  });
+  actions.appendChild(saveBtn);
+
+  const cancelBtn = document.createElement("button");
+  cancelBtn.type = "button";
+  cancelBtn.className = "palace-detail-cancel";
+  cancelBtn.textContent = "cancel";
+  cancelBtn.addEventListener("click", () => selectDrawer(drawer));
+  actions.appendChild(cancelBtn);
+
+  ta.focus();
+}
+
+async function deleteDrawerFromDetail(drawer) {
+  if (!confirm(`delete drawer ${drawer.id.replace(/^drawer_/, "").slice(-20)}? this is permanent.`)) return;
+  try {
+    const r = await fetch(`/api/familiar/memories/${encodeURIComponent(drawer.id)}`, { method: "DELETE" });
+    if (!r.ok) throw new Error(`HTTP ${r.status}`);
+    // Close the detail panel + remove the row from the drawers column.
+    if (palaceDetail) palaceDetail.hidden = true;
+    palaceDrawersEl.querySelectorAll(".browser-item").forEach((el) => {
+      if (el.dataset.drawerId === drawer.id) el.remove();
+    });
+    refreshMemories();
+  } catch (err) {
+    alert(`delete failed: ${err.message}`);
+  }
 }
 
 if (palaceRoomsBack) {

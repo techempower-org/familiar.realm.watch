@@ -169,6 +169,17 @@
           </div>
           <div class="browser-col-body" id="palace-drawers" aria-label="drawers"></div>
         </div>
+        <!-- 4th column: knowledge-graph entities, sourced from /api/familiar/graph.kg_entities.
+             Renders alphabetically with a triple-degree counter; clicking an entity opens
+             its triples in the detail panel (kg-mode). Independent of the wing/room/drawer
+             drill-down — toggled by the "kg" header tab below. -->
+        <div class="browser-col browser-col-kg">
+          <div class="browser-col-head">
+            <span>kg</span>
+            <span class="browser-col-count" id="palace-kg-count" title="entities · triples"></span>
+          </div>
+          <div class="browser-col-body" id="palace-kg" aria-label="knowledge graph entities"></div>
+        </div>
       </div>
       <div class="palace-detail" id="palace-detail" hidden>
         <div class="palace-detail-head">
@@ -192,9 +203,20 @@
         placeholder="speak to the familiar… (enter to send · shift+enter for newline)"
         autofocus
         required></textarea>
-      <button type="submit" title="send (enter)" aria-label="send">
+      <!-- Send button: visible by default. Hidden via the .streaming class
+           on <form> while a chat stream is in flight; the abort button
+           takes its place. -->
+      <button type="submit" id="send-btn" title="send (enter)" aria-label="send">
         <svg viewBox="0 0 16 16" aria-hidden="true" width="16" height="16">
           <path d="M2 8 L14 8 M9 3 L14 8 L9 13" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+        </svg>
+      </button>
+      <!-- Abort button: shown only while the stream is live. AbortController
+           is wired to the in-flight fetch + reader so clicking here ends the
+           turn cleanly without breaking the typed message state. -->
+      <button type="button" id="abort-btn" title="stop generation (esc)" aria-label="stop" hidden>
+        <svg viewBox="0 0 16 16" aria-hidden="true" width="16" height="16">
+          <rect x="4" y="4" width="8" height="8" rx="1" fill="currentColor"/>
         </svg>
       </button>
     </form>

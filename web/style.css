@@ -1195,7 +1195,9 @@ body {
 /* ===================== Palace memory browser ===================== */
 .palace-browser {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) minmax(0, 1.2fr);
+  /* 4 columns: wings / rooms / drawers / kg. The kg column is independent
+     of the wing-room-drawer drill-down, so it stays visible at all times. */
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) minmax(0, 1.2fr) minmax(0, 1fr);
   gap: 0.75rem;
   margin-bottom: 1rem;
   /* flex-shrink: 0 stops .palace-view (a flex column) from squashing the
@@ -1205,6 +1207,18 @@ body {
    * box" on 2026-05-15. */
   flex-shrink: 0;
   min-height: 0;
+}
+.browser-col-count {
+  font-family: var(--mono);
+  font-size: 0.7rem;
+  color: var(--fg-muted);
+}
+.browser-empty {
+  padding: 1rem;
+  text-align: center;
+  font-style: italic;
+  color: var(--fg-muted);
+  font-size: 0.85rem;
 }
 .browser-col {
   display: flex;
@@ -1376,6 +1390,75 @@ body {
   word-break: break-word;
   max-height: 24rem;
   overflow-y: auto;
+}
+/* Editing mode: <pre> swaps for <textarea>. Match the pre's typography
+   so the swap doesn't visually jolt; let the textarea autosize via rows. */
+textarea.palace-detail-body.editing {
+  width: 100%;
+  border: 1px solid var(--accent);
+  background: var(--bg);
+  border-radius: 0 0 0 0;
+  resize: vertical;
+  outline: none;
+}
+
+/* Action row sits below the detail body. In kg-mode the row is removed
+   entirely (entities aren't editable through this UI). */
+.palace-detail-actions {
+  display: flex;
+  gap: 0.5rem;
+  padding: 0.5rem 0.75rem;
+  border-top: 1px solid var(--border);
+  background: var(--sidebar-bg);
+}
+.palace-detail-actions button {
+  font-family: var(--mono);
+  font-size: 0.75rem;
+  padding: 0.3rem 0.75rem;
+  background: transparent;
+  color: var(--fg-muted);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  cursor: pointer;
+  transition: color 120ms, border-color 120ms, background 120ms;
+}
+.palace-detail-actions button:hover {
+  color: var(--accent);
+  border-color: var(--accent);
+}
+.palace-detail-actions .palace-detail-delete:hover {
+  color: var(--color-error);
+  border-color: var(--color-error);
+}
+.palace-detail-actions .palace-detail-save {
+  color: var(--accent);
+  border-color: var(--accent);
+}
+.palace-detail-actions .palace-detail-save:hover {
+  background: color-mix(in srgb, var(--accent) 12%, transparent);
+}
+.palace-detail-actions .palace-detail-save[disabled] {
+  opacity: 0.6;
+  cursor: progress;
+}
+
+/* ===================== Streaming abort button ===================== */
+/* The form swaps send <-> abort by hiding via [hidden]; this style sets
+   the visual signature of the abort variant so it reads as "stop" rather
+   than "send" (warning-tinted square instead of accent-tinted arrow). */
+.form #abort-btn {
+  background: transparent;
+  color: var(--color-warn);
+  border: 1px solid var(--color-warn);
+}
+.form #abort-btn:hover {
+  background: color-mix(in srgb, var(--color-warn) 14%, transparent);
+}
+
+/* Aborted assistant turn — visually softened so user sees it was cut short. */
+.message.aborted {
+  opacity: 0.7;
+  font-style: italic;
 }
 
 /* ===================== Typing indicator (streaming) ===================== */
