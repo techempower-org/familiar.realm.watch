@@ -31,6 +31,15 @@ export interface EvalRouteDeps {
    * InferenceRouter (which wraps llama.cpp + Ollama with circuit breakers).
    */
   inference: InferenceChatProvider;
+  /**
+   * Optional HyDE generator — wired from familiar.ts when
+   * PALACE_USE_HYDE=true. Pre-search query expansion via ollama
+   * generateShort. Without this on the eval route, A/B benchmarks
+   * (multipass-structural-memory-eval) couldn't measure HyDE's
+   * uplift because the eval path calls retrieveAndGround directly
+   * — bypassing the chat-route HyDE wiring.
+   */
+  hydeGenerate?: (query: string) => Promise<string>;
 }
 
 const STUB_ANSWER =
@@ -62,6 +71,7 @@ export async function handleEval(req: Request, deps: EvalRouteDeps): Promise<Res
       retrievalLimit: limit,
       contextBudgetTokens: deps.cfg.tokenBudget.context,
       recentCitations: [],
+      hydeGenerate: deps.hydeGenerate,
     });
     contextString = grounded.systemPrompt;
     entities = grounded.entities;

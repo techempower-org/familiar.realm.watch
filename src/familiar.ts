@@ -44,6 +44,18 @@ if (cfg.llamaCpp.url) {
 inferenceProviders.push(ollamaChat);
 const inferenceRouter = new InferenceRouter(inferenceProviders);
 
+// HyDE generator — module-scope so both /v1/chat/completions and
+// /api/familiar/eval share the same wiring. When PALACE_USE_HYDE=true
+// env is set, retrieval gets a hypothesis-generating pre-step that
+// bridges paraphrase vocabulary gaps (closes the "user says X, drawer
+// says Y" gap for tech identifiers). Cheap on gemma3:4b (~2s).
+const hyde = (Bun.env.PALACE_USE_HYDE ?? "").toLowerCase() === "true"
+  ? async (query: string) => ollamaChat.generateShort(
+      `Write a concise (~80 words) hypothetical answer to: ${query}\nDo not say "hypothetically" or hedge — write as if you know.`,
+      { maxTokens: 150, timeoutMs: 4000 },
+    )
+  : undefined;
+
 const mkBreaker = () => new CircuitBreaker({ threshold: 3, windowMs: 30_000, openMs: 60_000 });
 const breakers = {
   palace: mkBreaker(),
@@ -108,15 +120,6 @@ const server = Bun.serve({
     const t0 = Date.now();
     try {
       if (url.pathname === "/v1/chat/completions" && req.method === "POST") {
-        // HyDE: when PALACE_USE_HYDE=true env is set, route retrieval through
-        // a hypothesis-generating pre-step that bridges paraphrase vocab gaps.
-        // Cheap on gemma3:4b; default off until eval confirms it helps.
-        const hyde = (Bun.env.PALACE_USE_HYDE ?? "").toLowerCase() === "true"
-          ? async (query: string) => ollamaChat.generateShort(
-              `Write a concise (~80 words) hypothetical answer to: ${query}\nDo not say "hypothetically" or hedge — write as if you know.`,
-              { maxTokens: 150, timeoutMs: 4000 },
-            )
-          : undefined;
         return await handleChat(req, { cfg, palace, ollama: inferenceRouter, sessions, diaryBuffer, reflectWriter, hydeGenerate: hyde, breakers: { palace: breakers.palace, ollama: breakers.ollamaChat } });
       }
       if (url.pathname === "/v1/embeddings" && req.method === "POST") {
@@ -135,7 +138,7 @@ const server = Bun.serve({
         });
       }
       if (url.pathname === "/api/familiar/eval" && req.method === "POST") {
-        return await handleEval(req, { cfg, palace, inference: inferenceRouter });
+        return await handleEval(req, { cfg, palace, inference: inferenceRouter, hydeGenerate: hyde });
       }
       if (url.pathname === "/api/familiar/graph" && req.method === "GET") {
         return await handleGraph(req, { palace });
