@@ -11,14 +11,56 @@
   <meta name="apple-mobile-web-app-title" content="familiar">
   <meta name="description" content="Your familiar — reads the palace before speaking, writes it after.">
   <title>familiar</title>
+  <!-- FOUC preventer: read localStorage 'drw-theme' BEFORE any stylesheet
+       so explicit user theme applies before first paint. Inlined (not <script src>)
+       so it's render-blocking even before connection setup. -->
+  <script>(function(){try{var s=localStorage.getItem('drw-theme');if(s==='dark'||s==='light')document.documentElement.setAttribute('data-theme',s);}catch(_){}})();</script>
   <link rel="icon" type="image/svg+xml" href="/favicon.svg">
   <link rel="apple-touch-icon" href="/favicon.svg">
   <link rel="mask-icon" href="/favicon.svg" color="#d4a050">
   <link rel="manifest" href="/manifest.webmanifest">
+  <link rel="stylesheet" href="/dark.css">
   <link rel="stylesheet" href="/style.css">
-  <link rel="stylesheet" href="/highlight-dark.css" media="(prefers-color-scheme: dark)">
-  <link rel="stylesheet" href="/highlight-light.css" media="(prefers-color-scheme: light)">
+  <!-- Highlight.js themes load as a pair; one is disabled by JS based on
+       the effective theme (explicit user pick > system). Disabling via
+       attribute happens after parse, but the FOUC script below runs the
+       same resolution synchronously so the inactive sheet's rules never
+       win even on first paint. -->
+  <link rel="stylesheet" href="/highlight-dark.css" id="hl-dark">
+  <link rel="stylesheet" href="/highlight-light.css" id="hl-light">
+  <script>
+    // Sync the highlight stylesheet pair to the effective theme. Runs
+    // once on DOMContentLoaded (so #hl-dark/#hl-light exist) and again
+    // on every dark:change emitted by dark.js.
+    (function () {
+      function syncHL() {
+        try {
+          var pref = localStorage.getItem('drw-theme');
+          var sysDark = window.matchMedia &&
+            window.matchMedia('(prefers-color-scheme: dark)').matches;
+          var eff = (pref === 'dark' || pref === 'light')
+            ? pref
+            : (sysDark ? 'dark' : 'light');
+          var d = document.getElementById('hl-dark');
+          var l = document.getElementById('hl-light');
+          if (d) d.disabled = (eff !== 'dark');
+          if (l) l.disabled = (eff !== 'light');
+        } catch (_) { /* swallow */ }
+      }
+      if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', syncHL);
+      } else {
+        syncHL();
+      }
+      document.addEventListener('dark:change', syncHL);
+      if (window.matchMedia) {
+        window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', syncHL);
+      }
+    })();
+  </script>
   <script src="/highlight.min.js" defer></script>
+  <script src="/dark.js" defer></script>
+  <script src="/dark-toggle.js" defer></script>
 </head>
 <body data-viz-base-url="">
   <aside class="sidebar" id="sidebar">
@@ -36,6 +78,9 @@
         <h1>familiar</h1>
         <div class="word" id="word" title="this build's sigil word">·</div>
       </div>
+      <!-- dark.realm.watch toggle: cycles system → dark → light → system.
+           Inherits currentColor/font-size; .theme-toggle below scales it. -->
+      <dark-toggle class="theme-toggle" title="cycle theme"></dark-toggle>
     </header>
     <div class="clock-panel" id="clock-panel" title="local time — same anchor the familiar gets each turn">
       <div class="clock-time">
