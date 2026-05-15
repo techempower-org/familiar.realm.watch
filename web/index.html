@@ -54,6 +54,21 @@
       </div>
       <select id="voice-picker" class="voice-picker" title="system voice"></select>
     </div>
+    <div class="sidebar-section search-section">
+      <div class="sessions-head">
+        <span class="sessions-title">search</span>
+      </div>
+      <div class="search-box">
+        <input
+          type="search"
+          id="palace-search"
+          class="palace-search-input"
+          placeholder="search the palace…"
+          aria-label="search the palace"
+          autocomplete="off">
+      </div>
+      <ul class="search-results" id="palace-search-results" hidden></ul>
+    </div>
     <div class="sidebar-section">
       <div class="sessions-head">
         <span class="sessions-title">sessions</span>
@@ -90,12 +105,49 @@
         <span class="palace-stats" id="palace-stats">loading…</span>
         <button class="palace-refresh" id="palace-refresh" type="button" title="refresh">↻</button>
       </div>
-      <div class="palace-treemap" id="palace-treemap"></div>
+      <div class="palace-browser">
+        <div class="browser-col browser-col-wings">
+          <div class="browser-col-head"><span>wings</span></div>
+          <div class="browser-col-body" id="palace-treemap" aria-label="wings"></div>
+        </div>
+        <div class="browser-col browser-col-rooms" hidden>
+          <div class="browser-col-head">
+            <span id="palace-rooms-title">rooms</span>
+            <button class="browser-back" type="button" id="palace-rooms-back" aria-label="back to wings" title="back">←</button>
+          </div>
+          <div class="browser-col-body" id="palace-rooms" aria-label="rooms"></div>
+        </div>
+        <div class="browser-col browser-col-drawers" hidden>
+          <div class="browser-col-head">
+            <span id="palace-drawers-title">drawers</span>
+            <button class="browser-back" type="button" id="palace-drawers-back" aria-label="back to rooms" title="back">←</button>
+          </div>
+          <div class="browser-col-body" id="palace-drawers" aria-label="drawers"></div>
+        </div>
+      </div>
+      <div class="palace-detail" id="palace-detail" hidden>
+        <div class="palace-detail-head">
+          <span class="palace-detail-chain" id="palace-detail-chain"></span>
+          <button class="browser-back" type="button" id="palace-detail-close" aria-label="close" title="close">×</button>
+        </div>
+        <pre class="palace-detail-body" id="palace-detail-body"></pre>
+      </div>
       <div class="palace-tunnels" id="palace-tunnels"></div>
     </div>
+    <div class="typing-indicator" id="typing-indicator" hidden aria-hidden="true">
+      <span class="typing-dot"></span>
+      <span class="typing-dot"></span>
+      <span class="typing-dot"></span>
+    </div>
     <form id="form" class="form" autocomplete="off">
-      <input id="input" name="msg" placeholder="speak to the familiar..." autofocus required>
-      <button type="submit" title="send" aria-label="send">
+      <textarea
+        id="input"
+        name="msg"
+        rows="1"
+        placeholder="speak to the familiar… (enter to send · shift+enter for newline)"
+        autofocus
+        required></textarea>
+      <button type="submit" title="send (enter)" aria-label="send">
         <svg viewBox="0 0 16 16" aria-hidden="true" width="16" height="16">
           <path d="M2 8 L14 8 M9 3 L14 8 L9 13" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
         </svg>
