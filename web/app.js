@@ -1628,24 +1628,107 @@ function stripForSpeech(text) {
 
 let currentUtterance = null;
 
+// ---- gnome-speaks bridge (Azure Neural TTS, ~653 voices) ----
+//
+// JP's localhost service at http://127.0.0.1:7710 fronts Azure Speech
+// Services with CORS open. Far better than browser speechSynthesis
+// (which has zero voices on Linux Chrome without speech-dispatcher).
+// We probe /status once on page load; if reachable, route speech
+// through it. Falls back to browser TTS if unreachable (e.g. on a
+// machine where gnome-speaks isn't running).
+const GNOME_SPEAKS_URL = "http://127.0.0.1:7710";
+let gnomeSpeaksAvailable = false;
+let gnomeSpeaksPoller = null;
+
+async function probeGnomeSpeaks() {
+  try {
+    const c = AbortSignal.timeout ? AbortSignal.timeout(800) : undefined;
+    const r = await fetch(`${GNOME_SPEAKS_URL}/status`, { signal: c });
+    if (r.ok) {
+      gnomeSpeaksAvailable = true;
+      const d = await r.json();
+      console.info("[familiar] gnome-speaks ready (state=" + d.state + ") — TTS will route through Azure Neural voices");
+    }
+  } catch {
+    gnomeSpeaksAvailable = false;
+  }
+}
+probeGnomeSpeaks();
+
+async function speakViaGnome(text, btn) {
+  cancelSpeech();
+  if (btn) btn.classList.add("speaking");
+  try {
+    const r = await fetch(`${GNOME_SPEAKS_URL}/speak`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ text }),
+    });
+    if (!r.ok) throw new Error(`gnome-speaks /speak HTTP ${r.status}`);
+    // Poll /status to clear .speaking when the service goes back to idle.
+    if (gnomeSpeaksPoller) clearInterval(gnomeSpeaksPoller);
+    gnomeSpeaksPoller = setInterval(async () => {
+      try {
+        const s = await fetch(`${GNOME_SPEAKS_URL}/status`);
+        if (!s.ok) return;
+        const d = await s.json();
+        if (d.state !== "speaking") {
+          clearInterval(gnomeSpeaksPoller);
+          gnomeSpeaksPoller = null;
+          if (btn) btn.classList.remove("speaking");
+        }
+      } catch { /* transient; will retry */ }
+    }, 500);
+  } catch (e) {
+    if (btn) btn.classList.remove("speaking");
+    console.warn("[familiar] gnome-speaks /speak failed:", e);
+    // Fall back to browser TTS for this one click
+    gnomeSpeaksAvailable = false;
+    speakText(text, btn);
+  }
+}
+
+async function cancelGnomeSpeak() {
+  try {
+    await fetch(`${GNOME_SPEAKS_URL}/stop`, { method: "POST" });
+  } catch { /* best-effort */ }
+  if (gnomeSpeaksPoller) {
+    clearInterval(gnomeSpeaksPoller);
+    gnomeSpeaksPoller = null;
+  }
+}
+
 function cancelSpeech() {
-  if (!speechSupported()) return;
-  window.speechSynthesis.cancel();
-  currentUtterance = null;
+  if (gnomeSpeaksAvailable) cancelGnomeSpeak();
+  if (speechSupported()) {
+    window.speechSynthesis.cancel();
+    currentUtterance = null;
+  }
   document.querySelectorAll(".speak-btn.speaking").forEach((b) => b.classList.remove("speaking"));
 }
 
 function speakText(text, btn) {
-  if (!speechSupported()) return;
-  cancelSpeech();
   const clean = stripForSpeech(text);
   if (!clean) return;
+
+  // Prefer gnome-speaks (port 7710) when reachable — Azure Neural voices
+  // beat browser speechSynthesis on every dimension that matters
+  // (quality, prosody, voice count). Per JP's homelab voice-AI stack,
+  // gnome-speaks is the canonical TTS surface (see ~/Projects/gnome-speaks/).
+  if (gnomeSpeaksAvailable) {
+    speakViaGnome(clean, btn);
+    return;
+  }
+
+  if (!speechSupported()) return;
+  cancelSpeech();
   // No system voices = the SpeechSynthesis API is available but the
   // platform has no TTS engine configured (common on Linux Chrome
   // without speech-dispatcher + espeak-ng installed). Calling .speak()
   // here would silently no-op — the user clicks ♪ and gets no audio
   // and no signal that anything went wrong. Surface it via a one-shot
-  // banner on the button + log so they know to install a TTS engine.
+  // banner on the button + log so they know to install a TTS engine
+  // or run gnome-speaks.
   if (!availableVoices || availableVoices.length === 0) {
     if (btn) {
       btn.title = "no system TTS voices — install speech-dispatcher + espeak-ng";
