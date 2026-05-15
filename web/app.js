@@ -1245,18 +1245,33 @@ async function selectWing(wing) {
   if (palaceDrawersCol) palaceDrawersCol.hidden = true;
   if (palaceDetail) palaceDetail.hidden = true;
 
-  // Live refresh: probe each canonical room's actual count in parallel
-  // so users see truth even when /api/familiar/graph is stale.
+  // Live refresh: probe each canonical room's actual count so users see
+  // truth even when /api/familiar/graph is stale.
+  //
+  // Throttled to CONCURRENCY=2 because firing all 7 in parallel was
+  // enough to push palace-daemon's recall-probe (which familiar-api
+  // fires for /health) past its 5s timeout, briefly tripping the
+  // "degraded" health flag. The user-visible latency cost is small
+  // (each probe is ~30-80ms on a warm daemon → ~4 round-trips = ~300ms
+  // total). Surfaces room counts within the typical UI-tap-to-glance
+  // window without producing a thundering herd on the daemon.
   try {
-    const probes = CANONICAL_ROOMS.map(async (room) => {
-      const r = await fetch(`/api/familiar/memories?wing=${encodeURIComponent(wing)}&room=${encodeURIComponent(room)}&limit=1`);
-      if (!r.ok) return [room, null];
-      const data = await r.json();
-      // Prefer daemon-side `total` (real row count); fall back to limited
-      // `count` if older familiar-api version doesn't surface total.
-      return [room, data.total ?? data.count];
-    });
-    const results = await Promise.all(probes);
+    const CONCURRENCY = 2;
+    const results = [];
+    for (let i = 0; i < CANONICAL_ROOMS.length; i += CONCURRENCY) {
+      const batch = CANONICAL_ROOMS.slice(i, i + CONCURRENCY);
+      const batchResults = await Promise.all(batch.map(async (room) => {
+        const r = await fetch(`/api/familiar/memories?wing=${encodeURIComponent(wing)}&room=${encodeURIComponent(room)}&limit=1`);
+        if (!r.ok) return [room, null];
+        const data = await r.json();
+        // Prefer daemon-side `total` (real row count); fall back to limited
+        // `count` if older familiar-api version doesn't surface total.
+        return [room, data.total ?? data.count];
+      }));
+      results.push(...batchResults);
+      // Bail out of mid-flight batches if user navigated away from this wing.
+      if (browserState.wing !== wing) return;
+    }
     // Stop if user navigated away
     if (browserState.wing !== wing) return;
     for (const [room, count] of results) {
@@ -1625,6 +1640,26 @@ function speakText(text, btn) {
   cancelSpeech();
   const clean = stripForSpeech(text);
   if (!clean) return;
+  // No system voices = the SpeechSynthesis API is available but the
+  // platform has no TTS engine configured (common on Linux Chrome
+  // without speech-dispatcher + espeak-ng installed). Calling .speak()
+  // here would silently no-op — the user clicks ♪ and gets no audio
+  // and no signal that anything went wrong. Surface it via a one-shot
+  // banner on the button + log so they know to install a TTS engine.
+  if (!availableVoices || availableVoices.length === 0) {
+    if (btn) {
+      btn.title = "no system TTS voices — install speech-dispatcher + espeak-ng";
+      btn.classList.add("speak-btn-disabled");
+      const orig = btn.textContent;
+      btn.textContent = "no voice";
+      setTimeout(() => {
+        btn.textContent = orig;
+        btn.classList.remove("speak-btn-disabled");
+      }, 2200);
+    }
+    console.warn("[familiar] speechSynthesis has zero voices — install speech-dispatcher + espeak-ng on this host for browser TTS to work, or use the speech-to-cli MCP server for system-level audio");
+    return;
+  }
   const utt = new SpeechSynthesisUtterance(clean);
   if (voiceState.voiceURI) {
     const v = availableVoices.find((x) => x.voiceURI === voiceState.voiceURI);
@@ -1634,7 +1669,11 @@ function speakText(text, btn) {
   utt.pitch = 1.0;
   utt.onstart = () => { if (btn) btn.classList.add("speaking"); };
   utt.onend = () => { if (btn) btn.classList.remove("speaking"); currentUtterance = null; };
-  utt.onerror = () => { if (btn) btn.classList.remove("speaking"); currentUtterance = null; };
+  utt.onerror = (e) => {
+    if (btn) btn.classList.remove("speaking");
+    currentUtterance = null;
+    console.warn("[familiar] speechSynthesis utterance error:", e.error || e);
+  };
   currentUtterance = utt;
   window.speechSynthesis.speak(utt);
 }

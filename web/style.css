@@ -1153,6 +1153,12 @@ body {
   grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) minmax(0, 1.2fr);
   gap: 0.75rem;
   margin-bottom: 1rem;
+  /* flex-shrink: 0 stops .palace-view (a flex column) from squashing the
+   * grid below its children's intrinsic height. Without this, .browser-col
+   * (min-height: 18rem) overflows out the bottom into the detail panel +
+   * tunnels list region — JP reported "palace button output escapes its
+   * box" on 2026-05-15. */
+  flex-shrink: 0;
   min-height: 0;
 }
 .browser-col {
@@ -1371,3 +1377,13 @@ body {
 .palace-detail[hidden],
 .search-results[hidden],
 .typing-indicator[hidden] { display: none !important; }
+
+/* ===================== Speak-button degraded state ===================== */
+.speak-btn-disabled {
+  background: var(--user-bg) !important;
+  color: var(--fg-muted) !important;
+  cursor: not-allowed !important;
+  font-size: 0.7em !important;
+  letter-spacing: 0.02em;
+  border-style: dashed;
+}
