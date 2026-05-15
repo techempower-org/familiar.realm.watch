@@ -7,6 +7,59 @@ versions follow [SemVer](https://semver.org/spec/v2.0.0.html) and the
 [realm-sigil](https://github.com/jphein/realm-sigil) convention used across
 the realm.watch ecosystem.
 
+## [Unreleased] — 2026-05-15 — *HyDE per-request override + paraphrase probe runner*
+
+Closes [#5](https://github.com/techempower-org/familiar.realm.watch/issues/5).
+Lands the missing measurement infrastructure for HyDE — without which
+we couldn't tell whether the feature (shipped 2026-05-14 as part of
+the hybrid-search-taxonomy push) was actually doing anything in
+production. The probe surfaced a real finding: it isn't.
+
+### Added
+
+- **Per-request HyDE override on `/api/familiar/eval`** via `?hyde=true|false`.
+  Lets benchmarks A/B HyDE-on vs HyDE-off in a single server process
+  without restarting to flip `PALACE_USE_HYDE` env. Implementation:
+  `hydeGenerator` is now built unconditionally at module scope; the
+  env-gated `hyde` (used by `/v1/chat/completions` and unannotated eval
+  requests) is layered on top. `handleEval` reads the query param,
+  picks either `deps.hydeGenerator` (force-on), `undefined` (force-off),
+  or `deps.hydeGenerate` (env default).
+- **Paraphrase probe runner** at [`tests/eval/run_paraphrase_probe.py`](tests/eval/run_paraphrase_probe.py)
+  plus 15-question anchored probe set at
+  [`tests/eval/paraphrase_questions.yaml`](tests/eval/paraphrase_questions.yaml).
+  Each probe sends the same query twice — `?hyde=false` then
+  `?hyde=true` — to `/api/familiar/eval` and matches against
+  `retrieved_entities[*].id` (drawer-ID exact match) OR
+  `content_snippet` substrings (`expected_substrings`). Per-shape
+  recall table + state-transition counts (`rescued` / `regressed` /
+  `tied_hit` / `tied_miss`). Probe shapes cover vocabulary mismatch,
+  temporal paraphrase, topical mismatch, cross-project paraphrase,
+  and one canary (direct identifier match — should not regress under
+  HyDE).
+
+### Findings
+
+- **First A/B run** on katana with qwen2.5:14b → disks palace
+  (273k drawers, postgres backend): **0 rescued / 0 regressed / 3
+  tied_hit / 12 tied_miss.** HyDE plumbing fires correctly (+2.5s
+  mean latency per query confirms the LLM call happens), but the
+  hypothesis doesn't bridge the vocabulary gaps on this corpus with
+  this model. Result JSON: `tests/eval/probe-results-2026-05-14.json`
+  (gitignored; regenerate via the runner).
+- **Filed [#6](https://github.com/techempower-org/familiar.realm.watch/issues/6)**
+  to diagnose. Five candidate hypotheses on the issue: weak hypotheses
+  from qwen2.5:14b, stale drawer-ID anchors, n=15 too small to surface
+  partial signal, wrong-shape vocabulary gap (everyday → technical
+  rather than technical → broader), match function too strict.
+- **HyDE stays off in prod** (`PALACE_USE_HYDE` unset on familiar host)
+  until one of the five candidates resolves into a measurable rescue.
+
+### Tooling
+
+- `tests/eval/probe-results-*.json` added to `.gitignore` — probe
+  output is data, not source.
+
 ## [Unreleased] — 2026-05-14 (later) — *hybrid search + taxonomy + unified write path*
 
 Per the [hybrid-search-taxonomy spec](docs/superpowers/specs/2026-05-14-hybrid-search-taxonomy-spec.md),

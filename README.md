@@ -29,9 +29,15 @@ bun run dev
 
 - `src/` — familiar-api TypeScript modules
 - `tests/` — Bun tests (`bun test`)
+- `tests/eval/` — Python eval harnesses (`paraphrase_questions.yaml` + `run_paraphrase_probe.py` for HyDE A/B; see [CHANGELOG](CHANGELOG.md) "2026-05-15")
 - `web/` — PWA assets (served by Bun at `/`)
 - `ops/` — systemd units, Caddy snippets, install/deploy scripts
 - `docs/superpowers/` — spec + implementation plans
+
+## Retrieval modes
+
+- **Hybrid (default)** — `PALACE_SEARCH_MODE=hybrid` (the default). Daemon-side `candidate_strategy="hybrid"` fuses vector ∪ BM25 ∪ AGE graph-expanded candidates and hybrid-reranks. Falls back to vector-only on daemon 503/404.
+- **HyDE** — plumbed end-to-end (`/v1/chat/completions` and `/api/familiar/eval`) but **gated off in production**. Enable per-process via `PALACE_USE_HYDE=true` or per-request via `/api/familiar/eval?hyde=true`. Current measurement: 0 rescues on the 15-probe paraphrase set against katana + qwen2.5:14b — diagnosis tracked at [#6](https://github.com/techempower-org/familiar.realm.watch/issues/6).
 
 ## Docs
 
