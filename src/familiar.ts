@@ -45,15 +45,20 @@ inferenceProviders.push(ollamaChat);
 const inferenceRouter = new InferenceRouter(inferenceProviders);
 
 // HyDE generator — module-scope so both /v1/chat/completions and
-// /api/familiar/eval share the same wiring. When PALACE_USE_HYDE=true
-// env is set, retrieval gets a hypothesis-generating pre-step that
-// bridges paraphrase vocabulary gaps (closes the "user says X, drawer
-// says Y" gap for tech identifiers). Cheap on gemma3:4b (~2s).
+// /api/familiar/eval share the same wiring. Bridges paraphrase
+// vocabulary gaps (closes the "user says X, drawer says Y" gap for
+// tech identifiers). Cheap on gemma3:4b (~2s).
+//
+// `hydeGenerator` is always constructed so the eval route can opt-in
+// per-request (via `?hyde=true|false`) for A/B benchmarks. `hyde` is
+// the env-default the chat route and unannotated eval requests get.
+const hydeGenerator = async (query: string) =>
+  ollamaChat.generateShort(
+    `Write a concise (~80 words) hypothetical answer to: ${query}\nDo not say "hypothetically" or hedge — write as if you know.`,
+    { maxTokens: 150, timeoutMs: 4000 },
+  );
 const hyde = (Bun.env.PALACE_USE_HYDE ?? "").toLowerCase() === "true"
-  ? async (query: string) => ollamaChat.generateShort(
-      `Write a concise (~80 words) hypothetical answer to: ${query}\nDo not say "hypothetically" or hedge — write as if you know.`,
-      { maxTokens: 150, timeoutMs: 4000 },
-    )
+  ? hydeGenerator
   : undefined;
 
 const mkBreaker = () => new CircuitBreaker({ threshold: 3, windowMs: 30_000, openMs: 60_000 });
@@ -138,7 +143,7 @@ const server = Bun.serve({
         });
       }
       if (url.pathname === "/api/familiar/eval" && req.method === "POST") {
-        return await handleEval(req, { cfg, palace, inference: inferenceRouter, hydeGenerate: hyde });
+        return await handleEval(req, { cfg, palace, inference: inferenceRouter, hydeGenerate: hyde, hydeGenerator });
       }
       if (url.pathname === "/api/familiar/graph" && req.method === "GET") {
         return await handleGraph(req, { palace });

@@ -16,3 +16,6 @@ coverage/
 *.png
 *.jpeg
 *.jpg
+
+# Paraphrase probe results — regenerable benchmark output (data, not code)
+tests/eval/probe-results-*.json

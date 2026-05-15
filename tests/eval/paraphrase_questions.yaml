@@ -1,0 +1,146 @@
+# Paraphrase-stressed probe set for HyDE A/B measurement.
+#
+# Each question is a query whose vocabulary is deliberately shifted away
+# from the technical identifiers in the target drawer(s). Without HyDE,
+# vector retrieval should miss most of these because the query embedding
+# lives in a different region of the space than the drawer embedding.
+# With HyDE, the model writes a hypothetical answer first — which uses
+# the same technical vocabulary as the drawer — and the hypothetical's
+# embedding pulls the right drawer into the candidate set.
+#
+# Each entry:
+#   query             — the paraphrase-stressed question
+#   expected_drawers  — list; match if ANY appears in retrieved_entities[*].id
+#   shape             — one of {vocab_mismatch, temporal, topical_mismatch, cross_project}
+#   why               — what HyDE has to bridge to find this
+#
+# Anchored at real drawers in our 2026-05-13 palace (postgres backend).
+# A drawer-id that no longer exists doesn't fail the probe; it just
+# can't contribute a hit. Generated 2026-05-14.
+
+questions:
+  # ── vocab_mismatch: query uses everyday/casual words; drawer uses precise identifiers ──
+  - query: "What was that database concurrency bug we hit recently?"
+    expected_drawers:
+      - drawer_familiar_realm_watch_technical_be1e1b1f86897bdb3f0e6b27
+      - drawer_familiar_realm_watch_technical_4011f6de4e7b6e70c11c8574
+    shape: vocab_mismatch
+    why: "drawer uses 'pg_advisory_xact_lock' + 'vec_idx'; query uses 'concurrency bug'"
+
+  - query: "How did we make the hooks stop blocking Claude for so long?"
+    expected_drawers:
+      - drawer_familiar_realm_watch_technical_20e89c77add8de8cf518ad8e
+    shape: vocab_mismatch
+    why: "drawer uses 'os.setsid + dup2 + devnull FDs'; query uses 'stop blocking'"
+
+  - query: "What's the issue where the memory thing keeps crashing on big palaces?"
+    expected_drawers:
+      - drawer_-home-jp-Projects-palace-daemon_general_8db7c4b9358bb840d8cb455d
+    shape: vocab_mismatch
+    why: "drawer is GH issue #1089 'SIGSEGV on get_or_create_collection (chromadb 1.5.x)'; query says 'crashing on big palaces'"
+
+  - query: "How do we recover when the vector index gets stuck?"
+    expected_drawers:
+      - drawer_-home-jp-Projects-palace-daemon_general_71d993a9a69bed5a79921b8f
+    shape: vocab_mismatch
+    why: "drawer uses 'quarantine_stale_hnsw' + 'partial-flush'; query says 'gets stuck'"
+
+  - query: "How do we issue HTTPS certificates for stuff that only resolves on our LAN?"
+    expected_drawers:
+      - drawer_projects_technical_862186d53a2d89b001e2ffb9
+      - drawer_projects_technical_f39e78447c255bab3d9ace40
+    shape: vocab_mismatch
+    why: "drawer uses 'ACME DNS-01 challenge' + 'cloudflare TXT propagation'; query is everyday"
+
+  # ── temporal: query references time, drawer is dated work ──
+  - query: "What was the big thing we did on Wednesday for retrieval?"
+    expected_drawers: []  # any of today's 2026-05-13 / 2026-05-14 commit-derived drawers
+    expected_substrings:
+      - "hybrid"
+      - "BM25"
+      - "plainto_tsquery"
+    shape: temporal
+    why: "HyDE expands 'big thing for retrieval' → 'hybrid search using BM25 + vector'; vector alone can't bridge 'Wednesday'"
+
+  - query: "What did we ship to memorypalace yesterday?"
+    expected_drawers: []
+    expected_substrings:
+      - "trigram"
+      - "advisory_xact_lock"
+      - "canonical_rooms"
+    shape: temporal
+    why: "HyDE has to expand 'shipped yesterday' into the technical content of what was shipped"
+
+  # ── topical_mismatch: vague descriptors → specific technical fix ──
+  - query: "Why does Claude take forever to come back sometimes after I press enter?"
+    expected_drawers:
+      - drawer_familiar_realm_watch_technical_20e89c77add8de8cf518ad8e
+    shape: topical_mismatch
+    why: "user-facing symptom phrasing → hook-detach pipe-closure fix; HyDE writes 'hooks block stdin/stdout/stderr pipes' and that bridges"
+
+  - query: "What was that issue where the file was supposedly the same but was actually different?"
+    expected_drawers: []
+    expected_substrings:
+      - "sync-conflict"
+      - "syncthing"
+      - ".git"
+    shape: topical_mismatch
+    why: "HyDE expands 'supposedly same but different' → 'merge conflict' / 'sync-conflict'"
+
+  - query: "Why are searches sometimes really slow on big palaces?"
+    expected_drawers: []
+    expected_substrings:
+      - "HNSW"
+      - "rebuild"
+      - "quarantine"
+      - "index"
+    shape: topical_mismatch
+    why: "casual 'really slow' → 'HNSW degradation' / 'index rebuild needed'"
+
+  # ── cross_project: references project by description, not name ──
+  - query: "How does our chat thing know what to remember from past conversations?"
+    expected_drawers: []
+    expected_substrings:
+      - "familiar"
+      - "mempalace"
+      - "retrieveAndGround"
+      - "hybrid"
+    shape: cross_project
+    why: "'chat thing' → familiar.realm.watch; 'remember' → mempalace retrieval"
+
+  - query: "What's the tool we use for unlocking secrets when scripts need them?"
+    expected_drawers: []
+    expected_substrings:
+      - "Vaultwarden"
+      - "bw get"
+      - "vault-gate"
+    shape: cross_project
+    why: "'tool for unlocking secrets' → Vaultwarden/bw/vault-gate"
+
+  - query: "How do we sync data between our houses securely?"
+    expected_drawers: []
+    expected_substrings:
+      - "syncthing"
+      - "Caddy"
+      - "WireGuard"
+    shape: cross_project
+    why: "'sync data between houses' → syncthing topology; HyDE bridges via 'home network sync'"
+
+  - query: "What handles login when I visit familiar from outside the LAN?"
+    expected_drawers: []
+    expected_substrings:
+      - "Authelia"
+      - "forward-auth"
+      - "Caddy"
+      - "ubox0"
+    shape: cross_project
+    why: "'login from outside' → Authelia/forward-auth/Caddy on ubox0"
+
+  # ── canary: query that vector retrieval should already nail without HyDE ──
+  # If HyDE *hurts* this, that's a regression signal worth seeing.
+  - query: "pg_advisory_xact_lock race fix"
+    expected_drawers:
+      - drawer_familiar_realm_watch_technical_be1e1b1f86897bdb3f0e6b27
+      - drawer_familiar_realm_watch_technical_4011f6de4e7b6e70c11c8574
+    shape: canary
+    why: "direct identifier match — vector alone should find it; HyDE shouldn't hurt"

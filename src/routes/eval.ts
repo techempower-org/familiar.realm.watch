@@ -40,6 +40,13 @@ export interface EvalRouteDeps {
    * — bypassing the chat-route HyDE wiring.
    */
   hydeGenerate?: (query: string) => Promise<string>;
+  /**
+   * HyDE generator that is always available (constructed regardless of
+   * env). Used when the request opts in via `?hyde=true`; lets the
+   * paraphrase probe runner A/B in one server process. Falsy → no
+   * generator constructed; `?hyde=true` becomes a no-op.
+   */
+  hydeGenerator?: (query: string) => Promise<string>;
 }
 
 const STUB_ANSWER =
@@ -57,6 +64,14 @@ export async function handleEval(req: Request, deps: EvalRouteDeps): Promise<Res
     return jsonErr("query required", 400);
   }
 
+  // Per-request HyDE override for A/B benchmarks. `?hyde=true` forces
+  // the generator on; `?hyde=false` forces it off; absent → env default.
+  const hydeParam = new URL(req.url).searchParams.get("hyde")?.toLowerCase();
+  let hydeFn: ((q: string) => Promise<string>) | undefined;
+  if (hydeParam === "true") hydeFn = deps.hydeGenerator;
+  else if (hydeParam === "false") hydeFn = undefined;
+  else hydeFn = deps.hydeGenerate;
+
   const limit = body.limit ?? deps.cfg.retrievalLimit;
   const warnings: string[] = [];
   let contextString = "";
@@ -71,7 +86,7 @@ export async function handleEval(req: Request, deps: EvalRouteDeps): Promise<Res
       retrievalLimit: limit,
       contextBudgetTokens: deps.cfg.tokenBudget.context,
       recentCitations: [],
-      hydeGenerate: deps.hydeGenerate,
+      hydeGenerate: hydeFn,
     });
     contextString = grounded.systemPrompt;
     entities = grounded.entities;
