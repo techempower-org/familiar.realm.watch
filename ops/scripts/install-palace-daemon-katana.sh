@@ -29,14 +29,20 @@ fi
 
 cd "${DEST}"
 
-echo ">>> Creating venv..."
-python3 -m venv venv
+echo ">>> Creating venv (uv preferred; stdlib venv as fallback)..."
+if command -v uv >/dev/null 2>&1; then
+    uv venv venv
+    UV_PIP=(uv pip install --python venv/bin/python)
+else
+    python3 -m venv venv
+    UV_PIP=(./venv/bin/pip install)
+fi
 source venv/bin/activate
 
 echo ">>> Installing palace-daemon deps..."
-pip install --upgrade pip
-pip install "fastapi>=0.136.0" "uvicorn[standard]>=0.44.0"
-pip install -e "${FORK_PATH}"
+"${UV_PIP[@]}" --upgrade pip 2>/dev/null || true
+"${UV_PIP[@]}" "fastapi>=0.136.0" "uvicorn[standard]>=0.44.0"
+"${UV_PIP[@]}" -e "${FORK_PATH}"
 
 echo ">>> Verifying mempalace install points at the fork..."
 python -c "import mempalace; import pathlib; p = pathlib.Path(mempalace.__file__).parent; print(p); assert 'memorypalace' in str(p), 'mempalace not from fork'"
@@ -56,11 +62,17 @@ fi
 echo "PALACE_API_KEY=${API_KEY}" > "$HOME/.config/palace-daemon/env"
 chmod 600 "$HOME/.config/palace-daemon/env"
 
-echo ">>> Installing systemd-user unit..."
-mkdir -p "$HOME/.config/systemd/user"
-install -m 644 "${REPO_ROOT}/ops/palace-daemon/palace-daemon.service" "$HOME/.config/systemd/user/"
-systemctl --user daemon-reload
-systemctl --user enable --now palace-daemon.service
+echo ">>> Installing systemd SYSTEM unit (user units are not supported — see palace-daemon CLAUDE.md)..."
+sudo install -m 644 "${REPO_ROOT}/ops/palace-daemon/palace-daemon.service" /etc/systemd/system/
+sudo systemctl daemon-reload
+sudo systemctl enable --now palace-daemon.service
+# Sanity check: refuse to proceed if a user-level unit also exists. Both would
+# kill each other via ExecStartPre=/usr/bin/fuser -k 8085/tcp in a cascade.
+if [ -f "$HOME/.config/systemd/user/palace-daemon.service" ]; then
+    echo "!!! DUPLICATE: ~/.config/systemd/user/palace-daemon.service exists alongside the system unit."
+    echo "!!! Remove it before continuing — both would race on port 8085."
+    exit 1
+fi
 
 sleep 3
 
