@@ -144,6 +144,17 @@ const server = Bun.serve({
           palace,
           ollamaChatUrl: cfg.ollamaChat.url,
           ollamaEmbedUrl: cfg.ollamaEmbed.url,
+          // Functional probes (#186): pass the inference router + embed
+          // client + configured model names. /api/familiar/health then
+          // sends real ping requests and asserts non-fallback responses,
+          // catching the model-not-loaded class of failure that the
+          // 2026-05-16 incident exposed (env said gemma3:4b, server had
+          // phi-4 — /v1/models passed, chat returned voice.chatFalters
+          // for hours before anyone noticed).
+          chatModel: cfg.ollamaChat.model,
+          embedModel: cfg.ollamaEmbed.model,
+          inference: inferenceRouter,
+          ollamaEmbed,
           breakers: { palace: breakers.palace, ollamaChat: breakers.ollamaChat, ollamaEmbed: breakers.ollamaEmbed },
           sigil,
         });

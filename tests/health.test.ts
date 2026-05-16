@@ -142,3 +142,123 @@ describe("getHealth", () => {
     expect(probed.some(u => u.includes("/api/tags"))).toBe(false);
   });
 });
+
+// ── Functional probes (#186) ──────────────────────────────────────────
+
+import { voice } from "../src/lang/familiar-voice.ts";
+import type { InferenceChatProvider, OllamaChatChunk } from "../src/types.ts";
+
+function makeInference(tokens: string[]): InferenceChatProvider {
+  return {
+    isHealthy: async () => true,
+    chatStream: async function* (): AsyncGenerator<OllamaChatChunk> {
+      for (const t of tokens) {
+        yield {
+          message: { role: "assistant", content: t },
+          done: false,
+        } as OllamaChatChunk;
+      }
+      yield {
+        message: { role: "assistant", content: "" },
+        done: true,
+      } as OllamaChatChunk;
+    },
+  };
+}
+
+function makeEmbed(vec: number[]) {
+  return { embed: async () => vec };
+}
+
+describe("getHealth — functional probes (#186)", () => {
+  test("chat probe ok when inference returns non-fallback tokens", async () => {
+    const d: HealthDeps = {
+      ...deps(mockPalace({})),
+      chatModel: "phi-4",
+      embedModel: "nomic-embed",
+      inference: makeInference(["Hello", "!"]),
+      ollamaEmbed: makeEmbed([0.1, 0.2, 0.3]) as never,
+    };
+    const r = await getHealth(d);
+    expect(r.dependencies.ollama_chat.chat_quality).toBe("ok");
+    expect(r.dependencies.ollama_chat.status).toBe("ok");
+    expect(r.dependencies.ollama_embed.embed_quality).toBe("ok");
+  });
+
+  test("chat probe fallback when inference returns the chatFalters string", async () => {
+    // Simulates 2026-05-16: env says gemma3:4b but only phi-4 loaded.
+    // InferenceRouter exhausted all providers; chat route returned
+    // voice.chatFalters. The probe must detect this and mark the dep
+    // degraded so status.realm.watch + 503-on-degraded fire.
+    const d: HealthDeps = {
+      ...deps(mockPalace({})),
+      chatModel: "phi-4",
+      inference: makeInference([voice.chatFalters]),
+    };
+    const r = await getHealth(d);
+    expect(r.dependencies.ollama_chat.chat_quality).toBe("fallback");
+    expect(r.dependencies.ollama_chat.status).toBe("degraded");
+    expect(r.dependencies.ollama_chat.error).toMatch(/chatFalters fallback/i);
+  });
+
+  test("chat probe probe_error when inference throws", async () => {
+    const failingInference: InferenceChatProvider = {
+      isHealthy: async () => false,
+      chatStream: async function* () {
+        throw new Error("all inference endpoints failed");
+        yield {} as never;
+      },
+    };
+    const d: HealthDeps = {
+      ...deps(mockPalace({})),
+      chatModel: "phi-4",
+      inference: failingInference,
+    };
+    const r = await getHealth(d);
+    expect(r.dependencies.ollama_chat.chat_quality).toBe("probe_error");
+    expect(r.dependencies.ollama_chat.status).toBe("degraded");
+    expect(r.dependencies.ollama_chat.error).toMatch(/chat probe failed/i);
+  });
+
+  test("chat probe probe_error when inference returns nothing", async () => {
+    const d: HealthDeps = {
+      ...deps(mockPalace({})),
+      chatModel: "phi-4",
+      inference: makeInference([""]),
+    };
+    const r = await getHealth(d);
+    expect(r.dependencies.ollama_chat.chat_quality).toBe("probe_error");
+    expect(r.dependencies.ollama_chat.chat_warning).toMatch(/no tokens/i);
+  });
+
+  test("embed probe ok when embed returns a non-empty vector", async () => {
+    const d: HealthDeps = {
+      ...deps(mockPalace({})),
+      embedModel: "nomic-embed",
+      ollamaEmbed: makeEmbed([0.5, 0.6, 0.7, 0.8]) as never,
+    };
+    const r = await getHealth(d);
+    expect(r.dependencies.ollama_embed.embed_quality).toBe("ok");
+    expect(r.dependencies.ollama_embed.status).toBe("ok");
+  });
+
+  test("embed probe probe_error when embed returns empty vector", async () => {
+    const d: HealthDeps = {
+      ...deps(mockPalace({})),
+      embedModel: "nomic-embed",
+      ollamaEmbed: makeEmbed([]) as never,
+    };
+    const r = await getHealth(d);
+    expect(r.dependencies.ollama_embed.embed_quality).toBe("probe_error");
+    expect(r.dependencies.ollama_embed.status).toBe("degraded");
+  });
+
+  test("probes skip when deps are absent — legacy /v1/models only", async () => {
+    // Backward compat: when chatModel/inference/embedModel/ollamaEmbed
+    // are omitted, only the dial-tone /v1/models check runs (as before).
+    const r = await getHealth(deps(mockPalace({})));
+    expect(r.dependencies.ollama_chat.chat_quality).toBeUndefined();
+    expect(r.dependencies.ollama_embed.embed_quality).toBeUndefined();
+    expect(r.dependencies.ollama_chat.status).toBe("ok");
+  });
+});
