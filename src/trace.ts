@@ -7,23 +7,33 @@
 
 import type { SmeEntity, Trace } from "./types.ts";
 
-// Matches:
-//   [drawer_xxxxx]              — canonical
-//   [drawer_id: drawer_xxxxx]   — label-prefixed (some models add the
-//                                 label despite the system prompt)
-//   [drawer_id=drawer_xxxxx]    — equals variant
-//   [id: drawer_xxxxx]          — shortened label
+// Matches drawer-id citations only. The captured group is always the
+// bare drawer id.
 //
-// The captured group is always the bare drawer id. Optional whitespace
-// around the label separator handles minor format drift.
-const CITATION_PATTERN = /\[(?:(?:drawer_id|id)\s*[:=]\s*)?(drawer_[a-z0-9_]+)\]/g;
+// Variants accepted:
+//   [drawer_xxxxx]                — canonical
+//   [drawer_id: drawer_xxxxx]     — label-prefixed
+//   [drawer_id=drawer_xxxxx]      — equals form
+//   [id: drawer_xxxxx]            — shortened label
+//   [id=drawer_xxxxx]             — shortened equals
+//   [drawer=drawer_xxxxx]         — drawer= form (phi-4 emits this)
+//
+// Explicitly NOT matched here: source-header forms like
+// `[wing=... · room=...]` or `[drawer=general · room=...]`. Those are
+// echoed-back system-prompt headers, not citations — the UI renders
+// them as source chips (see web/app.js CITATION_PATTERN variant B) and
+// they must NOT contribute to trace.citations.
+const CITATION_PATTERN = /\[(?:(?:drawer_id|id|drawer)\s*[:=]\s*)?(drawer_[a-z0-9_]+)\]/g;
 
 /**
  * Extract unique drawer_id citations referenced in an assistant response.
  * Canonical pattern is `[drawer_xxxxxx]`; we also accept a few common
- * model-creative variants like `[drawer_id: drawer_xxx]` (see issue: real
- * familiar response shipped with that bracketed-label form and rendered
- * as plain text because the matcher was too strict).
+ * model-creative variants like `[drawer_id: drawer_xxx]` and
+ * `[drawer=drawer_xxx]` (observed live on phi-4-Q4_K_M, 2026-05-15).
+ *
+ * Source-header forms (`[wing=... · room=...]`, `[drawer=general · room=...]`)
+ * are NOT extracted as citations — those are echoes of the palace-context
+ * block, rendered by the UI as source chips.
  */
 export function extractCitations(text: string): string[] {
   const ids = new Set<string>();
