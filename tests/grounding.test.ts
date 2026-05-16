@@ -53,14 +53,26 @@ describe("buildSystemPrompt", () => {
   test("includes grounding directives (faithfulness/citation/persona-meta/ambiguity)", () => {
     const prompt = buildSystemPrompt({ drawers: [], warnings: [], availableInScope: 0, wingScope: null });
     expect(prompt).toMatch(/prefer the palace context/i);
-    // Directive teaches citations via a [drawer_xxx]-shaped example
+    // Directive teaches citations via a [drawer_xxx_yyy_zzz]-shaped example
     // (the literal id pattern). Previously used [drawer_id] which the
-    // model interpreted as a literal label — see the regex fix in
-    // src/trace.ts. Accept either historical form.
-    expect(prompt).toMatch(/\[drawer_(?:id|xxx)\]/);
+    // model interpreted as a literal label, then [drawer_xxx] which phi-4
+    // copied as a header — see the regex fix in src/trace.ts. Accept any
+    // historical bracketed-drawer form.
+    expect(prompt).toMatch(/\[drawer_(?:id|xxx|xxx_yyy_zzz)\]/);
     expect(prompt).toMatch(/answer from your persona/i);
     expect(prompt).toMatch(/name the ambiguity/i);
     expect(prompt).toMatch(/don't force-cite/i);
+  });
+
+  test("explicitly warns model not to copy source-header format as a citation", () => {
+    // Drift observed live on phi-4-Q4_K_M (2026-05-15): model copies the
+    // `[wing=... · room=... · date=...]` source-header form into its reply
+    // instead of using `[drawer_xxx]`. The directive must call this out.
+    const prompt = buildSystemPrompt({ drawers: [], warnings: [], availableInScope: 0, wingScope: null });
+    expect(prompt).toMatch(/source header/i);
+    // Negative examples for both observed wrong-shape variants.
+    expect(prompt).toMatch(/\[wing=/);
+    expect(prompt).toMatch(/\[drawer=/);
   });
 
   test("labels empty palace clearly", () => {
