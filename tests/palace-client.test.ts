@@ -111,9 +111,59 @@ describe("PalaceClient", () => {
       return new Response(JSON.stringify({ ok: true }), { status: 200 });
     });
     const client = new PalaceClient({ baseUrl: "http://k:8085", apiKey: "key", searchTimeoutMs: 2000, fetch: fetchMock as unknown as typeof fetch });
-    await client.writeMemory({ content: "hello world", wing: "diary", room: "familiar" });
+    const result = await client.writeMemory({ content: "hello world", wing: "diary", room: "familiar" });
     expect(JSON.parse(captured!.body)).toEqual({ content: "hello world", wing: "diary", room: "familiar" });
     expect(captured!.headers.get("x-api-key")).toBe("key");
+    // Forward-compat: pre-mempalace#86 daemons return shapes without warnings/errors;
+    // the client defaults them to empty arrays.
+    expect(result.warnings).toEqual([]);
+    expect(result.errors).toEqual([]);
+    expect(result.id).toBe("");
+  });
+
+  test("writeMemory propagates warnings + errors + id from daemon (mempalace#86)", async () => {
+    const fetchMock = mockFetch(() => new Response(JSON.stringify({
+      id: "drawer_abc123",
+      warnings: ["hnsw_index_pending"],
+      errors: [],
+    }), { status: 200 }));
+    const client = new PalaceClient({ baseUrl: "http://k:8085", apiKey: "key", searchTimeoutMs: 2000, fetch: fetchMock as unknown as typeof fetch });
+    const result = await client.writeMemory({ content: "x", wing: "w", room: "r" });
+    expect(result.id).toBe("drawer_abc123");
+    expect(result.warnings).toEqual(["hnsw_index_pending"]);
+    expect(result.errors).toEqual([]);
+  });
+
+  test("silentSave defaults warnings + errors to [] on pre-mempalace#86 daemon", async () => {
+    const fetchMock = mockFetch(() => new Response(JSON.stringify({
+      count: 3,
+      themes: ["session-checkpoint"],
+      queued: false,
+      entry_id: "drawer_xyz",
+      systemMessage: "✦ flushed 3 entries",
+    }), { status: 200 }));
+    const client = new PalaceClient({ baseUrl: "http://k:8085", apiKey: "key", searchTimeoutMs: 2000, fetch: fetchMock as unknown as typeof fetch });
+    const result = await client.silentSave({ session_id: "s1", wing: "familiar", entry: "x" });
+    expect(result.count).toBe(3);
+    expect(result.entry_id).toBe("drawer_xyz");
+    expect(result.warnings).toEqual([]);
+    expect(result.errors).toEqual([]);
+  });
+
+  test("silentSave propagates warnings + errors when daemon ships them (mempalace#86)", async () => {
+    const fetchMock = mockFetch(() => new Response(JSON.stringify({
+      count: 5,
+      themes: ["a"],
+      queued: false,
+      entry_id: "drawer_q",
+      systemMessage: "✦ saved",
+      warnings: ["embedder_fallback_used"],
+      errors: ["graph_link_failed"],
+    }), { status: 200 }));
+    const client = new PalaceClient({ baseUrl: "http://k:8085", apiKey: "key", searchTimeoutMs: 2000, fetch: fetchMock as unknown as typeof fetch });
+    const result = await client.silentSave({ session_id: "s1", wing: "familiar", entry: "x" });
+    expect(result.warnings).toEqual(["embedder_fallback_used"]);
+    expect(result.errors).toEqual(["graph_link_failed"]);
   });
 
   test("health returns parsed JSON", async () => {
