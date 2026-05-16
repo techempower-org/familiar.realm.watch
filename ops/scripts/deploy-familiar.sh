@@ -64,6 +64,19 @@ else
   DIRTY=$([ -z "$(git -C "${REPO_ROOT}" status --porcelain 2>/dev/null)" ] && echo "false" || echo "true")
 fi
 
+# Pre-deploy gate: parse + duplicate-declaration check on web/ assets.
+# Today's regression (2026-05-16) was a duplicate `function clearChildren`
+# at module scope in app.js — typecheck didn't catch it, only the browser
+# did. check-web.sh runs node --check on each web/*.js file (catches the
+# specific SyntaxError that took out the PWA) AND scans for duplicate
+# top-level declarations as a regex tripwire for the same class. Fast
+# enough to run on every deploy.
+echo ">>> Pre-deploy web/ parse check..."
+if ! "${REPO_ROOT}/ops/scripts/check-web.sh"; then
+    echo "✗ web/ assets failed parse check — aborting deploy"
+    exit 1
+fi
+
 echo ">>> Ensuring service user exists on ${DEST_HOST}..."
 ssh "${DEST_HOST}" "id ${DEST_USER} >/dev/null 2>&1 || sudo useradd -r -m -s /bin/bash ${DEST_USER}"
 
