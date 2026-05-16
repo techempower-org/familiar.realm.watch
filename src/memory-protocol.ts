@@ -116,6 +116,18 @@ export async function retrieveAndGround(opts: RetrieveAndGroundOpts): Promise<Re
     warnings.push(`filtered_null_text_${droppedNullCount - drawers.length}`);
   }
 
+  // Exclude session-diary drawers from chat grounding (issue #25).
+  // Stop-hook conversation diaries (room=diary, typically wing=familiar)
+  // are the agent's log of past turns — including them creates a feedback
+  // loop where a hallucinated answer becomes "palace truth" for the next
+  // turn. Diary stays useful for session-recap views; just not as factual
+  // grounding for new questions.
+  const beforeDiaryFilter = drawers.length;
+  drawers = drawers.filter((d) => d.room !== "diary");
+  if (drawers.length < beforeDiaryFilter) {
+    warnings.push(`filtered_diary_${beforeDiaryFilter - drawers.length}`);
+  }
+
   // Dedup against recentCitations (don't re-inject last turn's drawers)
   if (opts.recentCitations.length > 0) {
     drawers = drawers.filter((d) => !d.id || !opts.recentCitations.includes(d.id));
