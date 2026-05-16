@@ -109,7 +109,15 @@ function buildCitationSpan(rawId, meta) {
   btn.type = "button";
   btn.className = "citation-trigger";
   btn.setAttribute("aria-label", `Palace source: ${drawerId}`);
-  btn.textContent = `[${rawId.slice(0, 6)}]`;
+  // Prefer a semantic label — palace navigation makes "[architecture]" or
+  // "[sessions]" far more readable than a 6-char id slice like "[storyv]".
+  // Truncate at 24 chars to keep chips inline-friendly. Falls back to the
+  // id-prefix only when meta is absent (server emitted a citation without
+  // a matching retrieved-drawer in the trace).
+  const label = (meta && (meta.room || meta.wing))
+    ? (meta.room || meta.wing).slice(0, 24)
+    : rawId.slice(0, 8);
+  btn.textContent = `[${label}]`;
 
   const popover = buildPopover(drawerId, meta);
   wrapper.appendChild(btn);
