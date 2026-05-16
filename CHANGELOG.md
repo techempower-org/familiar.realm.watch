@@ -7,6 +7,86 @@ versions follow [SemVer](https://semver.org/spec/v2.0.0.html) and the
 [realm-sigil](https://github.com/jphein/realm-sigil) convention used across
 the realm.watch ecosystem.
 
+## [Unreleased] — 2026-05-15 (evening) — *Inference backend: Ollama → llama.cpp + UI polish*
+
+PRs [#14](https://github.com/techempower-org/familiar.realm.watch/pull/14),
+[#16](https://github.com/techempower-org/familiar.realm.watch/pull/16),
+[#19](https://github.com/techempower-org/familiar.realm.watch/pull/19),
+[#20](https://github.com/techempower-org/familiar.realm.watch/pull/20),
+[#21](https://github.com/techempower-org/familiar.realm.watch/pull/21).
+Plus issues [#17](https://github.com/techempower-org/familiar.realm.watch/issues/17),
+[#18](https://github.com/techempower-org/familiar.realm.watch/issues/18) closed.
+
+Triggered by the P102-100 GPU install on `familiar`: stock Ollama
+0.23.2 prebuilt binaries silently CPU-fallback on Pascal (sm_61) — no
+SASS compiled in despite PTX markers in `strings`. Migrated the
+inference stack to llama.cpp built locally with multi-arch
+`CMAKE_CUDA_ARCHITECTURES=52;61` (Pascal P102 chat + Maxwell GTX 970
+embed). New chat model: Phi-4 14B Q4_K_M @ 28 tok/s on the P102.
+
+### Changed
+
+- **Inference backend swapped** from stock Ollama to `llama-server`
+  (llama.cpp) on both `ollama-chat.service` (port 11434, chat) and
+  `ollama-embed.service` (port 11435, embed). Same systemd unit names
+  kept for backwards-compat with existing health probes and
+  `familiar-api`'s env vars; ExecStart overridden via drop-in.
+- **`src/ollama-client.ts` migrated to OpenAI-compatible `/v1/*` paths**
+  (chat, embed, models, completions). Class name kept for callsite
+  stability — it's the OpenAI-compat client now. Works against both
+  llama-server AND stock Ollama (which mounts `/v1/*` as a shim on the
+  same port). LlamaCppClient is now functionally redundant; left in
+  place since InferenceRouter still wraps it as a separate breaker.
+- **`src/health.ts` probes `/v1/models`** instead of Ollama-native
+  `/api/tags`. The old hardcoded path returned 404 against llama-server
+  and stuck the route at "degraded" even when both backends were fine.
+- **System-prompt citation directive rewritten** in `src/grounding.ts`
+  to teach `[drawer_xxx]` as the literal id format with concrete
+  examples — the previous `[drawer_id]` example was misinterpreted by
+  models as a literal label, producing un-renderable
+  `[drawer_id: drawer_xxx]` text in live responses.
+
+### Added
+
+- **Citation regex widened** in both `src/trace.ts` and `web/app.js` to
+  accept `[drawer_id: drawer_xxx]`, `[id=drawer_xxx]`, and ids with
+  underscores (e.g. `drawer_familiar_realm_watch_sessions_abc123` —
+  the old `[a-z0-9]+` regex truncated those).
+- **Citation chip labels show room name** (e.g. `[architecture]`,
+  `[sessions]`) instead of truncated id chars (`[storyv]`). For a
+  memory-palace UI, the room name is the meaningful semantic unit.
+  Falls back to wing, then to 8-char id prefix.
+- **`Cache-Control: no-cache, must-revalidate` on `/sw.js`** in the
+  Bun.serve static handler. Without this, browsers cached sw.js for
+  ~24h and new SW deploys didn't propagate even with
+  `skipWaiting()` + `clients.claim()` already in place.
+
+### Methodology
+
+- **4-model bench harness** with proper budget for thinking models —
+  initial `max_tokens=400` produced false negatives on Qwen3.5-9B and
+  R1-Distill-14B which emit chain-of-thought into `reasoning_content`
+  that exceeds the budget before reaching `content`. Re-ran with
+  `max_tokens=3000` (+ Qwen3.5 at ctx=8192 / max_tokens=6000) so all
+  models could finish. **Winner: Phi-4 14B** — the only non-thinking
+  model in the field. Wall-clock-per-response (median 6.4s) vs
+  Qwen3.5-9B's 25–86s settled the choice for interactive chat; the
+  raw-tok/s ranking would have misled.
+- **Sustained 15-iteration stress test** (10 min, 90 inference cycles
+  on Phi-4 + P102): peak 74°C, peak 246W (right at 250W TDP), tok/s
+  flat 27.3–28.3 across all 90 prompts (zero thermal throttling),
+  0 Xid faults.
+
+### Closed
+
+- [#17](https://github.com/techempower-org/familiar.realm.watch/issues/17)
+  *PWA: shell update stickiness* — fixed by the Cache-Control change.
+- [#18](https://github.com/techempower-org/familiar.realm.watch/issues/18)
+  *Eval scripts stop ollama-chat unnecessarily* — patched on familiar
+  host (scripts live outside the repo for now).
+
+---
+
 ## [Unreleased] — 2026-05-15 — *HyDE per-request override + paraphrase probe runner*
 
 Closes [#5](https://github.com/techempower-org/familiar.realm.watch/issues/5).
