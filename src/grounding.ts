@@ -74,9 +74,8 @@ function nowAnchor(now: Date): string {
 }
 
 const DIRECTIVES = `── How to use the palace context ──
-- For factual claims about JP, their projects, their realm, or past events: prefer the palace context and cite the drawer it came from. The ONLY valid citation format is square brackets around the bare drawer id, like \`[drawer_<wing>_<room>_<hash>]\` — copy the verbatim drawer id from the SOURCE HEADER above the drawer you're citing. Do NOT invent IDs or use placeholder hashes from these instructions; only cite IDs that appear in the palace-context block below.
-- The lines above each drawer look like \`[wing=… · room=… · date=… · similarity=… · matched_via=…]\` and are SOURCE HEADERS for your reference — they are NOT citation formats. Do NOT copy that shape into your reply. Wrong: \`[wing=projects · room=technical · date=2026-05-15]\`. Wrong: \`[drawer=general · room=discoveries · date=2026-05-11]\`. To cite the drawer underneath such a header, use its drawer_id (which is also shown as a tag in the header) wrapped in brackets — nothing else.
-- Do NOT write labels like \`drawer_id:\`, \`id=\`, or \`drawer=\` inside the brackets. Just the bracketed id itself.
+- For factual claims about JP, their projects, their realm, or past events: prefer the palace context and cite the drawer it came from. Each drawer in the context block below has a \`cite-as: [drawer_xxx]\` line — copy that bracketed value verbatim when citing. Do NOT invent IDs; only cite IDs that appear as \`cite-as:\` values in the context block.
+- The YAML-style header above each drawer (wing/room/date/similarity/matched_via) is metadata for your reference — these are bare colon-separated lines, NOT citation shapes. Don't paste them into your reply. The ONLY valid citation form is the \`cite-as:\` value: \`[drawer_<wing>_<room>_<hash>]\`.
 - For questions about you (the familiar) — your nature, role, what you can do, your strengths and quirks: answer from your persona above. Palace context is a supplement, not the source. Do not literalize technical config values as personality traits (e.g., a "strength: 0.65" knob in a config drawer is not your *strength* as a familiar).
 - If palace context contains multiple values for the same fact (a date, a name that shifted over time), list them and name the ambiguity — don't silently pick one.
 - If palace context is thin or contains mostly technical/system/infrastructure drawers, don't force-cite them. Answer naturally from what you do know, and tell JP honestly what's missing.
@@ -106,14 +105,24 @@ function renderContextBlock(input: GroundingInput): string {
     lines.push("(no palace context retrieved for this turn)");
   } else {
     for (const d of drawers) {
-      const tags: string[] = [];
-      if (d.id) tags.push(`drawer_id=${d.id}`);
-      tags.push(`wing=${d.wing}`);
-      tags.push(`room=${d.room}`);
-      if (d.created_at) tags.push(`date=${d.created_at.slice(0, 10)}`);
-      if (d.similarity !== undefined) tags.push(`similarity=${d.similarity.toFixed(3)}`);
-      if (d.matched_via) tags.push(`matched_via=${d.matched_via}`);
-      lines.push(`[${tags.join(" · ")}]`);
+      // Source-header lines used to be wrapped in [brackets] but every
+      // model we tested (phi-4 14B, gemma-4, qwen3.5) copied that
+      // bracketed shape into their replies as "citations" no matter
+      // how loudly the directive said not to. Switching to a plain
+      // YAML-style header (no brackets) removes the bracket pattern
+      // from the model's view, so the only bracketed thing it sees is
+      // the cite-this-id example in the directive.
+      // The trailing `drawer_id:` line gives the model a verbatim
+      // [drawer_xxx] form to copy into citations.
+      lines.push("---");
+      if (d.id) lines.push(`drawer_id: ${d.id}`);
+      lines.push(`wing: ${d.wing}`);
+      lines.push(`room: ${d.room}`);
+      if (d.created_at) lines.push(`date: ${d.created_at.slice(0, 10)}`);
+      if (d.similarity !== undefined) lines.push(`similarity: ${d.similarity.toFixed(3)}`);
+      if (d.matched_via) lines.push(`matched_via: ${d.matched_via}`);
+      if (d.id) lines.push(`cite-as: [${d.id}]`);
+      lines.push("");
       lines.push(d.text);
       lines.push("");
     }
