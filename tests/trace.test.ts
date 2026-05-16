@@ -35,8 +35,31 @@ describe("extractCitations", () => {
       .toEqual(["drawer_abc", "drawer_xyz"]);
   });
 
+  test("tolerates [drawer=drawer_xxx] form (phi-4-Q4_K_M, 2026-05-15)", () => {
+    // Observed live: phi-4 drifts toward `[drawer=drawer_xxx]`, mixing the
+    // source-header `drawer=...` key into a real citation. Accept it.
+    expect(extractCitations("see [drawer=drawer_abc] and [drawer:drawer_xyz]").sort())
+      .toEqual(["drawer_abc", "drawer_xyz"]);
+  });
+
+  test("does NOT extract source-header [wing=... · room=...] as a citation", () => {
+    // Observed live on phi-4-Q4_K_M (2026-05-15): model copies the
+    // palace-context source headers verbatim. These render as source chips
+    // in the UI but must NOT be treated as drawer citations — they have no
+    // drawer_id to look up.
+    const text = "per [wing=familiar_realm_watch · room=references · date=2026-05-15 · similarity=0.803] you use bun";
+    expect(extractCitations(text)).toEqual([]);
+  });
+
+  test("does NOT extract [drawer=general · room=...] source-header variant", () => {
+    // Observed live: phi-4 sometimes emits the source-header form with
+    // `drawer=` instead of `wing=`. Still a header, still not a citation.
+    const text = "see [drawer=general · room=discoveries · date=2026-05-11] for context";
+    expect(extractCitations(text)).toEqual([]);
+  });
+
   test("dedups across mixed bare and labeled forms", () => {
-    const text = "first [drawer_abc] then [drawer_id: drawer_abc] then [id:drawer_abc]";
+    const text = "first [drawer_abc] then [drawer_id: drawer_abc] then [id:drawer_abc] then [drawer=drawer_abc]";
     expect(extractCitations(text)).toEqual(["drawer_abc"]);
   });
 });
