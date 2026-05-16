@@ -12,7 +12,15 @@
  *         + recency_bonus
  *
  *   tag_importance = 1.4 if drawer.wing === wingScope, else 1.0
- *   recency_bonus  = 0.1 if drawer is < 48h old, else 0
+ *   recency_bonus  = 0.3 if drawer is < 48h old, else 0
+ *
+ * Recency was 0.1 originally; bumped to 0.3 after issue #26 — palace-wide
+ * retrieval without a wing scope was ranking generic stale drawers (BM25-rich
+ * general/sessions wings) above freshly-written wing-authoritative ones.
+ * 0.3 is large enough to dominate the BM25 lead on stale generic drawers
+ * while still letting older drawers compete on raw similarity. Live test:
+ * the "what model is running" query that previously surfaced 0 of the top-10
+ * from familiar_realm_watch now returns the relevant decision drawer first.
  *
  * The function preserves all PalaceDrawer fields (topic, matched_via, cosine,
  * bm25 etc.) via spread; only `similarity` is replaced with the final score.
@@ -30,7 +38,7 @@ const WING_WEIGHT = 0.68;
 const TAG_WEIGHT = 0.32;
 const WING_BOOST = 1.4;
 const NEUTRAL_WEIGHT = 1.0;
-const RECENCY_BONUS = 0.1;
+const RECENCY_BONUS = 0.3;
 const RECENCY_WINDOW_MS = 48 * 3600 * 1000;
 
 function tagImportance(drawer: PalaceDrawer, wingScope: string | null): number {
