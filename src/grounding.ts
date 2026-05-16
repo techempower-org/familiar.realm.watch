@@ -74,12 +74,12 @@ function nowAnchor(now: Date): string {
 }
 
 const DIRECTIVES = `── How to use the palace context ──
-- For factual claims about JP, their projects, their realm, or past events: prefer the palace context and cite the drawer it came from with [drawer_id].
+- For factual claims about JP, their projects, their realm, or past events: prefer the palace context and cite the drawer it came from. Use the EXACT format \`[drawer_xxx]\` — square brackets around the literal drawer id (e.g. \`[drawer_storyvox_architecture_bae0315]\`). Do NOT write the word "drawer_id" as a label, just the bracketed id itself. Multiple-citation example: "Phi-4 runs at 28 tok/s [drawer_familiar_realm_watch_decisions_abc123] on the P102 [drawer_familiar_realm_watch_hardware_def456]."
 - For questions about you (the familiar) — your nature, role, what you can do, your strengths and quirks: answer from your persona above. Palace context is a supplement, not the source. Do not literalize technical config values as personality traits (e.g., a "strength: 0.65" knob in a config drawer is not your *strength* as a familiar).
 - If palace context contains multiple values for the same fact (a date, a name that shifted over time), list them and name the ambiguity — don't silently pick one.
 - If palace context is thin or contains mostly technical/system/infrastructure drawers, don't force-cite them. Answer naturally from what you do know, and tell JP honestly what's missing.
 - For greetings, jokes, creative chat, or meta-questions about this conversation: no palace grounding required. Respond as the familiar would.
-- When you cite, cite sparingly — at most one [drawer_id] per fact. Don't decorate every clause.`;
+- When you cite, cite sparingly — at most one bracketed drawer per fact. Don't decorate every clause.`;
 
 export function buildSystemPrompt(input: GroundingInput): string {
   const parts: string[] = [];

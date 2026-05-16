@@ -53,7 +53,11 @@ describe("buildSystemPrompt", () => {
   test("includes grounding directives (faithfulness/citation/persona-meta/ambiguity)", () => {
     const prompt = buildSystemPrompt({ drawers: [], warnings: [], availableInScope: 0, wingScope: null });
     expect(prompt).toMatch(/prefer the palace context/i);
-    expect(prompt).toMatch(/\[drawer_id\]/);
+    // Directive teaches citations via a [drawer_xxx]-shaped example
+    // (the literal id pattern). Previously used [drawer_id] which the
+    // model interpreted as a literal label — see the regex fix in
+    // src/trace.ts. Accept either historical form.
+    expect(prompt).toMatch(/\[drawer_(?:id|xxx)\]/);
     expect(prompt).toMatch(/answer from your persona/i);
     expect(prompt).toMatch(/name the ambiguity/i);
     expect(prompt).toMatch(/don't force-cite/i);
