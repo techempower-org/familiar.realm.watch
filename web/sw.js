@@ -1,7 +1,7 @@
 // Minimal service worker for offline PWA shell.
 // Caches only the static shell — API calls always hit the network.
 // Bump CACHE name on shell file changes so old clients pick up new HTML/CSS/JS.
-const CACHE = "familiar-shell-v22";
+const CACHE = "familiar-shell-v23";
 const SHELL = [
   "/", "/index.html", "/style.css", "/app.js", "/favicon.svg", "/manifest.webmanifest",
   "/highlight.min.js", "/highlight-dark.css", "/highlight-light.css",
