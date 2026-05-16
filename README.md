@@ -6,7 +6,7 @@ Local-first AI companion — reads [mempalace](https://github.com/techempower-or
 
 - **familiar-api** — TypeScript + [Bun](https://bun.sh) HTTP + MCP server
 - **familiar-web** — Static PWA served from the same Bun process
-- **Ollama** — Local LLM inference (chat + embed) on GPU
+- **[llama.cpp](https://github.com/ggml-org/llama.cpp)** (`llama-server`) — Local LLM inference (chat + embed) on GPU via OpenAI-compatible `/v1/*` API. Built locally from source on familiar with `-DCMAKE_CUDA_ARCHITECTURES=52;61` to support Pascal (P102) + Maxwell (GTX 970). Stock Ollama doesn't ship Pascal SASS in its prebuilt binaries and silently CPU-fallbacks — we migrated off it on 2026-05-15.
 - **[palace-daemon](https://github.com/techempower-org/palace-daemon)** — mempalace coordination gateway (our fork — adds hook detach, postgres backend gates, `/cypher` + `/embed`, `/search/keyword` + `/search/hybrid`)
 - **[mempalace](https://github.com/techempower-org/mempalace)** — mempalace fork, pip-installed into palace-daemon (adds postgres + pgvector + Apache AGE backend, hybrid search, canonical room taxonomy)
 - **Caddy + Authelia** — reverse proxy + auth on ubox0
@@ -14,7 +14,7 @@ Local-first AI companion — reads [mempalace](https://github.com/techempower-or
 ## Hosts
 
 - `katana` (10.0.6.129) — workstation; dev/test target for familiar-api
-- `familiar` (10.0.6.124) — production inference server (Ollama + familiar-api). Public-facing `familiar.jphe.in` lands here.
+- `familiar` (10.0.6.124) — production inference server (llama-server + familiar-api). Two GPUs: P102-100 (10 GB, runs the chat model on `:11434`) + GTX 970 (4 GB, runs the embed model on `:11435`). Public-facing `familiar.jphe.in` lands here.
 - `disks` (10.0.6.120) — palace-daemon + Postgres (pgvector + AGE) + palace data home (`/mnt/raid/projects/mempalace-data/palace`)
 
 ## Quickstart (dev)
