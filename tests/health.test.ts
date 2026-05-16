@@ -125,4 +125,20 @@ describe("getHealth", () => {
     expect(r.dependencies.ollama_chat.status).toBe("degraded");
     expect(r.dependencies.ollama_embed.status).toBe("ok");
   });
+
+  test("probes /v1/models, not Ollama-native /api/tags", async () => {
+    // Regression: pre-2026-05-15 this hardcoded /api/tags, which 404s on
+    // llama-server. Stuck the health route at "degraded" even when both
+    // backends were fine.
+    const probed: string[] = [];
+    const trackingFetch: typeof fetch = ((url: string) => {
+      probed.push(url);
+      return Promise.resolve(new Response("{}", { status: 200 }));
+    }) as never;
+    const d = { ...deps(mockPalace({})), fetch: trackingFetch };
+    await getHealth(d);
+    expect(probed).toContain("http://chat/v1/models");
+    expect(probed).toContain("http://embed/v1/models");
+    expect(probed.some(u => u.includes("/api/tags"))).toBe(false);
+  });
 });
