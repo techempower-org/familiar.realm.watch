@@ -176,7 +176,18 @@ const server = Bun.serve({
         const file = Bun.file(`./web${pathname}`);
         if (await file.exists()) {
           const ct = contentTypeFor(pathname);
-          return new Response(file, { headers: { "content-type": ct } });
+          const headers: Record<string, string> = { "content-type": ct };
+          // sw.js MUST always revalidate against the server. Without this,
+          // browsers cache it with the default HTTP heuristics (~24h) and
+          // new SW deploys don't land for existing clients until the
+          // cache stales. Once the browser re-fetches sw.js and sees a
+          // new content, our `self.skipWaiting() + self.clients.claim()`
+          // pattern takes over and the new shell goes live immediately.
+          // See techempower-org/familiar.realm.watch#17.
+          if (pathname === "/sw.js") {
+            headers["cache-control"] = "no-cache, must-revalidate";
+          }
+          return new Response(file, { headers });
         }
       }
 
