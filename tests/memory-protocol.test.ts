@@ -99,4 +99,32 @@ describe("retrieveAndGround", () => {
     expect(result.drawerIds.length).toBe(2);
     expect(result.drawerIds).toContain("d2"); // highest similarity always kept
   });
+
+  test("excludes session-diary drawers from grounding (issue #25)", async () => {
+    // Stop-hook diary entries (room=diary) are the agent's own log of past
+    // turns. Including them in palace context creates a feedback loop —
+    // a hallucinated answer becomes "palace truth" for the next turn.
+    // retrieveAndGround should filter them out and warn so eval/trace can
+    // see the data-quality signal.
+    const palace = fakePalace({
+      query: "what model is running?",
+      available_in_scope: 100,
+      warnings: [],
+      results: [
+        { id: "diary_familiar_001", text: "[2026-05-16] user: ... assistant: 7B model on RTX 2080 Ti", wing: "familiar", room: "diary", similarity: 0.9, matched_via: "drawer" },
+        { id: "drawer_decisions_001", text: "chat model = phi-4 14B on P102", wing: "familiar_realm_watch", room: "decisions", similarity: 0.7, matched_via: "drawer" },
+      ],
+    });
+    const result = await retrieveAndGround({
+      palace: palace as unknown as import("../src/palace-client.ts").PalaceClient,
+      userMessage: "what model is running?",
+      wingScope: null,
+      retrievalLimit: 5,
+      contextBudgetTokens: 4000,
+      recentCitations: [],
+    });
+    expect(result.drawerIds).not.toContain("diary_familiar_001");
+    expect(result.drawerIds).toContain("drawer_decisions_001");
+    expect(result.warnings.some((w) => w.startsWith("filtered_diary_"))).toBe(true);
+  });
 });

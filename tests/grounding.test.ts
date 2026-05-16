@@ -58,7 +58,14 @@ describe("buildSystemPrompt", () => {
     // model interpreted as a literal label, then [drawer_xxx] which phi-4
     // copied as a header — see the regex fix in src/trace.ts. Accept any
     // historical bracketed-drawer form.
-    expect(prompt).toMatch(/\[drawer_(?:id|xxx|xxx_yyy_zzz)\]/);
+    // The placeholder format has evolved over the day:
+    //   v1: [drawer_id]                         — model read as literal label
+    //   v2: [drawer_xxx]                        — model copied verbatim
+    //   v3: [drawer_xxx_yyy_zzz]                — same drift, model copied
+    //   v4 (current): [drawer_<wing>_<room>_<hash>]  — angle-bracket placeholders
+    //       paired with an explicit "do NOT invent IDs" line so the model
+    //       must extract from the actual context block, not the directive.
+    expect(prompt).toMatch(/\[drawer_(?:id|xxx|xxx_yyy_zzz|<wing>_<room>_<hash>)\]/);
     expect(prompt).toMatch(/answer from your persona/i);
     expect(prompt).toMatch(/name the ambiguity/i);
     expect(prompt).toMatch(/don't force-cite/i);
