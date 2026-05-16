@@ -7,11 +7,23 @@
 
 import type { SmeEntity, Trace } from "./types.ts";
 
-const CITATION_PATTERN = /\[(drawer_[a-z0-9]+)\]/g;
+// Matches:
+//   [drawer_xxxxx]              — canonical
+//   [drawer_id: drawer_xxxxx]   — label-prefixed (some models add the
+//                                 label despite the system prompt)
+//   [drawer_id=drawer_xxxxx]    — equals variant
+//   [id: drawer_xxxxx]          — shortened label
+//
+// The captured group is always the bare drawer id. Optional whitespace
+// around the label separator handles minor format drift.
+const CITATION_PATTERN = /\[(?:(?:drawer_id|id)\s*[:=]\s*)?(drawer_[a-z0-9_]+)\]/g;
 
 /**
  * Extract unique drawer_id citations referenced in an assistant response.
- * Pattern is `[drawer_xxxxxx]` — preserved verbatim from upstream mempalace.
+ * Canonical pattern is `[drawer_xxxxxx]`; we also accept a few common
+ * model-creative variants like `[drawer_id: drawer_xxx]` (see issue: real
+ * familiar response shipped with that bracketed-label form and rendered
+ * as plain text because the matcher was too strict).
  */
 export function extractCitations(text: string): string[] {
   const ids = new Set<string>();
