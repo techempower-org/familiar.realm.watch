@@ -1,11 +1,32 @@
 import type { PalaceClient } from "./palace-client.ts";
 import type { CircuitBreaker } from "./circuit-breaker.ts";
 import type { SigilInfo } from "./sigil.ts";
+import type { InferenceChatProvider } from "./types.ts";
+import type { OllamaClient } from "./ollama-client.ts";
+import { voice } from "./lang/familiar-voice.ts";
 
 export interface HealthDeps {
   palace: PalaceClient;
   ollamaChatUrl: string;
   ollamaEmbedUrl: string;
+  /** Configured chat model name (defaults from cfg.ollamaChat.model). Used
+   * by the functional chat probe to verify the model actually serves,
+   * not just that /v1/models is reachable. */
+  chatModel?: string;
+  /** Configured embed model name. Same purpose for the embed probe. */
+  embedModel?: string;
+  /** Inference router or any InferenceChatProvider. When provided, /api/
+   * familiar/health does a functional chat completion probe — sends a
+   * tiny ping and asserts the response is non-empty AND not the
+   * chatFalters fallback string. This is the lever that would have
+   * caught the 2026-05-16 env-mismatch incident (OLLAMA_CHAT_MODEL=
+   * gemma3:4b but only phi-4 loaded; /v1/models returned 200 ok, chat
+   * returned the "voice falters" fallback). Without this dep, only the
+   * /v1/models dial-tone check runs. */
+  inference?: InferenceChatProvider;
+  /** Embed client. When provided, the embed probe makes a real
+   * embedding call and asserts a non-empty vector. */
+  ollamaEmbed?: OllamaClient;
   breakers: {
     palace: CircuitBreaker;
     ollamaChat: CircuitBreaker;
@@ -48,6 +69,24 @@ interface DepReport {
    */
   recall_quality?: "ok" | "empty_hnsw" | "probe_error";
   recall_warning?: string;
+  /**
+   * For ollama_chat only (#186):
+   *   "ok"          — functional chat completion returned a non-fallback token
+   *   "fallback"    — inference returned the chatFalters string (model loaded
+   *                    upstream returns 200 on /v1/models but isn't actually
+   *                    serving the configured model name — 2026-05-16 incident)
+   *   "probe_error" — chat probe failed entirely (timeout, network)
+   */
+  chat_quality?: "ok" | "fallback" | "probe_error";
+  chat_warning?: string;
+  chat_latency_ms?: number;
+  /**
+   * For ollama_embed only (#186): "ok" if a real embedding call returned a
+   * non-empty vector. Catches the embed-equivalent of the chat fallback bug.
+   */
+  embed_quality?: "ok" | "probe_error";
+  embed_warning?: string;
+  embed_latency_ms?: number;
 }
 
 async function probe(fn: () => Promise<void>): Promise<DepReport> {
@@ -94,9 +133,146 @@ async function probePalaceRecall(palace: PalaceClient): Promise<{
   }
 }
 
+/**
+ * Functional chat-completion probe (#186, production-readiness).
+ *
+ * Sends a 1-token completion through the actual inference router and
+ * asserts the response is non-empty AND not the chatFalters fallback
+ * string. This catches the failure mode that bit 2026-05-16:
+ * /v1/models returned 200 ok (so the dial-tone probe was happy), but
+ * the configured chat model wasn't loaded so every chat request hit
+ * the fallback. /api/familiar/health reported "ok" while users saw
+ * "My voice falters" for hours.
+ *
+ * Bounded latency (timeoutMs default 4s) so the health endpoint stays
+ * fast enough for status-page polling. Returns `chat_quality:
+ * "ok" | "fallback" | "probe_error"` so consumers can see the
+ * actionable detail without parsing free-form strings.
+ */
+async function probeChatCompletion(
+  inference: InferenceChatProvider,
+  model: string,
+  timeoutMs = 4000,
+): Promise<{
+  chat_quality: "ok" | "fallback" | "probe_error";
+  chat_warning?: string;
+  chat_latency_ms?: number;
+}> {
+  const start = Date.now();
+  // Race the actual stream pull against a timeout. ChatStreamOpts does
+  // not (yet) carry an AbortSignal, so a deadline race is the safest
+  // bound-the-latency tool we have without widening the provider
+  // contract for one consumer.
+  const run = (async () => {
+    let accumulated = "";
+    for await (const chunk of inference.chatStream({
+      model,
+      messages: [{ role: "user", content: "ping" }],
+      // num_predict caps the visible response tokens on llama-server
+      // and stock Ollama alike; small enough to keep the probe cheap
+      // even if a thinking model wants to chain-of-thought.
+      options: { num_predict: 4 },
+    })) {
+      const delta = chunk.message?.content ?? "";
+      if (delta) accumulated += delta;
+      if (accumulated.length >= 4) break;
+    }
+    return accumulated;
+  })();
+  let accumulated: string;
+  try {
+    accumulated = await Promise.race([
+      run,
+      new Promise<string>((_, reject) =>
+        setTimeout(() => reject(new Error(`probe timeout after ${timeoutMs}ms`)), timeoutMs),
+      ),
+    ]);
+  } catch (err) {
+    return {
+      chat_quality: "probe_error",
+      chat_warning: `chat probe failed: ${(err as Error).message}`,
+      chat_latency_ms: Date.now() - start,
+    };
+  }
+  const latency_ms = Date.now() - start;
+  const text = accumulated.trim();
+  if (!text) {
+    return {
+      chat_quality: "probe_error",
+      chat_warning: "no tokens returned (model may not be loaded)",
+      chat_latency_ms: latency_ms,
+    };
+  }
+  // The chatFalters string in voice.ts — if we get it back, the
+  // inference router exhausted all providers and the chat route
+  // returned the themed fallback. That's exactly what happened
+  // 2026-05-16 with OLLAMA_CHAT_MODEL=gemma3:4b not loaded.
+  if (voice.chatFalters && text.includes(voice.chatFalters.slice(0, 20))) {
+    return {
+      chat_quality: "fallback",
+      chat_warning: "inference returned the chatFalters fallback string — model not actually serving",
+      chat_latency_ms: latency_ms,
+    };
+  }
+  return { chat_quality: "ok", chat_latency_ms: latency_ms };
+}
+
+/**
+ * Functional embed probe — asks for an embedding of a single character
+ * and asserts a non-empty vector. Catches the embed-equivalent of the
+ * chat-fallback bug: /v1/models 200 but the configured embed model
+ * isn't actually serving.
+ */
+async function probeEmbedCompletion(
+  embedClient: OllamaClient,
+  model: string,
+  timeoutMs = 4000,
+): Promise<{
+  embed_quality: "ok" | "probe_error";
+  embed_warning?: string;
+  embed_latency_ms?: number;
+}> {
+  const start = Date.now();
+  try {
+    const vec = await Promise.race([
+      embedClient.embed({ model, text: "x" }),
+      new Promise<number[]>((_, reject) =>
+        setTimeout(() => reject(new Error(`probe timeout after ${timeoutMs}ms`)), timeoutMs),
+      ),
+    ]);
+    const latency_ms = Date.now() - start;
+    if (!Array.isArray(vec) || vec.length === 0) {
+      return {
+        embed_quality: "probe_error",
+        embed_warning: "embed returned non-array or empty vector",
+        embed_latency_ms: latency_ms,
+      };
+    }
+    return { embed_quality: "ok", embed_latency_ms: latency_ms };
+  } catch (err) {
+    return {
+      embed_quality: "probe_error",
+      embed_warning: `embed probe failed: ${(err as Error).message}`,
+      embed_latency_ms: Date.now() - start,
+    };
+  }
+}
+
 export async function getHealth(deps: HealthDeps): Promise<HealthReport> {
   const fetchFn = deps.fetch ?? fetch;
-  const [palace, chat, embed, recall] = await Promise.all([
+  // Probe set. Two new functional probes (chat + embed completion) run
+  // *in addition to* the /v1/models dial-tone — the dial-tone catches
+  // "service unreachable", the functional probes catch "service reachable
+  // but configured model not serving". Both run in parallel to keep p99
+  // latency under the timeout cap.
+  const chatFunctional = deps.inference && deps.chatModel
+    ? probeChatCompletion(deps.inference, deps.chatModel)
+    : Promise.resolve({ chat_quality: undefined as undefined } as never);
+  const embedFunctional = deps.ollamaEmbed && deps.embedModel
+    ? probeEmbedCompletion(deps.ollamaEmbed, deps.embedModel)
+    : Promise.resolve({ embed_quality: undefined as undefined } as never);
+
+  const [palace, chat, embed, recall, chatFn, embedFn] = await Promise.all([
     probe(() => deps.palace.health().then(() => {})),
     probe(async () => {
       // /v1/models is the OpenAI-compat lingua franca that both stock
@@ -113,7 +289,37 @@ export async function getHealth(deps: HealthDeps): Promise<HealthReport> {
       if (!r.ok) throw new Error(`${r.status}`);
     }),
     probePalaceRecall(deps.palace),
+    chatFunctional,
+    embedFunctional,
   ]);
+
+  // Merge functional chat probe into the ollama_chat dep. Both fallback
+  // and probe_error flip top-level status to "degraded" so status.realm.
+  // watch + the existing 503-on-degraded logic raise the alarm.
+  if (chatFn && (chatFn as { chat_quality?: string }).chat_quality) {
+    const cf = chatFn as { chat_quality: "ok" | "fallback" | "probe_error"; chat_warning?: string; chat_latency_ms?: number };
+    chat.chat_quality = cf.chat_quality;
+    if (cf.chat_warning) chat.chat_warning = cf.chat_warning;
+    if (cf.chat_latency_ms !== undefined) chat.chat_latency_ms = cf.chat_latency_ms;
+    if (chat.status === "ok" && cf.chat_quality !== "ok") {
+      chat.status = "degraded";
+      chat.error = cf.chat_quality === "fallback"
+        ? `chat returned chatFalters fallback — model not serving: ${cf.chat_warning}`
+        : `chat probe failed: ${cf.chat_warning}`;
+    }
+  }
+
+  // Same shape for embed.
+  if (embedFn && (embedFn as { embed_quality?: string }).embed_quality) {
+    const ef = embedFn as { embed_quality: "ok" | "probe_error"; embed_warning?: string; embed_latency_ms?: number };
+    embed.embed_quality = ef.embed_quality;
+    if (ef.embed_warning) embed.embed_warning = ef.embed_warning;
+    if (ef.embed_latency_ms !== undefined) embed.embed_latency_ms = ef.embed_latency_ms;
+    if (embed.status === "ok" && ef.embed_quality !== "ok") {
+      embed.status = "degraded";
+      embed.error = `embed probe failed: ${ef.embed_warning}`;
+    }
+  }
 
   // Merge recall info into the palace_daemon report. Both empty_hnsw and
   // probe_error flip top-level status to "degraded" so status.realm.watch
