@@ -18,14 +18,25 @@ const voicePicker = document.getElementById("voice-picker");
 
 // Citation rendering — converts [drawer_xxx] markers AND verbatim source-
 // header markers (echoed from the system prompt) into styled chips. DOM-
-// only, no innerHTML. Two variants share one combined regex to avoid the
-// two-pass walk-replace dance.
+// only, no innerHTML. Three drawer-citation variants share one combined
+// regex to avoid the two-pass walk-replace dance.
 //
 //  variant A:  [drawer_xxx]                                  → popover button
+//  variant A':  [drawer_id: drawer_xxx] / [id=drawer_xxx]    → same (some
+//                                                              models add
+//                                                              the label
+//                                                              despite the
+//                                                              system prompt
+//                                                              telling them
+//                                                              not to)
 //  variant B:  [wing=X · room=Y · date=Z · similarity=N
 //                  · matched_via=M]                          → source chip
+//
+// Drawer-id chars: drawer_[a-z0-9_]+ — underscores ARE allowed in real
+// drawer ids (e.g. `drawer_familiar_realm_watch_sessions_abc123`); the
+// earlier `[a-z0-9]+` regex truncated those.
 const CITATION_PATTERN =
-  /\[(?:(drawer_[a-z0-9]+)|wing=([^\s·\]]+)\s*·\s*room=([^\s·\]]+)\s*·\s*date=([\d-]+)\s*·\s*similarity=([\d.]+)\s*·\s*matched_via=([^\]]+))\]/g;
+  /\[(?:(?:(?:drawer_id|id)\s*[:=]\s*)?(drawer_[a-z0-9_]+)|wing=([^\s·\]]+)\s*·\s*room=([^\s·\]]+)\s*·\s*date=([\d-]+)\s*·\s*similarity=([\d.]+)\s*·\s*matched_via=([^\]]+))\]/g;
 
 function vizBaseUrl() {
   return document.body.getAttribute("data-viz-base-url") || "";
