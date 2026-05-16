@@ -78,6 +78,21 @@ describe("buildSystemPrompt", () => {
     expect(prompt).toMatch(/don't force-cite/i);
   });
 
+  test("includes a worked citation example (#30 few-shot)", () => {
+    // After 6 PRs of imperative directives in src/grounding.ts had limited
+    // success at getting phi-4 to copy cite-as values verbatim, issue #30
+    // recommended adding a worked example showing the pattern. Tests assert
+    // both the "do this" and "do not do this" halves so the directive can't
+    // accidentally be trimmed in half.
+    const prompt = buildSystemPrompt({ drawers: [], warnings: [], availableInScope: 0, wingScope: null });
+    expect(prompt).toMatch(/worked example/i);
+    expect(prompt).toMatch(/what NOT to do/i);
+    // The example must contain a fully-spelled-out drawer id that the model
+    // can imitate (placeholder forms like `drawer_xxx` are what we're
+    // trying to TEACH AGAINST).
+    expect(prompt).toMatch(/\[drawer_[a-z_]+_[a-z0-9]{6,}\]/);
+  });
+
   test("source-header lines are not in bracketed shape (model couldn't be talked out of copying them)", () => {
     // 2026-05-16: previous attempts (PR #19, #24, #27) added stronger
     // and stronger language to the directive telling the model not to

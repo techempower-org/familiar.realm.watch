@@ -127,6 +127,8 @@ describe("domainRerank", () => {
       "p",
       { now: NOW },
     );
-    expect(out[0].similarity).toBeCloseTo(0.5 * 0.68 + 1.4 * 0.32 + 0.1, 4); // 0.888
+    // Recency bonus bumped 0.1 → 0.3 in issue #26 fix to overcome BM25 lead
+    // of stale generic drawers in palace-wide retrieval.
+    expect(out[0].similarity).toBeCloseTo(0.5 * 0.68 + 1.4 * 0.32 + 0.3, 4); // 1.088
   });
 });
