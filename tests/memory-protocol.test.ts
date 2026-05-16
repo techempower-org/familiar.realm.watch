@@ -8,7 +8,7 @@ function fakePalace(result: PalaceSearchResult) {
     // Phase 5: retrieveAndGround defaults to hybrid; the fake returns the
     // same result so tests don't have to assert on which channel ran.
     searchHybrid: async () => result,
-    writeMemory: async () => {},
+    writeMemory: async () => ({ id: "", warnings: [], errors: [] }),
     health: async () => ({ status: "ok" }),
   };
 }
@@ -62,7 +62,7 @@ describe("retrieveAndGround", () => {
     const palace = {
       search: async () => { throw new Error("aborted"); },
       searchHybrid: async () => { throw new Error("aborted"); },
-      writeMemory: async () => {},
+      writeMemory: async () => ({ id: "", warnings: [], errors: [] }),
       health: async () => ({ status: "ok" }),
     };
     const result = await retrieveAndGround({
