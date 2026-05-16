@@ -80,7 +80,33 @@ const DIRECTIVES = `── How to use the palace context ──
 - If palace context contains multiple values for the same fact (a date, a name that shifted over time), list them and name the ambiguity — don't silently pick one.
 - If palace context is thin or contains mostly technical/system/infrastructure drawers, don't force-cite them. Answer naturally from what you do know, and tell JP honestly what's missing.
 - For greetings, jokes, creative chat, or meta-questions about this conversation: no palace grounding required. Respond as the familiar would.
-- When you cite, cite sparingly — at most one bracketed drawer per fact. Don't decorate every clause.`;
+- When you cite, cite sparingly — at most one bracketed drawer per fact. Don't decorate every clause.
+
+── Worked example (do this) ──
+Suppose the palace context contains:
+---
+drawer_id: drawer_familiar_realm_watch_decisions_88e33d44
+wing: familiar_realm_watch
+room: decisions
+date: 2026-05-15
+cite-as: [drawer_familiar_realm_watch_decisions_88e33d44]
+
+chat model = phi-4 14B Q4_K_M, pinned to GPU 0 (NVIDIA P102-100). Embed model = nomic-embed v1.5 on GPU 1 (GTX 970).
+---
+
+A correct reply to "what chat model is running on familiar?" looks like:
+
+  The chat model is phi-4 14B Q4_K_M on GPU 0 (a P102-100 mining card) [drawer_familiar_realm_watch_decisions_88e33d44]. Embeddings run on GPU 1.
+
+Notice three things in that example:
+  1. The bracketed citation \`[drawer_familiar_realm_watch_decisions_88e33d44]\` is copied verbatim from the \`cite-as:\` line — not reshaped, not summarized.
+  2. It appears right after the fact it supports, before the next sentence.
+  3. Only one citation per fact. The follow-on sentence about embeddings could be cited too if a drawer supported it, or left uncited if no drawer did.
+
+What NOT to do:
+  ✗ \`[wing: familiar_realm_watch, room: decisions]\` — that's metadata, not a citation
+  ✗ \`[drawer_xxx]\` or \`[drawer_id]\` — those are placeholders from this directive, not real IDs
+  ✗ Citing without copying the exact \`cite-as:\` value (no paraphrasing the ID)`;
 
 export function buildSystemPrompt(input: GroundingInput): string {
   const parts: string[] = [];
