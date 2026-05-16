@@ -1048,14 +1048,20 @@ form.addEventListener("submit", async (e) => {
   const history = activeSession.turns.map((t) => ({ role: t.role, content: t.content }));
 
   try {
+    // Model picker (#1): if the user has picked a non-default model, send
+    // it so the chat route's `body.model ?? cfg.ollamaChat.model` path
+    // picks it up. Omit the key entirely when no override is set.
+    const chatBody = {
+      messages: history,
+      user: activeSession.id,
+      stream: true,
+    };
+    const modelOverride = window.familiarSelectedModel?.();
+    if (modelOverride) chatBody.model = modelOverride;
     const res = await fetch("/v1/chat/completions?trace=1", {
       method: "POST",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({
-        messages: history,
-        user: activeSession.id,
-        stream: true,
-      }),
+      body: JSON.stringify(chatBody),
       signal: chatAbort.signal,
     });
     if (!res.ok || !res.body) throw new Error(`HTTP ${res.status}`);
@@ -2351,3 +2357,89 @@ function updateClock() {
 }
 updateClock();
 setInterval(updateClock, 1000);
+
+// ---- Model picker (issue #1) ----
+//
+// Per-browser model override for /v1/chat/completions. Server-side default
+// stays in OLLAMA_CHAT_MODEL env. The picker fetches the upstream model list
+// from /api/familiar/models, persists the user's choice in localStorage, and
+// injects {model: <choice>} into each chat request. Empty/missing choice
+// means "use server default" — the chat route falls back to cfg.ollamaChat.model.
+const MODEL_KEY = "familiar_model";
+const modelEl = document.getElementById("model-picker");
+
+function readModelPref() {
+  try { return localStorage.getItem(MODEL_KEY) ?? ""; } catch { return ""; }
+}
+function writeModelPref(id) {
+  try {
+    if (id) localStorage.setItem(MODEL_KEY, id);
+    else localStorage.removeItem(MODEL_KEY);
+  } catch { /* quota */ }
+}
+
+// Exposed for the chat send path (search for selectedModel() in the fetch
+// payload assembly). Returns null when no override is set, so the request body
+// just omits `model` and the server fallback path runs.
+function selectedModel() {
+  const v = readModelPref();
+  return v && typeof v === "string" ? v : null;
+}
+window.familiarSelectedModel = selectedModel;
+
+function clearChildren(el) {
+  while (el.firstChild) el.removeChild(el.firstChild);
+}
+function makeOption(value, text, title) {
+  const o = document.createElement("option");
+  o.value = value;
+  o.textContent = text;
+  if (title) o.title = title;
+  return o;
+}
+
+async function loadModels() {
+  if (!modelEl) return;
+  modelEl.disabled = true;
+  clearChildren(modelEl);
+  modelEl.appendChild(makeOption("", "loading…"));
+  try {
+    const res = await fetch("/api/familiar/models");
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const data = await res.json();
+    const models = Array.isArray(data.models) ? data.models : [];
+    const defaultId = data.default ?? "";
+    clearChildren(modelEl);
+    // First entry: "server default (…)". Empty value → no override.
+    modelEl.appendChild(
+      makeOption("", defaultId ? `server default · ${defaultId}` : "server default")
+    );
+    for (const m of models) {
+      modelEl.appendChild(
+        makeOption(m.id, m.label || m.id, m.size_mb ? `${m.size_mb} MiB on disk` : null)
+      );
+    }
+    // Restore selection if it still exists in the upstream list.
+    const want = readModelPref();
+    if (want && models.some((m) => m.id === want)) {
+      modelEl.value = want;
+    } else {
+      // Persisted pick is gone (model uninstalled, host swapped) — clear it
+      // so we don't keep sending a 404'd model id to the server.
+      if (want) writeModelPref("");
+      modelEl.value = "";
+    }
+    modelEl.disabled = false;
+  } catch (err) {
+    clearChildren(modelEl);
+    modelEl.appendChild(makeOption("", "(unavailable)"));
+    modelEl.disabled = true;
+  }
+}
+
+if (modelEl) {
+  modelEl.addEventListener("change", () => {
+    writeModelPref(modelEl.value);
+  });
+  loadModels();
+}

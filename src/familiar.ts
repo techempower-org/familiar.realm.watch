@@ -9,7 +9,7 @@ import type { InferenceChatProvider } from "./types.ts";
 import { readSigil } from "./sigil.ts";
 import { handleChat } from "./routes/chat.ts";
 import { handleEmbeddings } from "./routes/embeddings.ts";
-import { handleVersion, handleHealth } from "./routes/api.ts";
+import { handleVersion, handleHealth, handleModels } from "./routes/api.ts";
 import { handleEval } from "./routes/eval.ts";
 import { handleGraph } from "./routes/graph.ts";
 import { handleReflect } from "./routes/reflect.ts";
@@ -146,6 +146,12 @@ const server = Bun.serve({
           ollamaEmbedUrl: cfg.ollamaEmbed.url,
           breakers: { palace: breakers.palace, ollamaChat: breakers.ollamaChat, ollamaEmbed: breakers.ollamaEmbed },
           sigil,
+        });
+      }
+      if (url.pathname === "/api/familiar/models" && req.method === "GET") {
+        return await handleModels(req, {
+          chatUpstreamUrl: cfg.ollamaChat.url,
+          defaultModel: cfg.ollamaChat.model,
         });
       }
       if (url.pathname === "/api/familiar/eval" && req.method === "POST") {
