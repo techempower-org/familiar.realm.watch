@@ -47,9 +47,9 @@ echo
 echo "==> Done. Binary at: $LLAMA_DIR/build/bin/llama-server"
 "$LLAMA_DIR/build/bin/llama-server" --version 2>&1 | head -3 || true
 echo
-echo "Next:"
+echo "Next (system unit only — user units are not supported across this homelab; see palace-daemon CLAUDE.md):"
 echo "  1. Drop a Qwen2.5-7B GGUF into ~/.local/share/models/"
-echo "  2. cp ops/katana/llama-server.service ~/.config/systemd/user/"
-echo "  3. sudo loginctl enable-linger \$USER"
-echo "  4. systemctl --user daemon-reload && systemctl --user enable --now llama-server"
-echo "  5. curl http://127.0.0.1:11436/health"
+echo "  2. sudo cp ops/katana/llama-server.service /etc/systemd/system/"
+echo "     (edit User=, Group=, and ExecStart paths to match your install)"
+echo "  3. sudo systemctl daemon-reload && sudo systemctl enable --now llama-server"
+echo "  4. curl http://127.0.0.1:11436/health"
