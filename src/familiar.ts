@@ -84,7 +84,13 @@ const diaryBuffer = new DiaryBuffer({
     if (result.queued) {
       log("diary.queued", { count: result.count, reason: "palace under repair" });
     } else {
-      log("diary.flushed", { count: result.count, entry_id: result.entry_id, msg: result.systemMessage });
+      log("diary.flushed", {
+        count: result.count,
+        entry_id: result.entry_id,
+        warnings: result.warnings,
+        errors: result.errors,
+        msg: result.systemMessage,
+      });
     }
   },
 });

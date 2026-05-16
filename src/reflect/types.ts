@@ -30,6 +30,16 @@ export interface ReflectDecision {
   ts?: string;
   /** Source session — set by the writer; lets the memories list filter by session. */
   session_id?: string;
+  /**
+   * Non-fatal warnings from palace-daemon on the write (mempalace#86).
+   * Only meaningful when status === "written"; absent when empty.
+   */
+  warnings?: string[];
+  /**
+   * Non-fatal errors from palace-daemon on the write (mempalace#86).
+   * Only meaningful when status === "written"; absent when empty.
+   */
+  errors?: string[];
 }
 
 /**
