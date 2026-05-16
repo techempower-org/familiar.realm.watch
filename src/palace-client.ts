@@ -42,6 +42,24 @@ export interface WriteMemoryOpts {
   metadata?: Record<string, unknown>;
 }
 
+/**
+ * Result of a write-path call. palace-daemon (mempalace#86) returns
+ * `warnings` + `errors` on /memory and /silent-save so callers can surface
+ * non-fatal issues (e.g. HNSW lazy-index race detected, embedder
+ * fallback used, queued-for-rebuild) without checking server logs.
+ *
+ * Forward-compatible: an older daemon that doesn't ship these fields
+ * yields empty arrays via the `?? []` defaults at parse time.
+ */
+export interface WriteMemoryResult {
+  /** Daemon-assigned drawer id; "" if the daemon didn't return one. */
+  id: string;
+  /** Non-fatal warnings emitted during the write. */
+  warnings: string[];
+  /** Non-fatal errors recorded but not raised (e.g. async pipeline failures). */
+  errors: string[];
+}
+
 export class PalaceClient {
   private baseUrl: string;
   private apiKey: string;
@@ -208,13 +226,21 @@ export class PalaceClient {
     if (!res.ok) throw new Error(`palace-daemon update: ${res.status} ${res.statusText}`);
   }
 
-  async writeMemory(opts: WriteMemoryOpts): Promise<void> {
+  async writeMemory(opts: WriteMemoryOpts): Promise<WriteMemoryResult> {
     const res = await this.fetchFn(`${this.baseUrl}/memory`, {
       method: "POST",
       headers: this.headers(),
       body: JSON.stringify(opts),
     });
     if (!res.ok) throw new Error(`palace-daemon memory write: ${res.status} ${res.statusText}`);
+    // Forward-compatible: pre-mempalace#86 daemons return {ok: true} or similar
+    // without warnings/errors; default to empty arrays.
+    const data = (await res.json().catch(() => ({}))) as Partial<WriteMemoryResult> & { drawer_id?: string };
+    return {
+      id: data.id ?? data.drawer_id ?? "",
+      warnings: data.warnings ?? [],
+      errors: data.errors ?? [],
+    };
   }
 
   async health(): Promise<{ status: string; [k: string]: unknown }> {
@@ -262,7 +288,17 @@ export class PalaceClient {
       body: JSON.stringify(params),
     });
     if (!res.ok) throw new Error(`palace-daemon silent-save: ${res.status} ${res.statusText}`);
-    return (await res.json()) as SilentSaveResult;
+    // Forward-compatible: default warnings/errors to [] when daemon predates mempalace#86.
+    const raw = (await res.json()) as Partial<SilentSaveResult>;
+    return {
+      count: raw.count ?? 0,
+      themes: raw.themes ?? [],
+      queued: raw.queued ?? false,
+      entry_id: raw.entry_id,
+      systemMessage: raw.systemMessage ?? "",
+      warnings: raw.warnings ?? [],
+      errors: raw.errors ?? [],
+    };
   }
 }
 
@@ -283,4 +319,14 @@ export interface SilentSaveResult {
   entry_id?: string;
   /** Daemon-formatted, glyphed string (✦ for memory ops). Render verbatim. */
   systemMessage: string;
+  /**
+   * Non-fatal warnings emitted during the save (mempalace#86). Empty on
+   * older daemons that don't ship the field.
+   */
+  warnings: string[];
+  /**
+   * Non-fatal errors recorded but not raised (mempalace#86). Empty on
+   * older daemons that don't ship the field.
+   */
+  errors: string[];
 }

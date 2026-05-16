@@ -84,12 +84,22 @@ export class ReflectWriter {
       }
       const tWrite = Date.now();
       try {
-        await this.deps.palace.writeMemory({
+        const wr = await this.deps.palace.writeMemory({
           content: c.fact,
           wing: this.deps.wing,
           room: opts.sessionId,
         });
-        decisions.push({ candidate: c, status: "written", ts, session_id: opts.sessionId });
+        decisions.push({
+          candidate: c,
+          status: "written",
+          ts,
+          session_id: opts.sessionId,
+          drawer_id: wr.id || undefined,
+          // Only attach when non-empty so older daemons don't pollute decisions
+          // with empty arrays (mempalace#86 forward-compat).
+          warnings: wr.warnings.length > 0 ? wr.warnings : undefined,
+          errors: wr.errors.length > 0 ? wr.errors : undefined,
+        });
       } catch {
         decisions.push({ candidate: c, status: "gated", reason: "write_failed", ts, session_id: opts.sessionId });
       }
