@@ -28,13 +28,20 @@ describe("buildSystemPrompt", () => {
     expect(prompt).toContain("palace");
   });
 
-  test("includes all drawers with metadata tags", () => {
+  test("includes all drawers with metadata tags (YAML-style header)", () => {
+    // 2026-05-16: switched source-header rendering from [bracketed tags]
+    // to plain colon-separated YAML-style lines because every model we
+    // tested was copying the bracketed shape into citations. Tests now
+    // check for the new `key: value` form. Plus a synthetic `cite-as:`
+    // line that gives the model a verbatim bracketed drawer-id to copy.
     const drawers = [mkDrawer({ id: "a" }), mkDrawer({ id: "b", wing: "homelab", room: "openwrt" })];
     const prompt = buildSystemPrompt({ drawers, warnings: [], availableInScope: 1000, wingScope: null });
-    expect(prompt).toContain("drawer_id=a");
-    expect(prompt).toContain("drawer_id=b");
-    expect(prompt).toContain("wing=realmwatch");
-    expect(prompt).toContain("wing=homelab");
+    expect(prompt).toContain("drawer_id: a");
+    expect(prompt).toContain("drawer_id: b");
+    expect(prompt).toContain("wing: realmwatch");
+    expect(prompt).toContain("wing: homelab");
+    expect(prompt).toContain("cite-as: [a]");
+    expect(prompt).toContain("cite-as: [b]");
     expect(prompt).toContain("The gatekeeper firewall runs OpenWrt 25.12.2");
   });
 
@@ -71,15 +78,24 @@ describe("buildSystemPrompt", () => {
     expect(prompt).toMatch(/don't force-cite/i);
   });
 
-  test("explicitly warns model not to copy source-header format as a citation", () => {
-    // Drift observed live on phi-4-Q4_K_M (2026-05-15): model copies the
-    // `[wing=... · room=... · date=...]` source-header form into its reply
-    // instead of using `[drawer_xxx]`. The directive must call this out.
-    const prompt = buildSystemPrompt({ drawers: [], warnings: [], availableInScope: 0, wingScope: null });
-    expect(prompt).toMatch(/source header/i);
-    // Negative examples for both observed wrong-shape variants.
-    expect(prompt).toMatch(/\[wing=/);
-    expect(prompt).toMatch(/\[drawer=/);
+  test("source-header lines are not in bracketed shape (model couldn't be talked out of copying them)", () => {
+    // 2026-05-16: previous attempts (PR #19, #24, #27) added stronger
+    // and stronger language to the directive telling the model not to
+    // copy `[wing=... · room=... · date=...]` style headers as
+    // citations. phi-4 14B kept doing it anyway across 3 rounds. The
+    // structural fix is to not show that shape in the input at all —
+    // headers are rendered as plain `wing: foo` YAML-style lines now,
+    // and the only bracketed thing the model sees is the explicit
+    // `cite-as: [drawer_xxx]` line ready to copy verbatim.
+    const drawers = [mkDrawer({ id: "abc" })];
+    const prompt = buildSystemPrompt({ drawers, warnings: [], availableInScope: 1, wingScope: null });
+    // Bracketed source-header shape MUST NOT appear in the rendered
+    // context (the precondition the model copies from).
+    expect(prompt).not.toMatch(/\[wing=/);
+    expect(prompt).not.toMatch(/\[drawer=/);
+    // The cite-as line is the only bracketed thing the model sees
+    // in the context block.
+    expect(prompt).toContain("cite-as: [abc]");
   });
 
   test("labels empty palace clearly", () => {
