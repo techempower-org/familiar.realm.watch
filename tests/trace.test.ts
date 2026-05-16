@@ -19,6 +19,26 @@ describe("extractCitations", () => {
   test("handles a single citation", () => {
     expect(extractCitations("see [drawer_xyz] for context")).toEqual(["drawer_xyz"]);
   });
+
+  test("extracts drawer ids containing underscores (real-world ids)", () => {
+    // Real drawer ids look like drawer_storyvox_architecture_bae0315aac3371d96e5d11d4
+    // The old regex `drawer_[a-z0-9]+` would truncate after the first underscore.
+    const text = "see [drawer_familiar_realm_watch_sessions_abc123]";
+    expect(extractCitations(text)).toEqual(["drawer_familiar_realm_watch_sessions_abc123"]);
+  });
+
+  test("tolerates label-prefixed variants the model emits", () => {
+    // Observed live on familiar.jphe.in: model wrote `[drawer_id: drawer_xxx]`
+    // because the system prompt's "[drawer_id]" was interpreted as a literal
+    // label. New regex accepts both bare and labeled forms.
+    expect(extractCitations("see [drawer_id: drawer_abc] and [id=drawer_xyz]").sort())
+      .toEqual(["drawer_abc", "drawer_xyz"]);
+  });
+
+  test("dedups across mixed bare and labeled forms", () => {
+    const text = "first [drawer_abc] then [drawer_id: drawer_abc] then [id:drawer_abc]";
+    expect(extractCitations(text)).toEqual(["drawer_abc"]);
+  });
 });
 
 describe("buildTrace", () => {
