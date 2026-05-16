@@ -152,7 +152,12 @@ async function probePalaceRecall(palace: PalaceClient): Promise<{
 async function probeChatCompletion(
   inference: InferenceChatProvider,
   model: string,
-  timeoutMs = 4000,
+  // 10s default — phi-4 14B on P102 routinely takes 1-3s for first-token
+  // even on a tiny prompt. The original 4s ceiling tripped under steady-
+  // state load (2026-05-16 watchdog deploy showed every probe hitting
+  // 4001ms ceiling); 10s keeps the probe useful as a regression detector
+  // while accommodating the cold/loaded model latency profile.
+  timeoutMs = 10000,
 ): Promise<{
   chat_quality: "ok" | "fallback" | "probe_error";
   chat_warning?: string;
