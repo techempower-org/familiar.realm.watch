@@ -99,11 +99,17 @@ export async function getHealth(deps: HealthDeps): Promise<HealthReport> {
   const [palace, chat, embed, recall] = await Promise.all([
     probe(() => deps.palace.health().then(() => {})),
     probe(async () => {
-      const r = await fetchFn(`${deps.ollamaChatUrl}/api/tags`);
+      // /v1/models is the OpenAI-compat lingua franca that both stock
+      // Ollama (compat shim) and llama-server speak. /api/tags used to
+      // be hardcoded here but only Ollama-native serves it — llama-server
+      // returns 404 which made the health route report "degraded" even
+      // when the embed service was fine. Match the client-side isHealthy()
+      // change in src/ollama-client.ts.
+      const r = await fetchFn(`${deps.ollamaChatUrl}/v1/models`);
       if (!r.ok) throw new Error(`${r.status}`);
     }),
     probe(async () => {
-      const r = await fetchFn(`${deps.ollamaEmbedUrl}/api/tags`);
+      const r = await fetchFn(`${deps.ollamaEmbedUrl}/v1/models`);
       if (!r.ok) throw new Error(`${r.status}`);
     }),
     probePalaceRecall(deps.palace),
