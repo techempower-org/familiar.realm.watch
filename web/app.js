@@ -2318,8 +2318,13 @@ if (memoriesRefresh) {
   memoriesRefresh.addEventListener("click", (e) => { e.stopPropagation(); refreshMemories(); });
 }
 
-// Boot: render the active session's transcript so reload doesn't lose state.
+// Boot: render the active session's transcript AND the sessions list so a
+// fresh page load shows existing sessions in the sidebar without needing
+// the user to press "+" first. renderSessionsList was historically only
+// called from setActiveSession/createSession/deleteSession/renameSession,
+// so after a reload the sidebar stayed empty until one of those fired.
 renderTranscript();
+renderSessionsList();
 checkHealth();
 setInterval(checkHealth, 60_000);
 refreshMemories();
@@ -2387,9 +2392,14 @@ function selectedModel() {
 }
 window.familiarSelectedModel = selectedModel;
 
-function clearChildren(el) {
-  while (el.firstChild) el.removeChild(el.firstChild);
-}
+// `clearChildren(el)` is defined earlier in this file (line ~1288). A second
+// `function` declaration here collides at parse time and throws
+// SyntaxError "Identifier 'clearChildren' has already been declared" —
+// killing the *entire* module since this script is loaded as
+// `<script type="module">`. That regressed every UI element on the page
+// (palace tab, sessions list, voice picker, hamburger menu, chat send)
+// when PR #32 (model picker) introduced this duplicate. Reusing the
+// existing helper.
 function makeOption(value, text, title) {
   const o = document.createElement("option");
   o.value = value;
