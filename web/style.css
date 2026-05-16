@@ -353,6 +353,23 @@ body {
 }
 .voice-picker:focus { outline: 1px solid var(--accent); border-color: var(--accent); }
 
+/* Model picker — mirrors voice-picker so the two sidebar widgets read as a set. */
+.model-section { padding-bottom: 0.6rem; }
+.model-picker {
+  display: block;
+  width: calc(100% - 1rem);
+  margin: 0.4rem 0.5rem 0;
+  padding: 0.3rem 0.4rem;
+  background: var(--user-bg);
+  border: 1px solid var(--border);
+  color: var(--fg);
+  border-radius: 4px;
+  font-family: var(--mono);
+  font-size: 0.7rem;
+}
+.model-picker:focus { outline: 1px solid var(--accent); border-color: var(--accent); }
+.model-picker:disabled { opacity: 0.55; cursor: not-allowed; }
+
 /* Per-message speak button. */
 .speak-btn {
   position: absolute;
