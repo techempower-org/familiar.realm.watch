@@ -31,7 +31,33 @@ STATE_FILE="$STATE_DIR/state"
 mkdir -p "$STATE_DIR"
 [ -e "$STATE_FILE" ] || touch "$STATE_FILE"
 
-log_warn()  { echo "{\"level\":\"warn\",\"ts\":\"$(date -u +%Y-%m-%dT%H:%M:%SZ)\",$1}"; }
+# Optional ntfy paging — loads NTFY_TOPIC if /etc/familiar-watchdog/ntfy.env
+# exists. Missing file is fine; notify_ntfy is then a no-op.
+NTFY_TOPIC=""
+[ -r /etc/familiar-watchdog/ntfy.env ] && . /etc/familiar-watchdog/ntfy.env
+
+# notify_ntfy — POST a single WARN line to ntfy.sh. Backgrounded so a slow
+# ntfy.sh doesn't delay the watchdog. Topic name acts as auth (length
+# tuned at install time). Silently no-ops if topic is unset.
+notify_ntfy() {
+    local msg="$1"
+    [ -z "${NTFY_TOPIC:-}" ] && return
+    local event
+    event=$(echo "$msg" | grep -oE '"event":"[^"]*"' | head -1 | cut -d'"' -f4)
+    local title="familiar-watchdog: ${event:-warn}"
+    curl -sS --max-time 5 \
+        -H "Title: ${title}" \
+        -H "Priority: high" \
+        -H "Tags: shield,warning" \
+        -d "${msg}" \
+        "https://ntfy.sh/${NTFY_TOPIC}" >/dev/null 2>&1 &
+}
+
+log_warn()  {
+    local msg="{\"level\":\"warn\",\"ts\":\"$(date -u +%Y-%m-%dT%H:%M:%SZ)\",$1}"
+    echo "$msg"
+    notify_ntfy "$msg"
+}
 log_info()  { echo "{\"level\":\"info\",\"ts\":\"$(date -u +%Y-%m-%dT%H:%M:%SZ)\",$1}"; }
 
 # Read a key=value from state. Empty if missing.
@@ -52,7 +78,11 @@ probe_health() {
         log_warn "\"event\":\"health_unreachable\",\"curl_exit\":$http,\"error\":\"$(echo "$resp" | head -c 200 | tr '"' "'")\""
         return
     fi
-    python3 -c "
+    # Capture python output so WARN lines can also notify_ntfy. Without
+    # the capture, the python heredoc prints directly to stdout/journal
+    # but bypasses the bash-side ntfy hook.
+    local py_output
+    py_output=$(python3 -c "
 import json, sys
 try:
     d = json.loads('''$resp''')
@@ -79,7 +109,16 @@ for k, v in deps.items():
 for k, s in breakers.items():
     if s != 'closed':
         print(f'{{\"level\":\"warn\",\"ts\":\"{ts}\",\"event\":\"breaker_open\",\"service\":\"{k}\",\"state\":\"{s}\"}}')
-"
+")
+    [ -z "$py_output" ] && return
+    echo "$py_output"
+    # Echo each WARN line into notify_ntfy. The python heredoc only emits
+    # JSON-per-line, so a plain grep on level=warn picks up all real alerts.
+    echo "$py_output" | while IFS= read -r line; do
+        case "$line" in
+            *'"level":"warn"'*) notify_ntfy "$line" ;;
+        esac
+    done
 }
 
 # ── 2. Restart-counter watch ──────────────────────────────────────────
@@ -116,11 +155,24 @@ probe_restart_counter() {
     state_set "nrestarts_${service//[^a-zA-Z0-9]/_}" "$now"
 }
 
+# --test fires a synthetic WARN through the notify path and exits.
+# Used to verify ntfy wiring end-to-end without faking a real failure.
+if [ "${1:-}" = "--test" ]; then
+    log_warn "\"event\":\"test_alert\",\"message\":\"Manual --test invocation. If your phone got this, ntfy is wired up.\""
+    # Give backgrounded notify_ntfy curl time to complete before exit.
+    wait
+    exit 0
+fi
+
 # Run all probes. Each is independent so one failure doesn't block the
 # others.
 probe_health
 for s in ollama-chat ollama-embed familiar-api; do
     probe_restart_counter "$s"
 done
+
+# Wait for any backgrounded notify_ntfy curls to finish so systemd's
+# Type=oneshot doesn't kill them mid-flight.
+wait
 
 exit 0
