@@ -1,0 +1,18 @@
+[Unit]
+Description=familiar-watchdog timer — fire every 5 min
+Documentation=https://github.com/techempower-org/familiar.realm.watch/issues/38
+
+[Timer]
+# Fire 60s after boot so the system has time to settle, then every 5 min.
+# AccuracySec=30s tightens the systemd-level jitter so probes don't drift
+# under load. Persistent=true means if the timer was missed (host
+# rebooting), it fires once on next boot — useful for verifying the
+# daily-deps are healthy post-recovery.
+OnBootSec=60
+OnUnitActiveSec=5min
+AccuracySec=30s
+Persistent=true
+Unit=familiar-watchdog.service
+
+[Install]
+WantedBy=timers.target
