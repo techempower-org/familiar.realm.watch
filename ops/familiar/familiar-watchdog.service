@@ -1,0 +1,18 @@
+[Unit]
+Description=familiar-watchdog — functional /health probe + restart-counter alert
+Documentation=https://github.com/techempower-org/familiar.realm.watch/issues/38
+After=familiar-api.service
+
+[Service]
+Type=oneshot
+User=jp
+Group=jp
+# Path is the deployed install location; ops/scripts/install-familiar-watchdog.sh
+# rsyncs the script to /usr/local/sbin/familiar-watchdog.sh.
+ExecStart=/usr/local/sbin/familiar-watchdog.sh
+# StandardOutput=journal so log_warn/log_info entries are queryable via
+# `journalctl -u familiar-watchdog -p warning -f`.
+StandardOutput=journal
+StandardError=journal
+# Tight stop timeout — we never block on shutdown.
+TimeoutStopSec=10
