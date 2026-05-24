@@ -128,14 +128,41 @@ def _eval_once(base_url: str, query: str, hyde: bool, timeout: float = 60.0) -> 
     return data, latency
 
 
-def _matches(question: dict, retrieved: list[dict]) -> tuple[bool, str]:
-    """Return (matched, reason). Tries drawer-id match first, then substring."""
+def _normalize_signal(matched_via: str | None) -> str:
+    """Bucket the daemon's matched_via string into vector / bm25 / graph / other.
+
+    palace-daemon emits a few different tokens depending on which retriever
+    surfaced the drawer — e.g. ``drawer`` and ``closet`` are dense-vector
+    matches, ``sqlite_bm25_fallback`` and anything containing ``bm25`` are
+    lexical, and ``graph`` / ``age`` are graph-anchored. We collapse them
+    so the per-signal summary is stable across daemon versions.
+    """
+    if not matched_via:
+        return "unknown"
+    s = matched_via.lower()
+    if "bm25" in s or "lexical" in s:
+        return "bm25"
+    if "graph" in s or "age" in s or "kg" in s:
+        return "graph"
+    if "vector" in s or "dense" in s or "hnsw" in s or "drawer" in s or "closet" in s:
+        return "vector"
+    return s  # preserve raw token so we don't silently lose a new signal
+
+
+def _matches(question: dict, retrieved: list[dict]) -> tuple[bool, str, str | None, str | None]:
+    """Return (matched, reason, matched_via_raw, matched_via_bucket).
+
+    Tries drawer-id match first, then substring. When a hit is found, also
+    surfaces the ``matched_via`` field from the retrieved entity so callers
+    can attribute the hit to vector / bm25 / graph retrieval.
+    """
     expected_ids = set(question.get("expected_drawers") or [])
     if expected_ids:
-        retrieved_ids = {r.get("id", "") for r in retrieved}
-        hit = expected_ids & retrieved_ids
-        if hit:
-            return True, f"drawer_id:{next(iter(hit))[:48]}"
+        for r in retrieved:
+            rid = r.get("id", "")
+            if rid in expected_ids:
+                mv = r.get("matched_via")
+                return True, f"drawer_id:{rid[:48]}", mv, _normalize_signal(mv)
 
     expected_subs = [s.lower() for s in question.get("expected_substrings") or []]
     if expected_subs:
@@ -143,8 +170,9 @@ def _matches(question: dict, retrieved: list[dict]) -> tuple[bool, str]:
             snippet = (r.get("content_snippet") or "").lower()
             for sub in expected_subs:
                 if sub in snippet:
-                    return True, f"substring:{sub}"
-    return False, "no-match"
+                    mv = r.get("matched_via")
+                    return True, f"substring:{sub}", mv, _normalize_signal(mv)
+    return False, "no-match", None, None
 
 
 def _truncate_retrieved(retrieved: list[dict], top_n: int) -> list[dict]:
@@ -189,15 +217,27 @@ def main(argv=None):
         retrieved_no = _truncate_retrieved(no_hyde.get("retrieved_entities") or [], args.top_n)
         retrieved_yes = _truncate_retrieved(yes_hyde.get("retrieved_entities") or [], args.top_n)
 
-        ok_no, reason_no = _matches(q, retrieved_no)
-        ok_yes, reason_yes = _matches(q, retrieved_yes)
+        ok_no, reason_no, mv_raw_no, mv_bucket_no = _matches(q, retrieved_no)
+        ok_yes, reason_yes, mv_raw_yes, mv_bucket_yes = _matches(q, retrieved_yes)
 
         rows.append(
             {
                 "query": q["query"],
                 "shape": q.get("shape", "unknown"),
-                "no_hyde": {"matched": ok_no, "reason": reason_no, "latency_s": round(lat_no, 3)},
-                "yes_hyde": {"matched": ok_yes, "reason": reason_yes, "latency_s": round(lat_yes, 3)},
+                "no_hyde": {
+                    "matched": ok_no,
+                    "reason": reason_no,
+                    "latency_s": round(lat_no, 3),
+                    "matched_via": mv_raw_no,
+                    "signal": mv_bucket_no,
+                },
+                "yes_hyde": {
+                    "matched": ok_yes,
+                    "reason": reason_yes,
+                    "latency_s": round(lat_yes, 3),
+                    "matched_via": mv_raw_yes,
+                    "signal": mv_bucket_yes,
+                },
                 "delta_state": (
                     "rescued" if (ok_yes and not ok_no)
                     else "regressed" if (ok_no and not ok_yes)
@@ -245,6 +285,43 @@ def main(argv=None):
         )
     print()
 
+    # ── Per-signal recall breakdown ─────────────────────────────────
+    # Which retriever (vector / bm25 / graph) surfaced each hit? Reported
+    # per shape and overall, for both HyDE arms. Misses contribute to the
+    # `none` column so the rows sum to n.
+    signal_buckets = ("vector", "bm25", "graph", "unknown", "none")
+
+    def _bucket(rows_subset: list[dict], arm: str) -> dict[str, int]:
+        counts: dict[str, int] = {b: 0 for b in signal_buckets}
+        for r in rows_subset:
+            if not r[arm]["matched"]:
+                counts["none"] += 1
+                continue
+            sig = r[arm]["signal"] or "unknown"
+            counts[sig] = counts.get(sig, 0) + 1
+        return counts
+
+    print()
+    print("Per-signal recall (which retriever surfaced each hit):")
+    header = f"{'shape':22s} {'arm':>4s} " + " ".join(f"{b:>7s}" for b in signal_buckets)
+    print(header)
+    print("-" * len(header))
+    per_signal_summary: dict[str, dict] = {}
+    for shape, group in sorted(by_shape.items()):
+        for arm, label in (("no_hyde", "off"), ("yes_hyde", "on")):
+            counts = _bucket(group, arm)
+            per_signal_summary.setdefault(shape, {})[arm] = counts
+            cells = " ".join(f"{counts[b]:7d}" for b in signal_buckets)
+            print(f"{shape:22s} {label:>4s} {cells}")
+    print("-" * len(header))
+    overall_signal: dict[str, dict[str, int]] = {}
+    for arm, label in (("no_hyde", "off"), ("yes_hyde", "on")):
+        counts = _bucket(rows, arm)
+        overall_signal[arm] = counts
+        cells = " ".join(f"{counts[b]:7d}" for b in signal_buckets)
+        print(f"{'OVERALL':22s} {label:>4s} {cells}")
+    print()
+
     # ── Delta-state breakdown ──
     state_counts = defaultdict(int)
     for r in rows:
@@ -255,7 +332,17 @@ def main(argv=None):
 
     if args.out:
         Path(args.out).write_text(
-            json.dumps({"summary": dict(state_counts), "rows": rows}, indent=2),
+            json.dumps(
+                {
+                    "summary": dict(state_counts),
+                    "signal_summary": {
+                        "overall": overall_signal,
+                        "by_shape": per_signal_summary,
+                    },
+                    "rows": rows,
+                },
+                indent=2,
+            ),
             encoding="utf-8",
         )
         print(f"\nFull result JSON: {args.out}")
