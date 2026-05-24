@@ -163,4 +163,72 @@ describe("/api/familiar/eval — SME adapter contract", () => {
     const body = (await res.json()) as { retrieved_entities: Array<{ provenance?: { kind: string } }> };
     expect(body.retrieved_entities[0].provenance?.kind).toBe("observed");
   });
+
+  // Issue #45 — wing-scope: when the request includes `wing`, the eval
+  // route must thread it through `retrieveAndGround` to the palace search
+  // call so the daemon scopes the query to that single wing.
+  test("wing in request body is forwarded to palace.searchHybrid", async () => {
+    let captured: { wing?: string; query?: string } | null = null;
+    const palace = {
+      search: async (opts: { wing?: string; query?: string }) => {
+        captured = { wing: opts.wing, query: opts.query };
+        return { query: "", results: [], warnings: [], available_in_scope: 0 };
+      },
+      searchHybrid: async (opts: { wing?: string; query?: string }) => {
+        captured = { wing: opts.wing, query: opts.query };
+        return { query: "", results: [], warnings: [], available_in_scope: 0 };
+      },
+    } as unknown as PalaceClient;
+    const res = await handleEval(
+      makeRequest({ query: "what is the design", wing: "familiar_realm_watch", mock: true }),
+      deps(palace, "")
+    );
+    expect(res.status).toBe(200);
+    expect(captured).not.toBeNull();
+    expect(captured!.wing).toBe("familiar_realm_watch");
+  });
+
+  test("omitted wing leaves palace search wing undefined (palace-wide query)", async () => {
+    let captured: { wing?: string } | null = null;
+    const palace = {
+      search: async (opts: { wing?: string }) => {
+        captured = { wing: opts.wing };
+        return { query: "", results: [], warnings: [], available_in_scope: 0 };
+      },
+      searchHybrid: async (opts: { wing?: string }) => {
+        captured = { wing: opts.wing };
+        return { query: "", results: [], warnings: [], available_in_scope: 0 };
+      },
+    } as unknown as PalaceClient;
+    const res = await handleEval(
+      makeRequest({ query: "anything", mock: true }),
+      deps(palace, "")
+    );
+    expect(res.status).toBe(200);
+    expect(captured).not.toBeNull();
+    expect(captured!.wing).toBeUndefined();
+  });
+
+  test("wing scope is independent of vector vs hybrid fallback (vector path also gets it)", async () => {
+    // Force the vector path by having hybrid 503 → silent fallback to /search.
+    let hybridCaptured: { wing?: string } | null = null;
+    let vectorCaptured: { wing?: string } | null = null;
+    const palace = {
+      search: async (opts: { wing?: string }) => {
+        vectorCaptured = { wing: opts.wing };
+        return { query: "", results: [], warnings: [], available_in_scope: 0 };
+      },
+      searchHybrid: async (opts: { wing?: string }) => {
+        hybridCaptured = { wing: opts.wing };
+        throw new Error("503 Service Unavailable");
+      },
+    } as unknown as PalaceClient;
+    const res = await handleEval(
+      makeRequest({ query: "test", wing: "realmwatch", mock: true }),
+      deps(palace, "")
+    );
+    expect(res.status).toBe(200);
+    expect(hybridCaptured!.wing).toBe("realmwatch");
+    expect(vectorCaptured!.wing).toBe("realmwatch");
+  });
 });
