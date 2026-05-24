@@ -359,6 +359,61 @@ def main(argv=None):
     for state in ("rescued", "regressed", "tied_hit", "tied_miss"):
         print(f"  {state:10s} {state_counts[state]:3d}")
 
+    # ── Per-stage latency breakdown ─────────────────────────────────
+    # /api/familiar/eval emits `timings` (ms) from retrieveAndGround when
+    # the server is recent enough (see familiar#15 task 4). We compute
+    # p50/p95/mean per stage across both HyDE arms — palace_search usually
+    # dominates; rerank/decay/compress are typically sub-ms.
+    stage_order = (
+        "temporal_expand_ms",
+        "palace_search_ms",
+        "filter_ms",
+        "rerank_ms",
+        "decay_ms",
+        "compress_ms",
+        "budget_ms",
+        "prompt_ms",
+        "total_ms",
+    )
+    stage_samples: dict[str, list[float]] = {s: [] for s in stage_order}
+    for r in rows:
+        for arm in ("no_hyde", "yes_hyde"):
+            t = r[arm].get("timings") or {}
+            for stage in stage_order:
+                v = t.get(stage)
+                if isinstance(v, (int, float)):
+                    stage_samples[stage].append(float(v))
+
+    latency_summary: dict[str, dict[str, float]] = {}
+    if any(stage_samples[s] for s in stage_order):
+        def _pct(xs: list[float], q: float) -> float:
+            if not xs:
+                return 0.0
+            ys = sorted(xs)
+            k = max(0, min(len(ys) - 1, int(round(q * (len(ys) - 1)))))
+            return ys[k]
+
+        print()
+        print("Per-stage latency (ms, across both HyDE arms):")
+        header = f"{'stage':22s} {'n':>4s} {'p50':>8s} {'p95':>8s} {'mean':>8s}"
+        print(header)
+        print("-" * len(header))
+        for stage in stage_order:
+            xs = stage_samples[stage]
+            if not xs:
+                continue
+            p50 = _pct(xs, 0.50)
+            p95 = _pct(xs, 0.95)
+            mean = sum(xs) / len(xs)
+            latency_summary[stage] = {
+                "n": len(xs),
+                "p50_ms": round(p50, 2),
+                "p95_ms": round(p95, 2),
+                "mean_ms": round(mean, 2),
+            }
+            label = stage.removesuffix("_ms")
+            print(f"{label:22s} {len(xs):4d} {p50:7.1f}  {p95:7.1f}  {mean:7.1f}")
+
     # ── MRR summary block for JSON output ─────────────────────────────
     # Per-shape and overall MRR mirroring the printed table — consumers
     # plotting trends over time read this rather than re-parsing the rows.
@@ -388,6 +443,7 @@ def main(argv=None):
                         "overall": mrr_overall,
                         "by_shape": mrr_by_shape,
                     },
+                    "latency": latency_summary,
                     "rows": rows,
                 },
                 indent=2,

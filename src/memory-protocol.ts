@@ -1,5 +1,5 @@
 import type { PalaceClient } from "./palace-client.ts";
-import type { PalaceDrawer, SmeEntity } from "./types.ts";
+import type { PalaceDrawer, RetrievalTimings, SmeEntity } from "./types.ts";
 import { buildSystemPrompt } from "./grounding.ts";
 import { allocateContext } from "./budget.ts";
 import { domainRerank } from "./retrieval/rerank.ts";
@@ -112,6 +112,8 @@ export interface RetrieveAndGroundResult {
   /** Daemon-reported total drawers in the search scope (pre-limit), useful for confidence gating. */
   availableInScope?: number;
   warnings: string[];
+  /** Per-stage latencies in milliseconds. Zero-overhead instrumentation via performance.now(). */
+  timings: RetrievalTimings;
 }
 
 function drawerToEntity(d: PalaceDrawer): SmeEntity {
@@ -130,12 +132,26 @@ function drawerToEntity(d: PalaceDrawer): SmeEntity {
 }
 
 export async function retrieveAndGround(opts: RetrieveAndGroundOpts): Promise<RetrieveAndGroundResult> {
+  const tTotal = performance.now();
+  const timings: RetrievalTimings = {
+    temporal_expand_ms: 0,
+    palace_search_ms: 0,
+    filter_ms: 0,
+    rerank_ms: 0,
+    decay_ms: 0,
+    compress_ms: 0,
+    budget_ms: 0,
+    prompt_ms: 0,
+    total_ms: 0,
+  };
   const warnings: string[] = [];
   let drawers: PalaceDrawer[] = [];
   let availableInScope: number | undefined;
   let palaceWarnings: string[] = [];
 
+  const tTemporal = performance.now();
   const query = expandTemporalQuery(opts.userMessage.slice(0, 250));
+  timings.temporal_expand_ms = Math.round(performance.now() - tTemporal);
 
   // Phase 5 of the hybrid-search-taxonomy initiative (familiar.realm.watch
   // spec §3.8): default retrieval to hybrid when available. Hybrid fuses
@@ -144,6 +160,7 @@ export async function retrieveAndGround(opts: RetrieveAndGroundOpts): Promise<Re
   // PALACE_SEARCH_MODE=vector forces the legacy path; "hybrid" (default)
   // tries hybrid first and falls back to vector on 503 (chroma backends).
   const mode = (Bun.env.PALACE_SEARCH_MODE ?? "hybrid").toLowerCase();
+  const tSearch = performance.now();
   try {
     if (mode === "hybrid") {
       try {
@@ -182,7 +199,9 @@ export async function retrieveAndGround(opts: RetrieveAndGroundOpts): Promise<Re
   } catch (err) {
     warnings.push("palace_unreachable");
   }
+  timings.palace_search_ms = Math.round(performance.now() - tSearch);
 
+  const tFilter = performance.now();
   // Defensive: palace-daemon occasionally returns drawers with `text: null`
   // (legacy / corrupt entries). Downstream code (compress, snippet) assumes
   // string. Filter them out and surface the count as a warning so eval +
@@ -209,24 +228,32 @@ export async function retrieveAndGround(opts: RetrieveAndGroundOpts): Promise<Re
   if (opts.recentCitations.length > 0) {
     drawers = drawers.filter((d) => !d.id || !opts.recentCitations.includes(d.id));
   }
+  timings.filter_ms = Math.round(performance.now() - tFilter);
 
   // Emmimal component 2 — domain-weighted rerank.
   // Adjusts similarity using wing-match + recency; raw cosine/bm25 preserved.
+  const tRerank = performance.now();
   drawers = domainRerank(drawers, opts.wingScope);
+  timings.rerank_ms = Math.round(performance.now() - tRerank);
 
   // Emmimal component 3 — exponential temporal decay.
   // Multiplies similarity by exp(-λ * age_days) where λ = ln(2) / half_life.
+  const tDecay = performance.now();
   drawers = temporalDecay(drawers, { halfLifeDays: DEFAULT_HALF_LIFE_DAYS });
   // Re-sort: decay can change the order significantly when older drawers
   // had high rerank scores.
   drawers.sort((a, b) => (b.similarity ?? 0) - (a.similarity ?? 0));
+  timings.decay_ms = Math.round(performance.now() - tDecay);
 
   // Emmimal component 4 — extractive compression.
   // Long drawers (>500 chars) get trimmed to top-3 query-relevant sentences.
   // Full drawer body remains addressable by drawer.id via citations.
+  const tCompress = performance.now();
   drawers = extractiveCompress(drawers, opts.userMessage);
+  timings.compress_ms = Math.round(performance.now() - tCompress);
 
   // Apply token budget
+  const tBudget = performance.now();
   const alloc = allocateContext(drawers, opts.contextBudgetTokens);
   if (alloc.dropped.length > 0) {
     warnings.push(`budget_dropped_${alloc.dropped.length}`);
@@ -239,7 +266,9 @@ export async function retrieveAndGround(opts: RetrieveAndGroundOpts): Promise<Re
   if (topSimilarity < 0.3 && alloc.kept.length < 2) {
     warnings.push("low_confidence");
   }
+  timings.budget_ms = Math.round(performance.now() - tBudget);
 
+  const tPrompt = performance.now();
   const systemPrompt = buildSystemPrompt({
     drawers: alloc.kept,
     warnings: palaceWarnings,
@@ -247,8 +276,10 @@ export async function retrieveAndGround(opts: RetrieveAndGroundOpts): Promise<Re
     wingScope: opts.wingScope,
     stuck: opts.stuck ?? false,
   });
+  timings.prompt_ms = Math.round(performance.now() - tPrompt);
 
   const drawerIds = alloc.kept.map((d) => d.id).filter((id): id is string => Boolean(id));
   const entities = alloc.kept.map(drawerToEntity);
-  return { systemPrompt, drawerIds, entities, availableInScope, warnings };
+  timings.total_ms = Math.round(performance.now() - tTotal);
+  return { systemPrompt, drawerIds, entities, availableInScope, warnings, timings };
 }

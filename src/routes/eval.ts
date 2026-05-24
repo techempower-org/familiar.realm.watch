@@ -18,6 +18,7 @@ import type { PalaceClient } from "../palace-client.ts";
 import type {
   Config,
   InferenceChatProvider,
+  RetrievalTimings,
   SmeQueryRequest,
   SmeQueryResponse,
 } from "../types.ts";
@@ -77,6 +78,7 @@ export async function handleEval(req: Request, deps: EvalRouteDeps): Promise<Res
   let contextString = "";
   let entities: SmeQueryResponse["retrieved_entities"] = [];
   let availableInScope: number | undefined;
+  let timings: RetrievalTimings | undefined;
 
   try {
     const grounded = await retrieveAndGround({
@@ -91,6 +93,7 @@ export async function handleEval(req: Request, deps: EvalRouteDeps): Promise<Res
     contextString = grounded.systemPrompt;
     entities = grounded.entities;
     availableInScope = grounded.availableInScope;
+    timings = grounded.timings;
     warnings.push(...grounded.warnings);
   } catch {
     warnings.push("palace_unreachable");
@@ -124,6 +127,7 @@ export async function handleEval(req: Request, deps: EvalRouteDeps): Promise<Res
     error: null,
     warnings,
     ...(availableInScope !== undefined ? { available_in_scope: availableInScope } : {}),
+    ...(timings !== undefined ? { timings } : {}),
   };
 
   return new Response(JSON.stringify(response, null, 2), {

@@ -136,6 +136,17 @@ export async function handleChat(req: Request, deps: ChatRouteDeps): Promise<Res
       drawerIds: [],
       entities: [],
       warnings: ["palace_unreachable"],
+      timings: {
+        temporal_expand_ms: 0,
+        palace_search_ms: 0,
+        filter_ms: 0,
+        rerank_ms: 0,
+        decay_ms: 0,
+        compress_ms: 0,
+        budget_ms: 0,
+        prompt_ms: 0,
+        total_ms: 0,
+      },
     };
   }
   if (stuck) grounded.warnings.push("stuck_loop");

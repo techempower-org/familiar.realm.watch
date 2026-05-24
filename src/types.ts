@@ -183,6 +183,27 @@ export interface SmeQueryResponse {
   error: string | null;
   warnings: string[];
   available_in_scope?: number;
+  /** Per-stage retrieval pipeline latencies in milliseconds (eval/probe telemetry). */
+  timings?: RetrievalTimings;
+}
+
+/**
+ * Per-stage retrieval pipeline latencies in milliseconds. Populated by
+ * `retrieveAndGround()` and surfaced through `/api/familiar/eval` so the
+ * paraphrase probe can break down where time goes (palace_search dominates;
+ * rerank/decay/compress are typically sub-millisecond). All values are
+ * `Math.round(performance.now() - t0)`.
+ */
+export interface RetrievalTimings {
+  temporal_expand_ms: number;
+  palace_search_ms: number;
+  filter_ms: number;
+  rerank_ms: number;
+  decay_ms: number;
+  compress_ms: number;
+  budget_ms: number;
+  prompt_ms: number;
+  total_ms: number;
 }
 
 /**
