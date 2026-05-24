@@ -199,6 +199,7 @@ export interface RetrievalTimings {
   palace_search_ms: number;
   filter_ms: number;
   rerank_ms: number;
+  modality_ms: number;
   decay_ms: number;
   compress_ms: number;
   budget_ms: number;

@@ -5,6 +5,7 @@ import { allocateContext } from "./budget.ts";
 import { domainRerank } from "./retrieval/rerank.ts";
 import { temporalDecay } from "./retrieval/decay.ts";
 import { extractiveCompress } from "./retrieval/compress.ts";
+import { detectQueryIntent, modalityWeight } from "./retrieval/modality.ts";
 
 const DEFAULT_HALF_LIFE_DAYS = 30;
 
@@ -138,6 +139,7 @@ export async function retrieveAndGround(opts: RetrieveAndGroundOpts): Promise<Re
     palace_search_ms: 0,
     filter_ms: 0,
     rerank_ms: 0,
+    modality_ms: 0,
     decay_ms: 0,
     compress_ms: 0,
     budget_ms: 0,
@@ -235,6 +237,14 @@ export async function retrieveAndGround(opts: RetrieveAndGroundOpts): Promise<Re
   const tRerank = performance.now();
   drawers = domainRerank(drawers, opts.wingScope);
   timings.rerank_ms = Math.round(performance.now() - tRerank);
+
+  // Phase 0 modality-aware weighting (issue #44).
+  // Biases score toward rooms whose content shape fits the query intent
+  // (detail vs synthesis). Disabled via PALACE_MODALITY_WEIGHT=off.
+  const tModality = performance.now();
+  const intent = detectQueryIntent(opts.userMessage);
+  drawers = modalityWeight(drawers, intent);
+  timings.modality_ms = Math.round(performance.now() - tModality);
 
   // Emmimal component 3 — exponential temporal decay.
   // Multiplies similarity by exp(-λ * age_days) where λ = ln(2) / half_life.
