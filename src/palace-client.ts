@@ -1,5 +1,15 @@
 import type { PalaceDrawer, PalaceGraph, PalaceSearchResult } from "./types.ts";
 
+function normalizeResults(raw: PalaceSearchResult): PalaceSearchResult {
+  return {
+    ...raw,
+    results: (raw.results ?? []).map((d: PalaceDrawer & { drawer_id?: string }) => ({
+      ...d,
+      id: d.drawer_id ?? d.id,
+    })),
+  };
+}
+
 export interface PalaceClientOptions {
   baseUrl: string;
   apiKey: string;
@@ -106,7 +116,7 @@ export class PalaceClient {
         timeoutPromise,
       ]);
       if (!res.ok) throw new Error(`palace-daemon search: ${res.status} ${res.statusText}`);
-      return (await res.json()) as PalaceSearchResult;
+      return normalizeResults((await res.json()) as PalaceSearchResult);
     } finally {
       if (timer) clearTimeout(timer);
     }
@@ -170,7 +180,7 @@ export class PalaceClient {
         timeoutPromise,
       ]);
       if (!res.ok) throw new Error(`palace-daemon hybrid search: ${res.status} ${res.statusText}`);
-      return (await res.json()) as PalaceSearchResult;
+      return normalizeResults((await res.json()) as PalaceSearchResult);
     } finally {
       if (timer) clearTimeout(timer);
     }
