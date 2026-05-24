@@ -149,30 +149,34 @@ def _normalize_signal(matched_via: str | None) -> str:
     return s  # preserve raw token so we don't silently lose a new signal
 
 
-def _matches(question: dict, retrieved: list[dict]) -> tuple[bool, str, str | None, str | None]:
-    """Return (matched, reason, matched_via_raw, matched_via_bucket).
+def _matches(
+    question: dict, retrieved: list[dict]
+) -> tuple[bool, str, str | None, str | None, int]:
+    """Return (matched, reason, matched_via_raw, matched_via_bucket, rank).
 
     Tries drawer-id match first, then substring. When a hit is found, also
     surfaces the ``matched_via`` field from the retrieved entity so callers
-    can attribute the hit to vector / bm25 / graph retrieval.
+    can attribute the hit to vector / bm25 / graph retrieval. ``rank`` is
+    1-indexed (first match wins) and 0 on miss — feeds MRR computation
+    where reciprocal rank is 1/rank, 0 if no hit.
     """
     expected_ids = set(question.get("expected_drawers") or [])
     if expected_ids:
-        for r in retrieved:
+        for idx, r in enumerate(retrieved):
             rid = r.get("id", "")
             if rid in expected_ids:
                 mv = r.get("matched_via")
-                return True, f"drawer_id:{rid[:48]}", mv, _normalize_signal(mv)
+                return True, f"drawer_id:{rid[:48]}", mv, _normalize_signal(mv), idx + 1
 
     expected_subs = [s.lower() for s in question.get("expected_substrings") or []]
     if expected_subs:
-        for r in retrieved:
+        for idx, r in enumerate(retrieved):
             snippet = (r.get("content_snippet") or "").lower()
             for sub in expected_subs:
                 if sub in snippet:
                     mv = r.get("matched_via")
-                    return True, f"substring:{sub}", mv, _normalize_signal(mv)
-    return False, "no-match", None, None
+                    return True, f"substring:{sub}", mv, _normalize_signal(mv), idx + 1
+    return False, "no-match", None, None, 0
 
 
 def _truncate_retrieved(retrieved: list[dict], top_n: int) -> list[dict]:
@@ -217,8 +221,8 @@ def main(argv=None):
         retrieved_no = _truncate_retrieved(no_hyde.get("retrieved_entities") or [], args.top_n)
         retrieved_yes = _truncate_retrieved(yes_hyde.get("retrieved_entities") or [], args.top_n)
 
-        ok_no, reason_no, mv_raw_no, mv_bucket_no = _matches(q, retrieved_no)
-        ok_yes, reason_yes, mv_raw_yes, mv_bucket_yes = _matches(q, retrieved_yes)
+        ok_no, reason_no, mv_raw_no, mv_bucket_no, rank_no = _matches(q, retrieved_no)
+        ok_yes, reason_yes, mv_raw_yes, mv_bucket_yes, rank_yes = _matches(q, retrieved_yes)
 
         rows.append(
             {
@@ -230,6 +234,8 @@ def main(argv=None):
                     "latency_s": round(lat_no, 3),
                     "matched_via": mv_raw_no,
                     "signal": mv_bucket_no,
+                    "rank": rank_no,
+                    "timings": no_hyde.get("timings") or {},
                 },
                 "yes_hyde": {
                     "matched": ok_yes,
@@ -237,6 +243,8 @@ def main(argv=None):
                     "latency_s": round(lat_yes, 3),
                     "matched_via": mv_raw_yes,
                     "signal": mv_bucket_yes,
+                    "rank": rank_yes,
+                    "timings": yes_hyde.get("timings") or {},
                 },
                 "delta_state": (
                     "rescued" if (ok_yes and not ok_no)
@@ -252,20 +260,37 @@ def main(argv=None):
     for r in rows:
         by_shape[r["shape"]].append(r)
 
-    print(f"{'shape':22s} {'n':>3s} {'noHyDE':>8s} {'HyDE':>8s} {'Δ':>6s} {'lat+':>7s}")
-    print("-" * 60)
-    totals = {"n": 0, "no_ok": 0, "yes_ok": 0, "lat_no_sum": 0.0, "lat_yes_sum": 0.0}
+    def _mrr(group: list[dict], arm: str) -> float:
+        """Mean reciprocal rank. RR = 1/rank for hits, 0 for misses."""
+        if not group:
+            return 0.0
+        return sum((1.0 / r[arm]["rank"]) if r[arm]["rank"] else 0.0 for r in group) / len(group)
+
+    print(
+        f"{'shape':22s} {'n':>3s} {'noHyDE':>8s} {'HyDE':>8s} {'Δ':>6s} "
+        f"{'MRR_no':>7s} {'MRR_yes':>8s} {'lat+':>7s}"
+    )
+    print("-" * 78)
+    totals = {
+        "n": 0, "no_ok": 0, "yes_ok": 0,
+        "lat_no_sum": 0.0, "lat_yes_sum": 0.0,
+        "rr_no_sum": 0.0, "rr_yes_sum": 0.0,
+    }
     for shape, group in sorted(by_shape.items()):
         n = len(group)
         no_ok = sum(1 for r in group if r["no_hyde"]["matched"])
         yes_ok = sum(1 for r in group if r["yes_hyde"]["matched"])
         lat_no = sum(r["no_hyde"]["latency_s"] for r in group) / n
         lat_yes = sum(r["yes_hyde"]["latency_s"] for r in group) / n
+        mrr_no = _mrr(group, "no_hyde")
+        mrr_yes = _mrr(group, "yes_hyde")
         print(
             f"{shape:22s} {n:3d} "
             f"{no_ok/n*100:7.1f}% "
             f"{yes_ok/n*100:7.1f}% "
             f"{(yes_ok-no_ok)/n*100:+5.1f}% "
+            f"{mrr_no:7.3f} "
+            f"{mrr_yes:8.3f} "
             f"{(lat_yes-lat_no)*1000:+5.0f}ms"
         )
         totals["n"] += n
@@ -273,7 +298,9 @@ def main(argv=None):
         totals["yes_ok"] += yes_ok
         totals["lat_no_sum"] += lat_no * n
         totals["lat_yes_sum"] += lat_yes * n
-    print("-" * 60)
+        totals["rr_no_sum"] += mrr_no * n
+        totals["rr_yes_sum"] += mrr_yes * n
+    print("-" * 78)
     n = totals["n"]
     if n:
         print(
@@ -281,6 +308,8 @@ def main(argv=None):
             f"{totals['no_ok']/n*100:7.1f}% "
             f"{totals['yes_ok']/n*100:7.1f}% "
             f"{(totals['yes_ok']-totals['no_ok'])/n*100:+5.1f}% "
+            f"{totals['rr_no_sum']/n:7.3f} "
+            f"{totals['rr_yes_sum']/n:8.3f} "
             f"{(totals['lat_yes_sum']-totals['lat_no_sum'])/n*1000:+5.0f}ms"
         )
     print()
@@ -330,6 +359,22 @@ def main(argv=None):
     for state in ("rescued", "regressed", "tied_hit", "tied_miss"):
         print(f"  {state:10s} {state_counts[state]:3d}")
 
+    # ── MRR summary block for JSON output ─────────────────────────────
+    # Per-shape and overall MRR mirroring the printed table — consumers
+    # plotting trends over time read this rather than re-parsing the rows.
+    mrr_by_shape: dict[str, dict[str, float]] = {}
+    for shape, group in by_shape.items():
+        mrr_by_shape[shape] = {
+            "no_hyde": round(_mrr(group, "no_hyde"), 4),
+            "yes_hyde": round(_mrr(group, "yes_hyde"), 4),
+            "n": len(group),
+        }
+    mrr_overall = {
+        "no_hyde": round(totals["rr_no_sum"] / n, 4) if n else 0.0,
+        "yes_hyde": round(totals["rr_yes_sum"] / n, 4) if n else 0.0,
+        "n": n,
+    }
+
     if args.out:
         Path(args.out).write_text(
             json.dumps(
@@ -338,6 +383,10 @@ def main(argv=None):
                     "signal_summary": {
                         "overall": overall_signal,
                         "by_shape": per_signal_summary,
+                    },
+                    "mrr": {
+                        "overall": mrr_overall,
+                        "by_shape": mrr_by_shape,
                     },
                     "rows": rows,
                 },
