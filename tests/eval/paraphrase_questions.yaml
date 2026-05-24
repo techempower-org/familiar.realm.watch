@@ -11,12 +11,13 @@
 # Each entry:
 #   query             — the paraphrase-stressed question
 #   expected_drawers  — list; match if ANY appears in retrieved_entities[*].id
-#   shape             — one of {vocab_mismatch, temporal, topical_mismatch, cross_project}
+#   shape             — one of {vocab_mismatch, temporal, topical_mismatch,
+#                       cross_project, canary, contradiction, recency}
 #   why               — what HyDE has to bridge to find this
 #
 # Anchored at real drawers in our 2026-05-13 palace (postgres backend).
 # A drawer-id that no longer exists doesn't fail the probe; it just
-# can't contribute a hit. Generated 2026-05-14.
+# can't contribute a hit. Generated 2026-05-14, expanded 2026-05-24.
 
 questions:
   # ── vocab_mismatch: query uses everyday/casual words; drawer uses precise identifiers ──
@@ -144,3 +145,391 @@ questions:
       - drawer_familiar_realm_watch_technical_4011f6de4e7b6e70c11c8574
     shape: canary
     why: "direct identifier match — vector alone should find it; HyDE shouldn't hurt"
+
+  # ════════════════════════════════════════════════════════════════════
+  # Expansion 2026-05-24 — 35 additional questions, broader shape coverage
+  # ════════════════════════════════════════════════════════════════════
+
+  # ── vocab_mismatch (5 more) ────────────────────────────────────────
+  - query: "Why does the old graphics card box not actually do the math when we run the AI?"
+    expected_drawers:
+      - drawer_familiar_realm_watch_references_f2b79b78e80963d5bf7481cf
+      - drawer_familiar_realm_watch_references_92f93446b3b1344203392ee6
+    expected_substrings:
+      - "compute_61"
+      - "Pascal"
+      - "sm_61"
+    shape: vocab_mismatch
+    why: "drawer uses 'compute_61 / Pascal / sm_61'; query says 'old graphics card box not actually doing the math'"
+
+  - query: "How do we make sure familiar doesn't go silent without us noticing?"
+    expected_drawers:
+      - drawer_familiar_realm_watch_references_745a4e67e52ede17c5f1e7c5
+    expected_substrings:
+      - "watchdog"
+      - "ntfy"
+      - "/health"
+    shape: vocab_mismatch
+    why: "drawer uses 'familiar-watchdog + ntfy + /health probe'; query is casual 'don't go silent'"
+
+  - query: "What's the thing that pops up a window when I need a password from the vault?"
+    expected_drawers:
+      - drawer_general_technical_b247328fb6e3f197c3a4d5aa
+      - drawer_general_technical_1bb5685d90207103e367bce2
+      - drawer_ha_technical_033cde07fc4284633b689543
+    expected_substrings:
+      - "vault-gate"
+      - "Ghostty"
+      - "BW_SESSION"
+    shape: vocab_mismatch
+    why: "drawer uses 'vault-gate / BW_SESSION / Ghostty popup'; query is casual 'pops up a window'"
+
+  - query: "How does the talking-out-loud feature pick which voice to use?"
+    expected_drawers:
+      - drawer_familiar_realm_watch_problems_3ec1180eca472fb6d0cca70d
+      - drawer_general_technical_b47557f3093854332711eee6
+    expected_substrings:
+      - "gnome-speaks"
+      - "Azure"
+      - "ShortName"
+      - "7710"
+    shape: vocab_mismatch
+    why: "drawer uses 'gnome-speaks Azure Neural TTS ShortName parameter'; query says 'talking-out-loud'"
+
+  - query: "Why doesn't the regular packaged AI runner work on our older GPU?"
+    expected_drawers:
+      - drawer_familiar_realm_watch_references_f2b79b78e80963d5bf7481cf
+    expected_substrings:
+      - "Ollama"
+      - "prebuilt"
+      - "Pascal"
+      - "CPU"
+    shape: vocab_mismatch
+    why: "drawer says 'Ollama prebuilt binaries do not include compute_61 / CPU fallback'; query is casual"
+
+  # ── temporal (6 more) ──────────────────────────────────────────────
+  - query: "What did we work on last weekend with the AI memory thing?"
+    expected_drawers: []
+    expected_substrings:
+      - "AGE"
+      - "hybrid"
+      - "knowledge_graph"
+      - "Cypher"
+    shape: temporal
+    why: "HyDE expands 'AI memory thing last weekend' → 'AGE knowledge graph / hybrid search'"
+
+  - query: "Anything interesting happen with the homelab GPU stack this month?"
+    expected_drawers:
+      - drawer_familiar_realm_watch_references_d3862b9bc20cc94402db4b7c
+      - drawer_familiar_realm_watch_problems_a6d892e2e75304460e7adc22
+    expected_substrings:
+      - "llama.cpp"
+      - "Pascal"
+      - "CUDA_ARCHITECTURES"
+    shape: temporal
+    why: "HyDE expands 'GPU stack this month' → 'llama.cpp multi-arch build for Pascal'"
+
+  - query: "What was the production incident a few weeks back where chat probes were timing out?"
+    expected_drawers: []
+    expected_substrings:
+      - "chat probe"
+      - "timeout"
+      - "phi-4"
+      - "10s"
+    shape: temporal
+    why: "HyDE bridges 'incident a few weeks back / timing out' → 'chat probe timeout bump 4s→10s for phi-4'"
+
+  - query: "What changes did we commit to familiar in the last few days?"
+    expected_drawers:
+      - drawer_familiar_realm_watch_references_745a4e67e52ede17c5f1e7c5
+    expected_substrings:
+      - "watchdog"
+      - "ntfy"
+      - "WARN"
+    shape: temporal
+    why: "HyDE expands 'last few days' → 'familiar-watchdog ntfy paging WARN events PR#38'"
+
+  - query: "What did we ship to the palace daemon recently?"
+    expected_drawers: []
+    expected_substrings:
+      - "backfill-age"
+      - "AGE graph"
+      - "mcp_server"
+    shape: temporal
+    why: "HyDE expands 'shipped recently to palace daemon' → '/backfill-age endpoint for remote AGE'"
+
+  - query: "What did we figure out about the GPU situation back in May?"
+    expected_drawers:
+      - drawer_familiar_realm_watch_references_932119f433ccdb4ef3501c1d
+    expected_substrings:
+      - "52;61"
+      - "sm_61"
+      - "10 min"
+      - "3900X"
+    shape: temporal
+    why: "HyDE bridges 'GPU situation in May' → 'CMAKE_CUDA_ARCHITECTURES=52;61 build on 3900X'"
+
+  # ── topical_mismatch (5 more) ──────────────────────────────────────
+  - query: "Why does it feel like familiar suddenly knows nothing about a topic it used to remember?"
+    expected_drawers:
+      - drawer_general_technical_134f00ceef63b4e39ae96e44
+      - drawer_general_technical_9601483030453d95a92e7318
+    expected_substrings:
+      - "HNSW"
+      - "stale"
+      - "rebuild"
+      - "low_confidence"
+    shape: topical_mismatch
+    why: "user-facing symptom 'suddenly knows nothing' → 'stale HNSW index, /repair mode=rebuild'"
+
+  - query: "The chat bot seems to forget who I am between sessions, what fixes that?"
+    expected_drawers: []
+    expected_substrings:
+      - "diary"
+      - "session"
+      - "mempalace"
+      - "retrieveAndGround"
+    shape: topical_mismatch
+    why: "user-facing 'forgets who I am' → 'diary entries / palace session retrieval'"
+
+  - query: "Why was the AI just printing 0 tokens per second on our hardware?"
+    expected_drawers:
+      - drawer_familiar_realm_watch_references_f2b79b78e80963d5bf7481cf
+      - drawer_familiar_realm_watch_problems_a6d892e2e75304460e7adc22
+    expected_substrings:
+      - "CPU fallback"
+      - "compute_61"
+      - "SASS"
+    shape: topical_mismatch
+    why: "user-facing '0 tokens/sec' → 'CPU fallback due to missing compute_61 SASS in prebuilt'"
+
+  - query: "Why does the same file have two versions sitting next to each other on disk?"
+    expected_drawers: []
+    expected_substrings:
+      - "sync-conflict"
+      - "syncthing"
+      - "katana"
+    shape: topical_mismatch
+    why: "user-facing 'two versions next to each other' → 'syncthing sync-conflict-YYYYMMDD-* file'"
+
+  - query: "Why does sometimes the wrong drawer come back even when I search for something exact?"
+    expected_drawers:
+      - drawer_general_technical_134f00ceef63b4e39ae96e44
+    expected_substrings:
+      - "low_confidence"
+      - "filtered_null_text"
+      - "warnings"
+    shape: topical_mismatch
+    why: "user-facing 'wrong drawer even for exact search' → 'low_confidence / filtered_null_text warnings'"
+
+  # ── cross_project (6 more) ─────────────────────────────────────────
+  - query: "What's the project that turns my homelab into a fantasy map I can click around?"
+    expected_drawers:
+      - drawer_projects_architecture_68c2c4f9b08b7a45e46e49fc
+      - drawer_projects_technical_d8277773278c931638a5e553
+    expected_substrings:
+      - "realmwatch"
+      - "realm-map"
+      - "topology"
+    shape: cross_project
+    why: "'homelab into a fantasy map' → realmwatch / realm-map.css / fantasy theming"
+
+  - query: "Which thing on my desktop reads things back to me in different voices?"
+    expected_drawers:
+      - drawer_familiar_realm_watch_problems_3ec1180eca472fb6d0cca70d
+      - drawer_general_technical_b47557f3093854332711eee6
+    expected_substrings:
+      - "gnome-speaks"
+      - "Azure"
+      - "TTS"
+    shape: cross_project
+    why: "'reads things back in voices' → gnome-speaks / Azure TTS / 653 voices"
+
+  - query: "Where is the actual brain that answers chat questions for familiar running?"
+    expected_drawers:
+      - drawer_familiar_realm_watch_references_d3862b9bc20cc94402db4b7c
+    expected_substrings:
+      - "llama.cpp"
+      - "llama-server"
+      - "familiar"
+    shape: cross_project
+    why: "'brain that answers chat for familiar' → llama.cpp llama-server running on familiar host"
+
+  - query: "What's the thing where we have lots of separate AI tools that all snapshot what they're doing?"
+    expected_drawers: []
+    expected_substrings:
+      - "mempalace"
+      - "diary"
+      - "drawer"
+      - "wing"
+    shape: cross_project
+    why: "'separate AI tools that snapshot what they're doing' → mempalace diaries and drawers"
+
+  - query: "Which project is in charge of the postgres database that holds all our memories?"
+    expected_drawers: []
+    expected_substrings:
+      - "palace-daemon"
+      - "pgvector"
+      - "AGE"
+      - "disks"
+    shape: cross_project
+    why: "'postgres that holds memories' → palace-daemon on disks with pgvector + AGE"
+
+  - query: "What translates between our HTTP API and the python memory library?"
+    expected_drawers: []
+    expected_substrings:
+      - "palace-daemon"
+      - "FastAPI"
+      - "mempalace"
+    shape: cross_project
+    why: "'translates HTTP to python memory library' → palace-daemon FastAPI gateway over mempalace"
+
+  # ── canary (3 more) ────────────────────────────────────────────────
+  - query: "llama.cpp DCMAKE_CUDA_ARCHITECTURES Pascal multi-arch build"
+    expected_drawers:
+      - drawer_familiar_realm_watch_references_d3862b9bc20cc94402db4b7c
+      - drawer_familiar_realm_watch_references_932119f433ccdb4ef3501c1d
+    shape: canary
+    why: "direct technical phrase match — vector alone should already nail this"
+
+  - query: "Authelia forward_auth Caddy OIDC"
+    expected_drawers:
+      - drawer_projects_technical_7b77f59d657a9a55bc00d885
+      - drawer_projects_technical_efc5a8074d756e27eca3bd15
+      - drawer_projects_technical_891dea933397800c1ca10a82
+    shape: canary
+    why: "direct identifier match — common terms used verbatim in the drawer"
+
+  - query: "Syncthing katana disks /mnt/raid folder"
+    expected_drawers:
+      - drawer_memorypalace_technical_14d61b4a9264d4b2ff0a6443
+      - drawer_memorypalace_technical_d03d55e414441aeabce03013
+    shape: canary
+    why: "direct identifier match — vector alone should find the syncthing reference drawer"
+
+  # ── contradiction (4 new): palace has updates that supersede older notes ──
+  # Retrieval must surface the *latest* drawer, not just any matching one.
+  - query: "Is the palace running on chromadb or postgres these days?"
+    expected_drawers:
+      - drawer_general_architecture_139edfdf15d100ffa587fefe
+      - drawer_memorypalace_references_ae101f2656fa8af770511819
+    expected_substrings:
+      - "pgvector"
+      - "postgres"
+      - "PG16"
+      - "AGE"
+    shape: contradiction
+    why: "older drawers say chromadb; current truth (2026-05-15) is postgres + pgvector + AGE on disks:5433"
+
+  - query: "Should we use Ollama prebuilts for Pascal cards?"
+    expected_drawers:
+      - drawer_familiar_realm_watch_references_f2b79b78e80963d5bf7481cf
+      - drawer_familiar_realm_watch_problems_a6d892e2e75304460e7adc22
+    expected_substrings:
+      - "do not include compute_61"
+      - "llama.cpp"
+      - "Production Branch"
+    shape: contradiction
+    why: "older drawers suggest Ollama; current truth is llama.cpp built from source — Ollama silently CPU-fallbacks"
+
+  - query: "Is the NVIDIA driver upgrade going to break Pascal support?"
+    expected_drawers:
+      - drawer_familiar_realm_watch_problems_a6d892e2e75304460e7adc22
+    expected_substrings:
+      - "Production Branch"
+      - "580"
+      - "SASS"
+      - "compiled"
+    shape: contradiction
+    why: "intuition says 'driver upgrades drop old cards'; correct understanding is driver-580 keeps Pascal, only SASS coverage matters"
+
+  - query: "Is the search HyDE expansion still on by default?"
+    expected_drawers: []
+    expected_substrings:
+      - "HyDE"
+      - "hybrid"
+      - "RRF"
+      - "didn't survive"
+    shape: contradiction
+    why: "early notes said HyDE/RRF were the answer; later finding (palace_search_pitfalls) says they didn't survive the hybrid pipeline"
+
+  # ── recency (4 new): time-decay should help; expected drawer is the most recent ──
+  - query: "What's the current state of familiar in production?"
+    expected_drawers:
+      - drawer_familiar_realm_watch_references_745a4e67e52ede17c5f1e7c5
+    expected_substrings:
+      - "watchdog"
+      - "ntfy"
+      - "phi-4"
+      - "0aabd91"
+    shape: recency
+    why: "very recent drawers (May 2026) describe current production state — watchdog + ntfy paging shipped on main"
+
+  - query: "What's the latest taxonomy decision for the palace?"
+    expected_drawers:
+      - drawer_familiar_realm_watch_decisions_e248567794717cb21af26e76
+    expected_substrings:
+      - "Project-Topic-Drawer"
+      - "7 canonical"
+      - "architecture, decisions, problems"
+    shape: recency
+    why: "newest decision drawer (2026-05-13) is the authoritative one for room taxonomy"
+
+  - query: "What's the most recent thing we know about hybrid retrieval performance?"
+    expected_drawers:
+      - drawer_memorypalace_references_ae101f2656fa8af770511819
+      - drawer_memorypalace_references_d7ce035e2617d21c8e488415
+    expected_substrings:
+      - "hybrid"
+      - "8/9"
+      - "candidate_strategy"
+      - "shipped on `main`"
+    shape: recency
+    why: "May 22-24 drawers contain the freshest hybrid retrieval status; older drawers describe planning, not state"
+
+  - query: "Where are we with the AGE knowledge graph rollout?"
+    expected_drawers:
+      - drawer_familiar_realm_watch_references_13213644489ba6a395af9850
+      - drawer_wing_opencode_references_aa198e869cb206f41e97088a
+    expected_substrings:
+      - "AGE"
+      - "knowledge_graph_age"
+      - "Cypher"
+      - "MEMPALACE_KG_BACKEND"
+    shape: recency
+    why: "May 2026 drawers reflect current AGE rollout state; the older HANDOFF said Task 2.1 done — newer state is further along"
+
+  # ── extra coverage to reach 50+ ────────────────────────────────────
+  - query: "How do we keep our laptop and the server in sync on important files?"
+    expected_drawers:
+      - drawer_memorypalace_technical_d03d55e414441aeabce03013
+      - drawer_memorypalace_technical_14d61b4a9264d4b2ff0a6443
+    expected_substrings:
+      - "syncthing"
+      - "katana"
+      - "disks"
+      - "/mnt/raid"
+    shape: vocab_mismatch
+    why: "drawer uses 'Syncthing katana → disks /mnt/raid'; query is casual 'laptop and server in sync'"
+
+  - query: "What was that 14B versus 3B thing where the small model on the CPU was actually fine?"
+    expected_drawers:
+      - drawer_familiar_realm_watch_problems_40378aa572b8bbcc07fe7c25
+      - drawer_general_technical_62a5c06c4e90e9f2cf119354
+    expected_substrings:
+      - "CPU"
+      - "RAM bandwidth"
+      - "Q4_0"
+      - "phi"
+    shape: topical_mismatch
+    why: "user-facing '14B vs 3B / CPU fine' → 'CPU inference is RAM-bandwidth-bound, sweet spot ~14B at Q4_0'"
+
+  - query: "What's the deal with our network having different VLANs and why does it matter for services?"
+    expected_drawers: []
+    expected_substrings:
+      - "VLAN"
+      - "gatekeeper"
+      - "VRRP"
+      - "OpenWrt"
+    shape: cross_project
+    why: "vague 'VLANs and services' → OpenWrt gatekeeper / VRRP / 12 VLANs from homelab-services skill"
