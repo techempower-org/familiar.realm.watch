@@ -19,3 +19,4 @@ coverage/
 
 # Paraphrase probe results — regenerable benchmark output (data, not code)
 tests/eval/probe-results-*.json
+tests/eval/__pycache__/
