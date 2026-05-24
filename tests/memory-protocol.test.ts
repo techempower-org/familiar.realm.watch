@@ -1,5 +1,5 @@
 import { test, expect, describe } from "bun:test";
-import { retrieveAndGround } from "../src/memory-protocol.ts";
+import { retrieveAndGround, expandTemporalQuery } from "../src/memory-protocol.ts";
 import type { PalaceSearchResult } from "../src/types.ts";
 
 function fakePalace(result: PalaceSearchResult) {
@@ -126,5 +126,46 @@ describe("retrieveAndGround", () => {
     expect(result.drawerIds).not.toContain("diary_familiar_001");
     expect(result.drawerIds).toContain("drawer_decisions_001");
     expect(result.warnings.some((w) => w.startsWith("filtered_diary_"))).toBe(true);
+  });
+});
+
+describe("expandTemporalQuery", () => {
+  const fixed = new Date("2026-05-24T14:30:00-07:00");
+
+  test("appends ISO date for 'yesterday'", () => {
+    const result = expandTemporalQuery("what did we do yesterday", fixed);
+    expect(result).toBe("what did we do yesterday 2026-05-23");
+  });
+
+  test("appends ISO date for 'today'", () => {
+    const result = expandTemporalQuery("what happened today", fixed);
+    expect(result).toBe("what happened today 2026-05-24");
+  });
+
+  test("expands 'last week' to 7 date strings", () => {
+    const result = expandTemporalQuery("what did we work on last week", fixed);
+    expect(result).toContain("2026-05-17");
+    expect(result).toContain("2026-05-24");
+  });
+
+  test("expands 'N days ago'", () => {
+    const result = expandTemporalQuery("what happened 3 days ago", fixed);
+    expect(result).toBe("what happened 3 days ago 2026-05-21");
+  });
+
+  test("passes through non-temporal queries unchanged", () => {
+    const result = expandTemporalQuery("what model runs on familiar", fixed);
+    expect(result).toBe("what model runs on familiar");
+  });
+
+  test("case insensitive", () => {
+    const result = expandTemporalQuery("YESTERDAY we fixed a bug", fixed);
+    expect(result).toContain("2026-05-23");
+  });
+
+  test("expands 'recently' to 3-day window", () => {
+    const result = expandTemporalQuery("what did we do recently", fixed);
+    expect(result).toContain("2026-05-21");
+    expect(result).toContain("2026-05-24");
   });
 });

@@ -8,6 +8,81 @@ import { extractiveCompress } from "./retrieval/compress.ts";
 
 const DEFAULT_HALF_LIFE_DAYS = 30;
 
+const TEMPORAL_PATTERNS: Array<{ re: RegExp; resolve: (now: Date, match?: RegExpMatchArray) => [Date, Date] }> = [
+  { re: /\byesterday\b/i, resolve: (now) => {
+    const d = new Date(now); d.setDate(d.getDate() - 1);
+    return [startOfDay(d), endOfDay(d)];
+  }},
+  { re: /\btoday\b/i, resolve: (now) => [startOfDay(now), endOfDay(now)] },
+  { re: /\bthis morning\b/i, resolve: (now) => [startOfDay(now), endOfDay(now)] },
+  { re: /\blast night\b/i, resolve: (now) => {
+    const d = new Date(now); d.setDate(d.getDate() - 1);
+    return [startOfDay(d), endOfDay(now)];
+  }},
+  { re: /\blast week\b/i, resolve: (now) => {
+    const end = new Date(now);
+    const start = new Date(now); start.setDate(start.getDate() - 7);
+    return [startOfDay(start), endOfDay(end)];
+  }},
+  { re: /\bthis week\b/i, resolve: (now) => {
+    const dayOfWeek = now.getDay();
+    const start = new Date(now); start.setDate(start.getDate() - dayOfWeek);
+    return [startOfDay(start), endOfDay(now)];
+  }},
+  { re: /\b(\d+)\s+days?\s+ago\b/i, resolve: (now, match) => {
+    const n = parseInt(match![1], 10);
+    const d = new Date(now); d.setDate(d.getDate() - n);
+    return [startOfDay(d), endOfDay(d)];
+  }},
+  { re: /\blast month\b/i, resolve: (now) => {
+    const start = new Date(now); start.setMonth(start.getMonth() - 1, 1);
+    const end = new Date(now); end.setDate(0);
+    return [startOfDay(start), endOfDay(end)];
+  }},
+  { re: /\brecently\b/i, resolve: (now) => {
+    const start = new Date(now); start.setDate(start.getDate() - 3);
+    return [startOfDay(start), endOfDay(now)];
+  }},
+];
+
+function startOfDay(d: Date): Date {
+  const r = new Date(d); r.setHours(0, 0, 0, 0); return r;
+}
+function endOfDay(d: Date): Date {
+  const r = new Date(d); r.setHours(23, 59, 59, 999); return r;
+}
+
+function isoDate(d: Date): string {
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+}
+
+/**
+ * Detects temporal references ("yesterday", "last week", "3 days ago")
+ * and appends the resolved ISO date(s) so BM25 can match on filed_at
+ * timestamps in session manifest drawers.
+ */
+export function expandTemporalQuery(query: string, now = new Date()): string {
+  for (const pat of TEMPORAL_PATTERNS) {
+    const match = query.match(pat.re);
+    if (match) {
+      const [start, end] = pat.resolve(now, match);
+      const startStr = isoDate(start);
+      const endStr = isoDate(end);
+      if (startStr === endStr) {
+        return `${query} ${startStr}`;
+      }
+      const dates: string[] = [];
+      const cursor = new Date(start);
+      while (cursor <= end && dates.length < 14) {
+        dates.push(isoDate(cursor));
+        cursor.setDate(cursor.getDate() + 1);
+      }
+      return `${query} ${dates.join(" ")}`;
+    }
+  }
+  return query;
+}
+
 export interface RetrieveAndGroundOpts {
   palace: PalaceClient;
   userMessage: string;
@@ -60,6 +135,8 @@ export async function retrieveAndGround(opts: RetrieveAndGroundOpts): Promise<Re
   let availableInScope: number | undefined;
   let palaceWarnings: string[] = [];
 
+  const query = expandTemporalQuery(opts.userMessage.slice(0, 250));
+
   // Phase 5 of the hybrid-search-taxonomy initiative (familiar.realm.watch
   // spec §3.8): default retrieval to hybrid when available. Hybrid fuses
   // vector + BM25 + graph candidates server-side, addressing the
@@ -71,7 +148,7 @@ export async function retrieveAndGround(opts: RetrieveAndGroundOpts): Promise<Re
     if (mode === "hybrid") {
       try {
         const search = await opts.palace.searchHybrid({
-          query: opts.userMessage.slice(0, 250),
+          query,
           limit: opts.retrievalLimit,
           wing: opts.wingScope ?? undefined,
           hydeGenerate: opts.hydeGenerate,
@@ -94,7 +171,7 @@ export async function retrieveAndGround(opts: RetrieveAndGroundOpts): Promise<Re
     if (drawers.length === 0 && availableInScope === undefined) {
       // Either mode=vector, or hybrid was unavailable. Use legacy /search.
       const search = await opts.palace.search({
-        query: opts.userMessage.slice(0, 250),
+        query,
         limit: opts.retrievalLimit,
         wing: opts.wingScope ?? undefined,
       });
