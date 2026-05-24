@@ -7,6 +7,126 @@ versions follow [SemVer](https://semver.org/spec/v2.0.0.html) and the
 [realm-sigil](https://github.com/jphein/realm-sigil) convention used across
 the realm.watch ecosystem.
 
+## [Unreleased] — 2026-05-24 — *Temporal retrieval + AGE knowledge graph backfill*
+
+Closes the loop on the AGE knowledge graph integration from
+[mempalace PR #101](https://github.com/techempower-org/mempalace/pull/101):
+writethrough enabled in production, backfill running against all 335K
+drawers. Familiar's memory-protocol now expands temporal queries
+("yesterday", "last week") into date-anchored search terms so BM25 can
+match against drawer timestamps.
+
+### Added
+
+- **Temporal query expansion** in `src/memory-protocol.ts`. Detects
+  date-relative words in user queries and appends resolved ISO dates
+  before sending to palace-daemon's hybrid search. Patterns: "yesterday",
+  "today", "last week", "this week", "N days ago", "last month",
+  "recently", "this morning", "last night". Non-temporal queries pass
+  through unchanged. Helps BM25 match against `filed_at` timestamps in
+  drawer metadata.
+- **`.claudeignore`** to exclude `node_modules/`, `.git/`, lock files,
+  and `docs/superpowers/` from Claude Code tool scans — reduces per-scan
+  overhead on the 55MB+ tree.
+
+### Infrastructure (palace-daemon / mempalace on disks)
+
+- **AGE writethrough enabled** (`MEMPALACE_KG_WRITETHROUGH=1` in
+  palace-daemon env on disks). Every drawer write now inline-extracts
+  entities and creates `:MENTIONS` edges in the AGE knowledge graph.
+  No LLM in the path — regex extractor only.
+- **AGE backfill running** against 335K existing drawers via
+  `POST /backfill-age`. ~5 drawers/s, ~320K entities extracted so far.
+  Populates palace structure (Wing → Room → Drawer `CONTAINS` edges),
+  cross-wing tunnels (`SHARED_VIA` edges), and entity `MENTIONS` edges.
+- **Mine output fix** in palace-daemon (commit `ff32ffc`): the daemon's
+  `/mine` endpoint now checks both stdout and stderr for subprocess
+  output. Previously reported "produced no output" because mempalace's
+  `mcp_server.py` redirects stdout → stderr at import time (protects
+  MCP JSON-RPC transport), and `mine_sessions` imports from that module.
+  Mine was actually succeeding all along — the false alarm masked it.
+- **MCP `candidate_strategy` default changed** from `"vector"` to
+  `"hybrid"` in mempalace's `mcp_server.py`. All MCP callers (Claude
+  Code, OpenCode, familiar fallback) now get vector + BM25 + AGE graph
+  fusion automatically.
+
+---
+
+## [Unreleased] — 2026-05-16 — *UI features + grounding hardening + production readiness*
+
+PRs [#23](https://github.com/techempower-org/familiar.realm.watch/pull/23)–
+[#40](https://github.com/techempower-org/familiar.realm.watch/pull/40).
+Issues [#1](https://github.com/techempower-org/familiar.realm.watch/issues/1),
+[#25](https://github.com/techempower-org/familiar.realm.watch/issues/25),
+[#26](https://github.com/techempower-org/familiar.realm.watch/issues/26),
+[#30](https://github.com/techempower-org/familiar.realm.watch/issues/30)
+closed.
+
+Three tracks shipped in parallel: the web UI grew from a chat box to a
+proper companion interface (model picker, palace browser, voice, dark
+theme), the grounding system went through five rounds of citation
+hardening to get Phi-4 to reliably cite drawers, and the ops layer
+gained functional health probes with a watchdog + ntfy paging.
+
+### Added
+
+- **Model picker** — sidebar dropdown populated from
+  `/api/familiar/models` (which proxies llama-server's `/v1/models`).
+  Closes [#1](https://github.com/techempower-org/familiar.realm.watch/issues/1).
+- **Interactive palace browser** — sidebar search + drawer list with
+  streaming polish. Browse wings/rooms, view drawer content, see KG
+  entity columns.
+- **Drawer edit/delete** in the palace browser UI, plus streaming abort
+  button for in-flight responses.
+- **Dark theme** via [dark.realm.watch](https://github.com/jphein/dark.realm.watch)
+  integration — full color token audit against the fantasy aesthetic.
+- **Voice/TTS** — routes through
+  [gnome-speaks](https://github.com/jphein/gnome-speaks) HTTP TTS at
+  `:7710` when available. Voice picker populated from `/voices` (653
+  Azure voices).
+- **Palace-client `warnings` + `errors` fields** on `writeMemory` and
+  `silentSave` responses (mempalace#86). Surfaces upstream write-path
+  issues to callers.
+- **Functional health probes** — `/health` now sends a real chat
+  completion and embed request to llama-server, not just a model-list
+  ping. Catches model-load failures that the old probe missed.
+- **Pre-deploy web/ parse check** in `ops/scripts/` — catches JS syntax
+  errors before rsync.
+- **familiar-watchdog** — on-host `/health` probe script + systemd
+  timer. Tracks restart counts, alerts on degraded services.
+  [#38](https://github.com/techempower-org/familiar.realm.watch/issues/38).
+- **Watchdog ntfy paging** — WARN events push to ntfy.sh topic for
+  mobile notifications.
+
+### Changed
+
+- **Grounding citation system hardened** across five commits:
+  - Citation regex widened to accept model-invented variants
+    (`[drawer_id: ...]`, `[id=...]`, underscored IDs).
+  - YAML-style source headers (no brackets) — Phi-4 couldn't be talked
+    out of copying bracket-wrapped headers verbatim into responses.
+  - Citation made REQUIRED in system prompt + handling for contradicting
+    drawers.
+  - Recency bonus bumped + citation few-shot examples added.
+- **Install scripts** updated to system service (`sudo systemctl`) + uv
+  for venv management.
+- **Chat probe timeout** bumped 4s → 10s to accommodate Phi-4 first-token
+  latency on cold start.
+
+### Fixed
+
+- **Diary feedback loop** — familiar was grounding on its own diary
+  entries, creating a self-reinforcing wrong-answer loop.
+  [#25](https://github.com/techempower-org/familiar.realm.watch/issues/25).
+- **Prompt-placeholder hallucination** — model was filling in
+  `{placeholder}` template markers as if they were real content.
+- **`clearChildren` duplicate** in web/ killed the JS module on boot +
+  sessions list failed to render.
+- **Palace-browser overflow** + speak-button no-voices state + probe
+  throttle.
+
+---
+
 ## [Unreleased] — 2026-05-15 (evening) — *Inference backend: Ollama → llama.cpp + UI polish*
 
 PRs [#14](https://github.com/techempower-org/familiar.realm.watch/pull/14),
