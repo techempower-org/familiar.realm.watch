@@ -1,18 +1,19 @@
 #!/usr/bin/env python3
-"""Poll AGE backfill progress from checkpoint table.
+"""Poll AGE backfill progress from checkpoint table + real log.
 
-Computes rate from checkpoint count deltas between polls (stored in a
-temp file). No dependency on the backfill log — works even when the
-log is sparse or the process is restarted.
+Computes rate from checkpoint count deltas between polls. Reads
+entity/error counts from the live backfill log on familiar.
 
 Outputs JSON matching palace-daemon's /backfill-age/status shape so
 wave-block.py backfill --cmd can render the full progress bar dashboard.
 """
-import json, os, sys, time
+import json, re, subprocess, sys, time
 import psycopg2
 
 DSN = "postgresql://palace:REDACTED-DSN-PASSWORD@familiar:5433/mempalace_2026_05_13"
 STATE_FILE = "/tmp/backfill-poll-state.json"
+BACKFILL_HOST = "familiar"
+BACKFILL_LOG = "/tmp/backfill-age.log"
 
 conn = psycopg2.connect(DSN)
 cur = conn.cursor()
@@ -27,6 +28,7 @@ conn.close()
 
 now = time.time()
 rate = 0.0
+started_at = now
 
 # Load previous poll state to compute delta rate.
 try:
@@ -36,22 +38,44 @@ try:
     dd = done - prev["done"]
     if dt > 0 and dd > 0:
         rate = dd / dt
+    started_at = prev.get("started_at", now)
 except (FileNotFoundError, KeyError, json.JSONDecodeError):
-    pass
+    started_at = now
 
 # Save current state for next poll.
 with open(STATE_FILE, "w") as f:
-    json.dump({"ts": now, "done": done}, f)
+    json.dump({"ts": now, "done": done, "started_at": started_at}, f)
+
+elapsed = int(now - started_at)
+
+# Read the last progress line from the real backfill log for entity/error counts.
+entities = 0
+errors = 0
+try:
+    result = subprocess.run(
+        ["ssh", BACKFILL_HOST, f"grep 'entities_added=' {BACKFILL_LOG} | tail -1"],
+        capture_output=True, text=True, timeout=5,
+    )
+    line = result.stdout.strip()
+    if line:
+        m = re.search(r'entities_added=(\d+)', line)
+        if m:
+            entities = int(m.group(1))
+        m = re.search(r'errors=(\d+)', line)
+        if m:
+            errors = int(m.group(1))
+except Exception:
+    pass
 
 log_line = (
     f"{time.strftime('%Y-%m-%d %H:%M:%S')} mempalace.backfill_age INFO "
-    f"backfill: drawers_seen={done} entities_added=0 "
-    f"skipped=0 errors=0 rate={rate:.1f}/s"
+    f"backfill: drawers_seen={done} entities_added={entities} "
+    f"skipped=0 errors={errors} rate={rate:.1f}/s"
 )
 
 json.dump({
     "in_progress": done < total,
-    "elapsed_seconds": 0,
+    "elapsed_seconds": elapsed,
     "total_drawers": total,
     "recent_output": [log_line],
 }, sys.stdout)
