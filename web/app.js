@@ -670,23 +670,72 @@ function deleteSession(id) {
   else { saveSessions(); renderSessionsList(); }
 }
 
-function renameSession(id) {
+function truncateAtWord(text, maxLen = 40) {
+  const clean = text.replace(/\n/g, " ").trim();
+  if (clean.length <= maxLen) return clean;
+  const cut = clean.slice(0, maxLen);
+  const lastSpace = cut.lastIndexOf(" ");
+  return (lastSpace > 20 ? cut.slice(0, lastSpace) : cut) + "…";
+}
+
+function renameSessionInline(id) {
+  const li = sessionsList.querySelector(`[data-session-id="${id}"]`);
+  if (!li) return;
+  const label = li.querySelector(".session-label");
+  if (!label || label.contentEditable === "true") return;
   const sess = state.list.find((s) => s.id === id);
   if (!sess) return;
-  const next = window.prompt("rename session:", sess.label);
-  if (next === null) return;
-  sess.label = next.trim().slice(0, 60) || sess.label;
-  saveSessions();
-  renderSessionsList();
+
+  const original = sess.label;
+  li.dataset.editing = "true";
+  label.contentEditable = "true";
+  label.focus();
+  const range = document.createRange();
+  range.selectNodeContents(label);
+  const sel = window.getSelection();
+  sel.removeAllRanges();
+  sel.addRange(range);
+
+  function commit() {
+    const next = (label.textContent || "").trim().slice(0, 60) || original;
+    label.contentEditable = "false";
+    delete li.dataset.editing;
+    label.textContent = next;
+    sess.label = next;
+    saveSessions();
+  }
+  function cancel() {
+    label.contentEditable = "false";
+    delete li.dataset.editing;
+    label.textContent = original;
+  }
+
+  label.addEventListener("keydown", function onKey(e) {
+    if (e.key === "Enter") {
+      e.preventDefault();
+      label.removeEventListener("keydown", onKey);
+      label.removeEventListener("blur", onBlur);
+      commit();
+    } else if (e.key === "Escape") {
+      e.preventDefault();
+      label.removeEventListener("keydown", onKey);
+      label.removeEventListener("blur", onBlur);
+      cancel();
+    }
+  });
+  function onBlur() {
+    label.removeEventListener("blur", onBlur);
+    commit();
+  }
+  label.addEventListener("blur", onBlur);
 }
 
 function appendTurnToSession(role, content) {
   if (!activeSession) return;
   activeSession.turns.push({ role, content });
   activeSession.lastSeenAt = Date.now();
-  // Use the user's first message as the auto-label if still default.
   if (role === "user" && /^[A-Z][a-z]+ \d+ \d{2}:\d{2}$/.test(activeSession.label)) {
-    activeSession.label = content.slice(0, 60);
+    activeSession.label = truncateAtWord(content, 40);
   }
   saveSessions();
   renderSessionsList();
@@ -717,6 +766,7 @@ function renderSessionsList() {
   }
   for (const sess of sorted) {
     const li = document.createElement("li");
+    li.dataset.sessionId = sess.id;
     if (sess.id === state.active) li.classList.add("active");
 
     const marker = document.createElement("span");
@@ -740,7 +790,7 @@ function renderSessionsList() {
     renameBtn.title = "rename";
     renameBtn.setAttribute("aria-label", "rename");
     renameBtn.textContent = "✎";
-    renameBtn.addEventListener("click", (e) => { e.stopPropagation(); renameSession(sess.id); });
+    renameBtn.addEventListener("click", (e) => { e.stopPropagation(); renameSessionInline(sess.id); });
     li.appendChild(renameBtn);
 
     const delBtn = document.createElement("button");
@@ -755,7 +805,10 @@ function renderSessionsList() {
     });
     li.appendChild(delBtn);
 
-    li.addEventListener("click", () => { setActiveSession(sess.id); closeSidebar(); });
+    li.addEventListener("click", () => {
+      if (li.dataset.editing) return;
+      setActiveSession(sess.id); closeSidebar();
+    });
     sessionsList.appendChild(li);
   }
 }
@@ -1022,6 +1075,14 @@ if (abortBtn) {
 document.addEventListener("keydown", (e) => {
   if (e.key === "Escape" && chatAbort) {
     chatAbort.abort();
+  }
+  if (e.ctrlKey && e.shiftKey && e.key === "N") {
+    e.preventDefault();
+    createSession();
+  }
+  if (e.ctrlKey && e.shiftKey && e.key === "S") {
+    e.preventDefault();
+    toggleSidebar();
   }
 });
 

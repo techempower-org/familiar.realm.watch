@@ -276,6 +276,14 @@ body {
   white-space: nowrap;
   font-family: var(--serif);
 }
+.sessions-list .session-label[contenteditable="true"] {
+  outline: 1px solid var(--accent);
+  border-radius: 2px;
+  background: color-mix(in srgb, var(--accent) 8%, transparent);
+  cursor: text;
+  padding: 0 0.2rem;
+  white-space: pre;
+}
 .sessions-list .session-date {
   font-family: var(--mono);
   font-size: 0.72em;
@@ -305,6 +313,14 @@ body {
   font-size: 0.85em;
   text-align: center;
   list-style: none;
+}
+
+.sidebar-shortcuts {
+  padding: 0.5rem 0.75rem;
+  font: 0.6rem var(--mono);
+  color: var(--fg-muted);
+  opacity: 0.5;
+  text-align: center;
 }
 
 /* Voice section: TTS toggle + system-voice picker. */
