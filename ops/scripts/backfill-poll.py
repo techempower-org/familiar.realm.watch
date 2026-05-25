@@ -14,6 +14,7 @@ DSN = "postgresql://palace:REDACTED-DSN-PASSWORD@familiar:5433/mempalace_2026_05
 STATE_FILE = "/tmp/backfill-poll-state.json"
 BACKFILL_HOST = "familiar"
 BACKFILL_LOG = "/tmp/backfill-age.log"
+WORKER_LOG_PATTERN = "/tmp/backfill-worker-*.log"
 
 conn = psycopg2.connect(DSN)
 cur = conn.cursor()
@@ -48,29 +49,34 @@ with open(STATE_FILE, "w") as f:
 
 elapsed = int(now - started_at)
 
-# Read the last progress line from the real backfill log for entity/error counts.
+# Read entity/error counts from worker logs (parallel) or single log (legacy).
+# Sum across all workers to get the aggregate.
 entities = 0
 errors = 0
+workers = 0
 try:
     result = subprocess.run(
-        ["ssh", BACKFILL_HOST, f"grep 'entities_added=' {BACKFILL_LOG} | tail -1"],
+        ["ssh", BACKFILL_HOST,
+         f"for f in {WORKER_LOG_PATTERN} {BACKFILL_LOG}; do "
+         f"[ -f \"$f\" ] && grep 'entities_added=' \"$f\" | tail -1; done"],
         capture_output=True, text=True, timeout=5,
     )
-    line = result.stdout.strip()
-    if line:
+    for line in result.stdout.strip().splitlines():
         m = re.search(r'entities_added=(\d+)', line)
         if m:
-            entities = int(m.group(1))
+            entities += int(m.group(1))
+            workers += 1
         m = re.search(r'errors=(\d+)', line)
         if m:
-            errors = int(m.group(1))
+            errors += int(m.group(1))
 except Exception:
     pass
 
+worker_tag = f" workers={workers}" if workers > 1 else ""
 log_line = (
     f"{time.strftime('%Y-%m-%d %H:%M:%S')} mempalace.backfill_age INFO "
     f"backfill: drawers_seen={done} entities_added={entities} "
-    f"skipped=0 errors={errors} rate={rate:.1f}/s"
+    f"skipped=0 errors={errors} rate={rate:.1f}/s{worker_tag}"
 )
 
 json.dump({

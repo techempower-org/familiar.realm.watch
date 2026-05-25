@@ -196,6 +196,7 @@ class BackfillState:
     poll_count: int = 0
     started_at: str = ""
     last_log_time: str = ""
+    workers: int = 1
 
     @property
     def pct(self) -> float:
@@ -239,6 +240,9 @@ def parse_backfill_status(data: dict, state: BackfillState) -> BackfillState:
         if m:
             state.rate = float(m.group(1))
 
+        m = re.search(r'workers=(\d+)', last)
+        if m:
+            state.workers = int(m.group(1))
         m = re.search(r'^\d{4}-\d{2}-\d{2} (\d{2}:\d{2}:\d{2})', last)
         if m:
             state.last_log_time = m.group(1)
@@ -252,6 +256,13 @@ def parse_backfill_status(data: dict, state: BackfillState) -> BackfillState:
             state.rate = (state.drawers_seen - prev) / dt
     state._prev_drawers = state.drawers_seen
     state._prev_time = time.monotonic()
+
+    # EMA smoothing: don't let rate jump to 0 between polls
+    if not hasattr(state, '_ema_rate'):
+        state._ema_rate = state.rate
+    if state.rate > 0:
+        state._ema_rate = 0.3 * state.rate + 0.7 * state._ema_rate
+    state.rate = state._ema_rate
 
     state.rate_history.append(state.rate)
     if len(state.rate_history) > 120:
@@ -312,8 +323,9 @@ def render_backfill(state: BackfillState, tick: int):
         if h >= 4:
             lines.append(f"{C['accent']}{fmt_number(state.drawers_seen)}{C['muted']}/{fmt_number(state.total_drawers)}{C['reset']}")
         if h >= 5:
-            lines.append(f"{C['muted']}E:{C['accent']}{fmt_number(state.entities_added)} {err_color}err:{state.errors}{C['reset']}")
-        _emit(lines, h)
+            w_tag = f" {C['muted']}w:{state.workers}" if state.workers > 1 else ""
+            lines.append(f"{C['muted']}E:{C['accent']}{fmt_number(state.entities_added)} {err_color}err:{state.errors}{w_tag}{C['reset']}")
+        _emit(lines, h, tick)
         return
 
     # ── NARROW: single column in a box ──────────────────────────────────────
@@ -341,6 +353,8 @@ def render_backfill(state: BackfillState, tick: int):
             lines.append(box_row(f" {C['fg']}Entities{C['accent']} {fmt_number(state.entities_added)}{C['reset']}", w))
         if h >= 11:
             lines.append(box_row(f" {C['fg']}Errors  {err_color}{state.errors}{C['reset']}", w))
+        if h >= 12 and state.workers > 1:
+            lines.append(box_row(f" {C['fg']}Workers {C['accent']}{state.workers}{C['reset']}", w))
 
         if h >= 14:
             lines.append(box_mid(w))
@@ -352,7 +366,7 @@ def render_backfill(state: BackfillState, tick: int):
         if h >= 16:
             lines.append(wave_banner(tick + 4, w))
 
-        _emit(lines, h)
+        _emit(lines, h, tick)
         return
 
     # ── MEDIUM + WIDE: paired columns ───────────────────────────────────────
@@ -391,11 +405,14 @@ def render_backfill(state: BackfillState, tick: int):
         err_str = f" {C['fg']}Errors   {err_color}{state.errors}{C['reset']}"
         lines.append(box_row_pair(elapsed_str, err_str, w))
 
-    # Ent/drawer + last log pair
+    # Ent/drawer + workers pair
     if h >= 11:
         epd_str = f" {C['fg']}Ent/draw {C['accent']}{state.entities_per_drawer:.1f}{C['reset']}"
-        log_str = f" {C['fg']}Last log {C['muted']}{state.last_log_time}{C['reset']}"
-        lines.append(box_row_pair(epd_str, log_str, w))
+        if state.workers > 1:
+            workers_str = f" {C['fg']}Workers  {C['accent']}{state.workers}{C['reset']}"
+        else:
+            workers_str = f" {C['fg']}Last log {C['muted']}{state.last_log_time}{C['reset']}"
+        lines.append(box_row_pair(epd_str, workers_str, w))
 
     # Sparklines — only if height allows
     if h >= 14:
@@ -430,7 +447,7 @@ def render_backfill(state: BackfillState, tick: int):
             footer = f"{C['muted']}  poll #{state.poll_count}  ·  Ctrl-C{C['reset']}"
         lines.append(footer)
 
-    _emit(lines, h)
+    _emit(lines, h, tick)
 
 
 def _append_bar_chart(lines: list[str], values: list[float], w: int, max_rows: int):
@@ -457,15 +474,24 @@ def _append_bar_chart(lines: list[str], values: list[float], w: int, max_rows: i
         lines.append(box_row(f" {bar_line} ", w))
 
 
-def _emit(lines: list[str], h: int):
-    """Write lines to terminal, clearing leftover rows from previous render."""
+def _emit(lines: list[str], h: int, tick: int = 0):
+    """Write lines to terminal, filling leftover rows with dim wave pattern."""
+    w = term_width()
     for i, line in enumerate(lines):
         move_to(i + 1, 1)
         sys.stdout.write(line)
         sys.stdout.write("\033[K")
     for i in range(len(lines) + 1, h + 1):
         move_to(i, 1)
-        sys.stdout.write("\033[K")
+        fill = ""
+        for col in range(w):
+            phase = col * 0.15 + (i + tick) * 0.4
+            v = (math.sin(phase) + 1) / 2
+            if v > 0.7:
+                fill += C["dim"] + "\033[38;5;237m" + "░"
+            else:
+                fill += " "
+        sys.stdout.write(fill + C["reset"] + "\033[K")
     sys.stdout.flush()
 
 
@@ -622,7 +648,7 @@ def _render_custom(title: str, metrics: dict, history: dict[str, list[float]], t
             v = metrics[k]
             label = k[:max(w - 8, 3)]
             lines.append(f"{C['fg']}{label} {C['accent']}{fmt_number(v)}{C['reset']}")
-        _emit(lines, h)
+        _emit(lines, h, tick)
         return
 
     # ── NARROW: single column ───────────────────────────────────────────────
@@ -651,7 +677,7 @@ def _render_custom(title: str, metrics: dict, history: dict[str, list[float]], t
         lines.append(box_bot(w))
         if h >= 16:
             lines.append(wave_banner(tick + 4, w))
-        _emit(lines, h)
+        _emit(lines, h, tick)
         return
 
     # ── MEDIUM + WIDE: paired columns ───────────────────────────────────────
@@ -700,7 +726,7 @@ def _render_custom(title: str, metrics: dict, history: dict[str, list[float]], t
     if h >= 16:
         lines.append(f"{C['muted']}  Ctrl-C to exit{C['reset']}")
 
-    _emit(lines, h)
+    _emit(lines, h, tick)
 
 
 # ── Terminal detection & launch ──────────────────────────────────────────────
