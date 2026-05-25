@@ -219,6 +219,8 @@ class BackfillState:
 def parse_backfill_status(data: dict, state: BackfillState) -> BackfillState:
     state.in_progress = data.get("in_progress", False)
     state.elapsed = data.get("elapsed_seconds", 0.0)
+    if data.get("total_drawers"):
+        state.total_drawers = data["total_drawers"]
 
     lines = data.get("recent_output", [])
     if lines:
@@ -239,6 +241,16 @@ def parse_backfill_status(data: dict, state: BackfillState) -> BackfillState:
         m = re.search(r'^\d{4}-\d{2}-\d{2} (\d{2}:\d{2}:\d{2})', last)
         if m:
             state.last_log_time = m.group(1)
+
+    # Compute rate from checkpoint deltas when the source doesn't report it
+    if state.rate == 0.0 and state.poll_count > 0:
+        prev = state._prev_drawers if hasattr(state, '_prev_drawers') else state.drawers_seen
+        prev_t = state._prev_time if hasattr(state, '_prev_time') else time.monotonic()
+        dt = time.monotonic() - prev_t
+        if dt > 0 and state.drawers_seen > prev:
+            state.rate = (state.drawers_seen - prev) / dt
+    state._prev_drawers = state.drawers_seen
+    state._prev_time = time.monotonic()
 
     state.rate_history.append(state.rate)
     if len(state.rate_history) > 120:
@@ -458,7 +470,13 @@ def _emit(lines: list[str], h: int):
 
 # ── Polling ─────────────────────────────────────────────────────────────────
 
-def fetch_backfill_status(url: str, api_key: str) -> dict:
+def fetch_backfill_status(url: str, api_key: str, cmd: str = "") -> dict:
+    if cmd:
+        try:
+            result = subprocess.run(cmd, shell=True, capture_output=True, text=True, timeout=10)
+            return json.loads(result.stdout)
+        except Exception as e:
+            return {"error": str(e), "in_progress": False}
     import urllib.request
     req = urllib.request.Request(
         url,
@@ -477,7 +495,7 @@ def _on_resize(signum, frame):
     global _resize_flag
     _resize_flag = True
 
-def run_backfill_dashboard(url: str, api_key: str, total: int, interval: float):
+def run_backfill_dashboard(url: str, api_key: str, total: int, interval: float, cmd: str = ""):
     global _resize_flag
     signal.signal(signal.SIGWINCH, _on_resize)
 
@@ -489,7 +507,7 @@ def run_backfill_dashboard(url: str, api_key: str, total: int, interval: float):
 
     try:
         while True:
-            data = fetch_backfill_status(url, api_key)
+            data = fetch_backfill_status(url, api_key, cmd=cmd)
             if "error" in data and not data.get("in_progress"):
                 state.in_progress = False
             else:
@@ -694,6 +712,10 @@ def _detect_terminal() -> str:
         return "ghostty"
     return "inline"
 
+def _shell_quote(s: str) -> str:
+    import shlex
+    return shlex.quote(s)
+
 def _find_wsh() -> str | None:
     candidates = [
         os.path.expanduser("~/.local/share/waveterm-dev/bin/wsh"),
@@ -715,7 +737,7 @@ def _launch_in_waveterm(argv: list[str], env_vars: dict[str, str] | None = None)
     if env_vars:
         for k, v in env_vars.items():
             cmd_parts.append(f"{k}={v}")
-    cmd_parts.extend(argv)
+    cmd_parts.extend(_shell_quote(a) for a in argv)
 
     subprocess.Popen(
         [wsh, "run", "-c", " ".join(cmd_parts)],
@@ -729,7 +751,7 @@ def _launch_in_ghostty(argv: list[str], env_vars: dict[str, str] | None = None):
     if env_vars:
         for k, v in env_vars.items():
             cmd_parts.append(f"export {k}='{v}';")
-    cmd_parts.append(" ".join(argv))
+    cmd_parts.append(" ".join(_shell_quote(a) for a in argv))
     cmd_parts.append("; read -p 'Done. Press enter.'")
     shell_cmd = " ".join(cmd_parts)
 
@@ -786,6 +808,8 @@ def main():
     bf.add_argument("--key", default="")
     bf.add_argument("--total", type=int, default=0)
     bf.add_argument("--interval", type=float, default=10.0)
+    bf.add_argument("--cmd", default="",
+                    help="Poll a local command instead of --url (must emit same JSON shape)")
     bf.add_argument("--detach", action="store_true",
                     help="Launch in a new terminal block (WaveTerm/Ghostty) instead of inline")
 
@@ -810,6 +834,8 @@ def main():
                     "--interval", str(args.interval)]
             if args.total:
                 argv.extend(["--total", str(args.total)])
+            if args.cmd:
+                argv.extend(["--cmd", args.cmd])
 
             terminal = _detect_terminal()
             if terminal == "waveterm":
@@ -823,7 +849,7 @@ def main():
             print("No detach target found — running inline")
 
         total = args.total or 339_403
-        run_backfill_dashboard(args.url, api_key, total, args.interval)
+        run_backfill_dashboard(args.url, api_key, total, args.interval, cmd=args.cmd)
 
     elif args.mode == "custom":
         if args.detach:
