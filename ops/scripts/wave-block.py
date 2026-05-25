@@ -41,7 +41,7 @@ C = {
     "bar_fill":  "\033[38;5;214m",   # amber
     "bar_bg":    "\033[38;5;239m",   # dark gray
     "spark":     "\033[38;5;109m",   # teal
-    "border":    "\033[38;5;241m",   # medium gray
+    "border":    "\033[38;5;246m",   # visible gray
     "title_bg":  "\033[48;5;235m",   # very dark bg for title bar
     "wave1":     "\033[38;5;31m",    # deep blue
     "wave2":     "\033[38;5;37m",    # teal
@@ -143,7 +143,8 @@ def box_top(width: int, title: str = "") -> str:
     inner = width - 2
     if title:
         t = f" {title} "
-        pad = inner - len(t)
+        t_visible = re.sub(r'\033\[[^m]*m', '', t)
+        pad = inner - len(t_visible)
         lpad = pad // 2
         rpad = pad - lpad
         line = BOX["h"] * lpad + C["accent"] + C["bold"] + t + C["reset"] + C["border"] + BOX["h"] * rpad
@@ -424,7 +425,7 @@ def render_backfill(state: BackfillState, tick: int):
     # Footer
     if h >= 16:
         if is_wide:
-            footer = f"{C['muted']}  poll #{state.poll_count}  ·  Ctrl-C to exit  ·  palace-daemon @ disks:8085{C['reset']}"
+            footer = f"{C['muted']}  poll #{state.poll_count}  ·  Ctrl-C to exit  ·  palace-daemon @ familiar:8085{C['reset']}"
         else:
             footer = f"{C['muted']}  poll #{state.poll_count}  ·  Ctrl-C{C['reset']}"
         lines.append(footer)
