@@ -129,6 +129,173 @@ describe("retrieveAndGround", () => {
   });
 });
 
+describe("hybrid → vector fallback", () => {
+  const baseOpts = (palace: unknown) => ({
+    palace: palace as unknown as import("../src/palace-client.ts").PalaceClient,
+    userMessage: "test query",
+    wingScope: null,
+    retrievalLimit: 5,
+    contextBudgetTokens: 4000,
+    recentCitations: [] as string[],
+  });
+
+  test("hybrid 503 falls back to vector search with warning", async () => {
+    const palace = {
+      searchHybrid: async () => { throw new Error("503 Service Unavailable"); },
+      search: async () => ({
+        query: "test query",
+        available_in_scope: 100,
+        warnings: [],
+        results: [
+          { id: "v1", text: "vector result", wing: "w", room: "r", similarity: 0.8, matched_via: "drawer" },
+        ],
+      }),
+      writeMemory: async () => ({ id: "", warnings: [], errors: [] }),
+      health: async () => ({ status: "ok" }),
+    };
+
+    const result = await retrieveAndGround(baseOpts(palace));
+    expect(result.warnings).toContain("hybrid_fallback_vector");
+    expect(result.drawerIds.length).toBeGreaterThan(0);
+    expect(result.drawerIds).toContain("v1");
+  });
+
+  test("hybrid non-503 error surfaces as palace_unreachable", async () => {
+    const palace = {
+      searchHybrid: async () => { throw new Error("ECONNREFUSED"); },
+      search: async () => ({
+        query: "test query",
+        available_in_scope: 100,
+        warnings: [],
+        results: [
+          { id: "v1", text: "should not appear", wing: "w", room: "r", similarity: 0.8, matched_via: "drawer" },
+        ],
+      }),
+      writeMemory: async () => ({ id: "", warnings: [], errors: [] }),
+      health: async () => ({ status: "ok" }),
+    };
+
+    const result = await retrieveAndGround(baseOpts(palace));
+    expect(result.warnings).toContain("palace_unreachable");
+    expect(result.drawerIds).toEqual([]);
+  });
+});
+
+describe("HyDE integration", () => {
+  test("hydeGenerate is forwarded to searchHybrid", async () => {
+    let capturedOpts: Record<string, unknown> | undefined;
+    const hydeGenerate = async (q: string) => "hypothesis for " + q;
+
+    const palace = {
+      searchHybrid: async (opts: Record<string, unknown>) => {
+        capturedOpts = opts;
+        return {
+          query: "test query",
+          available_in_scope: 10,
+          warnings: [],
+          results: [
+            { id: "h1", text: "hyde result", wing: "w", room: "r", similarity: 0.9, matched_via: "drawer" },
+          ],
+        };
+      },
+      search: async () => ({ query: "", available_in_scope: 0, warnings: [], results: [] }),
+      writeMemory: async () => ({ id: "", warnings: [], errors: [] }),
+      health: async () => ({ status: "ok" }),
+    };
+
+    await retrieveAndGround({
+      palace: palace as unknown as import("../src/palace-client.ts").PalaceClient,
+      userMessage: "test query",
+      wingScope: null,
+      retrievalLimit: 5,
+      contextBudgetTokens: 4000,
+      recentCitations: [],
+      hydeGenerate,
+    });
+
+    expect(capturedOpts).toBeDefined();
+    expect(capturedOpts!.hydeGenerate).toBe(hydeGenerate);
+  });
+});
+
+describe("filtering: null-text, diary, citations", () => {
+  test("filters drawers with null text and emits warning", async () => {
+    const palace = fakePalace({
+      query: "test",
+      available_in_scope: 100,
+      warnings: [],
+      results: [
+        { id: "good1", text: "valid content", wing: "w", room: "r", similarity: 0.9, matched_via: "drawer" },
+        { id: "bad1", text: null as unknown as string, wing: "w", room: "r", similarity: 0.8, matched_via: "drawer" },
+      ],
+    });
+
+    const result = await retrieveAndGround({
+      palace: palace as unknown as import("../src/palace-client.ts").PalaceClient,
+      userMessage: "test query",
+      wingScope: null,
+      retrievalLimit: 5,
+      contextBudgetTokens: 4000,
+      recentCitations: [],
+    });
+
+    expect(result.drawerIds).toContain("good1");
+    expect(result.drawerIds).not.toContain("bad1");
+    expect(result.warnings.some((w) => /filtered_null_text/.test(w))).toBe(true);
+  });
+
+  test("filters diary-room drawers and emits warning", async () => {
+    const palace = fakePalace({
+      query: "test",
+      available_in_scope: 100,
+      warnings: [],
+      results: [
+        { id: "normal1", text: "factual content", wing: "w", room: "decisions", similarity: 0.9, matched_via: "drawer" },
+        { id: "diary1", text: "session log entry", wing: "familiar", room: "diary", similarity: 0.95, matched_via: "drawer" },
+        { id: "diary2", text: "another session log", wing: "familiar", room: "diary", similarity: 0.85, matched_via: "drawer" },
+      ],
+    });
+
+    const result = await retrieveAndGround({
+      palace: palace as unknown as import("../src/palace-client.ts").PalaceClient,
+      userMessage: "test query",
+      wingScope: null,
+      retrievalLimit: 5,
+      contextBudgetTokens: 4000,
+      recentCitations: [],
+    });
+
+    expect(result.drawerIds).toContain("normal1");
+    expect(result.drawerIds).not.toContain("diary1");
+    expect(result.drawerIds).not.toContain("diary2");
+    expect(result.warnings.some((w) => /filtered_diary/.test(w))).toBe(true);
+  });
+
+  test("deduplicates against recentCitations", async () => {
+    const palace = fakePalace({
+      query: "test",
+      available_in_scope: 100,
+      warnings: [],
+      results: [
+        { id: "d1", text: "content one", wing: "w", room: "r", similarity: 0.9, matched_via: "drawer" },
+        { id: "d2", text: "content two", wing: "w", room: "r", similarity: 0.85, matched_via: "drawer" },
+        { id: "d3", text: "content three", wing: "w", room: "r", similarity: 0.8, matched_via: "drawer" },
+      ],
+    });
+
+    const result = await retrieveAndGround({
+      palace: palace as unknown as import("../src/palace-client.ts").PalaceClient,
+      userMessage: "test query",
+      wingScope: null,
+      retrievalLimit: 5,
+      contextBudgetTokens: 4000,
+      recentCitations: ["d1", "d3"],
+    });
+
+    expect(result.drawerIds).toEqual(["d2"]);
+  });
+});
+
 describe("expandTemporalQuery", () => {
   const fixed = new Date("2026-05-24T14:30:00-07:00");
 
