@@ -7,7 +7,7 @@ wave-block.py backfill --cmd can render the full progress bar dashboard.
 import json, sys, time
 import psycopg2
 
-DSN = "postgresql://palace:REDACTED-DSN-PASSWORD@disks:5433/mempalace_2026_05_13"
+DSN = "postgresql://palace:REDACTED-DSN-PASSWORD@familiar:5433/mempalace_2026_05_13"
 
 conn = psycopg2.connect(DSN)
 cur = conn.cursor()

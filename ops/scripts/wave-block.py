@@ -770,7 +770,7 @@ def _get_palace_api_key() -> str:
         return key
     try:
         result = subprocess.run(
-            ["ssh", "disks", "grep PALACE_API_KEY /home/jp/.config/palace-daemon/env | cut -d= -f2"],
+            ["ssh", "familiar", "grep PALACE_API_KEY /home/jp/.config/palace-daemon/env | cut -d= -f2"],
             capture_output=True, text=True, timeout=5,
         )
         return result.stdout.strip()
