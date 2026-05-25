@@ -224,12 +224,20 @@ def parse_backfill_status(data: dict, state: BackfillState) -> BackfillState:
     if data.get("total_drawers"):
         state.total_drawers = data["total_drawers"]
 
+    # Prefer checkpointed_drawers from the status JSON — this reflects
+    # actual progress including previously completed runs, unlike
+    # drawers_seen which resets to 0 each run.
+    if data.get("checkpointed_drawers"):
+        state.drawers_seen = data["checkpointed_drawers"]
+
     lines = data.get("recent_output", [])
     if lines:
         last = lines[-1]
-        m = re.search(r'drawers_seen=(\d+)', last)
-        if m:
-            state.drawers_seen = int(m.group(1))
+        # Only use log-parsed drawers_seen if no checkpoint count available
+        if not data.get("checkpointed_drawers"):
+            m = re.search(r'drawers_seen=(\d+)', last)
+            if m:
+                state.drawers_seen = int(m.group(1))
         m = re.search(r'entities_added=(\d+)', last)
         if m:
             state.entities_added = int(m.group(1))
@@ -797,12 +805,14 @@ def _get_palace_api_key() -> str:
         return key
     try:
         result = subprocess.run(
-            ["ssh", "familiar", "grep PALACE_API_KEY /home/jp/.config/palace-daemon/env | cut -d= -f2"],
+            ["secret-tool", "lookup", "service", "palace-daemon", "type", "api-key"],
             capture_output=True, text=True, timeout=5,
         )
-        return result.stdout.strip()
+        if result.returncode == 0 and result.stdout.strip():
+            return result.stdout.strip()
     except Exception:
-        return ""
+        pass
+    return ""
 
 
 def _get_total_drawers(api_key: str, url_base: str) -> int:
@@ -831,7 +841,7 @@ def main():
     sub = parser.add_subparsers(dest="mode", required=True)
 
     bf = sub.add_parser("backfill", help="AGE graph backfill progress")
-    bf.add_argument("--url", default="http://disks:8085/backfill-age/status")
+    bf.add_argument("--url", default="http://familiar:8085/backfill-age/status")
     bf.add_argument("--key", default="")
     bf.add_argument("--total", type=int, default=0)
     bf.add_argument("--interval", type=float, default=10.0)
