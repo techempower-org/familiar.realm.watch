@@ -1082,6 +1082,19 @@ const autoResize = () => {
 };
 input.addEventListener("input", autoResize);
 
+// Disable submit button when the input is empty/whitespace. Pure visual
+// affordance — the submit handler already no-ops on empty, but greying
+// the send arrow when there's nothing to send is the expected UX. Only
+// applies in the idle state; while streaming the existing disabled flag
+// from the submit handler wins.
+function syncSubmitEnabled() {
+  if (!submit) return;
+  if (submit.dataset.streaming === "1") return; // streaming wins
+  submit.disabled = input.value.trim().length === 0;
+}
+input.addEventListener("input", syncSubmitEnabled);
+syncSubmitEnabled();
+
 // Draft persistence — save unsent chat input to localStorage as the user
 // types, restore on page load. Survives accidental tab close, browser
 // crash, machine sleep. Cleared on submit. Per-browser (no per-session
@@ -1225,6 +1238,7 @@ form.addEventListener("submit", async (e) => {
   input.value = "";
   autoResize();
   submit.disabled = true;
+  submit.dataset.streaming = "1";
   showTyping();
   setStatus("streaming", "thinking");
   enterStreamingState();
@@ -1348,7 +1362,9 @@ form.addEventListener("submit", async (e) => {
       setStatus("error", "error");
     }
   } finally {
+    submit.dataset.streaming = "0";
     submit.disabled = false;
+    syncSubmitEnabled();
     hideTyping();
     exitStreamingState();
     chatAbort = null;
