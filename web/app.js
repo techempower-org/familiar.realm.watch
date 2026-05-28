@@ -2713,6 +2713,12 @@ refreshMemories();
     "describe a problem · the familiar reads the palace first",
     "press / to focus here · ctrl+k for the command palette",
     "the familiar listens · 374K drawers indexed",
+    "type /help to see what's available",
+    "shift+enter for a newline · enter to send",
+    "the familiar writes back to the palace after every turn",
+    "what are you working on?",
+    "/clear resets the visible log · session intact",
+    "esc aborts an in-flight response",
   ];
   let i = 0;
   setInterval(() => {
