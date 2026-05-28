@@ -1061,8 +1061,16 @@ body {
   min-width: 3rem;
   transition: transform 100ms ease, opacity 150ms ease;
 }
-.form button[type="submit"]:hover { opacity: 0.85; transform: translateX(1px); }
-.form button[type="submit"]:disabled { opacity: 0.4; cursor: wait; transform: none; }
+.form button[type="submit"]:hover:not(:disabled) {
+  opacity: 0.9;
+  transform: translateX(1px);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 22%, transparent);
+}
+.form button[type="submit"]:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 30%, transparent);
+}
+.form button[type="submit"]:disabled { opacity: 0.4; cursor: not-allowed; transform: none; box-shadow: none; }
 .form button[type="submit"] svg { display: block; }
 
 /* ===================== Source chips & citations ===================== */
