@@ -223,6 +223,56 @@ describe("SlotResolver.validateAssignment", () => {
   });
 });
 
+describe("SlotResolver.hydeClient (Wave 2d)", () => {
+  test("returns null when hyde slot is disabled (legitimate — HyDE is optional)", async () => {
+    await writeFile(join(tmpRoot, "registry.json"), JSON.stringify(REGISTRY_CONTENT));
+    const r = new SlotResolver(makeCfg());
+    expect(await r.hydeClient()).toBeNull();
+  });
+
+  test("returns OllamaClient when hyde slot bound to ollama variant", async () => {
+    const reg = {
+      ...REGISTRY_CONTENT,
+      variants: [
+        ...REGISTRY_CONTENT.variants,
+        { id: "hyde-tiny", label: "HyDE tiny", model: "qwen2.5:0.5b", runtime: "ollama", unit: "hyde-tiny.service", url: "http://hyde", gpu: 1, vram_mb: 600, capabilities: ["hyde"] },
+      ],
+    };
+    await writeFile(join(tmpRoot, "registry.json"), JSON.stringify(reg));
+    await writeFile(
+      join(tmpRoot, "slots.json"),
+      JSON.stringify({
+        schema_version: 1, updated_at: "x",
+        slots: { chat: { variant_id: null }, embed: { variant_id: null }, extract: { variant_id: null }, hyde: { variant_id: "hyde-tiny" }, reflect: { variant_id: null } },
+      }),
+    );
+    const r = new SlotResolver(makeCfg());
+    const client = await r.hydeClient();
+    expect(client).not.toBeNull();
+    expect(typeof (client as { generateShort: unknown }).generateShort).toBe("function");
+  });
+
+  test("returns null when variant.runtime is llama-cpp (no generateShort today)", async () => {
+    // chat-a has runtime=llama-cpp AND capabilities includes "hyde" in REGISTRY_CONTENT.
+    await writeFile(join(tmpRoot, "registry.json"), JSON.stringify(REGISTRY_CONTENT));
+    await writeFile(
+      join(tmpRoot, "slots.json"),
+      JSON.stringify({
+        schema_version: 1, updated_at: "x",
+        slots: { chat: { variant_id: null }, embed: { variant_id: null }, extract: { variant_id: null }, hyde: { variant_id: "chat-a" }, reflect: { variant_id: null } },
+      }),
+    );
+    const r = new SlotResolver(makeCfg());
+    expect(await r.hydeClient()).toBeNull();
+  });
+
+  test("returns null when override variant_id is unknown to registry", async () => {
+    await writeFile(join(tmpRoot, "registry.json"), JSON.stringify(REGISTRY_CONTENT));
+    const r = new SlotResolver(makeCfg());
+    expect(await r.hydeClient("nope")).toBeNull();
+  });
+});
+
 describe("SlotResolver.embedClient (Wave 2c)", () => {
   test("returns null when embed slot is disabled", async () => {
     await writeFile(join(tmpRoot, "registry.json"), JSON.stringify(REGISTRY_CONTENT));

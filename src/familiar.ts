@@ -66,11 +66,20 @@ const slotctl = new Slotctl(cfg);
 // `hydeGenerator` is always constructed so the eval route can opt-in
 // per-request (via `?hyde=true|false`) for A/B benchmarks. `hyde` is
 // the env-default the chat route and unannotated eval requests get.
-const hydeGenerator = async (query: string) =>
-  ollamaChat.generateShort(
-    `Write a concise (~80 words) hypothetical answer to: ${query}\nDo not say "hypothetically" or hedge — write as if you know.`,
-    { maxTokens: 150, timeoutMs: 4000 },
-  );
+//
+// Wave 2d (#69): the closure now consults the slot resolver per call.
+// If the hyde slot is bound to a (runtime=ollama) variant, that client
+// generates the hypothetical. Otherwise we fall back to the legacy
+// ollamaChat closure — same backward-compat shape as Wave 2b chat and
+// Wave 2c embed. Restart no longer required after PATCHing the hyde
+// slot; the very next chat/eval request picks up the new endpoint.
+const HYDE_PROMPT = (query: string) =>
+  `Write a concise (~80 words) hypothetical answer to: ${query}\nDo not say "hypothetically" or hedge — write as if you know.`;
+const hydeGenerator = async (query: string): Promise<string> => {
+  const slotClient = await slotResolver.hydeClient();
+  const client = slotClient ?? ollamaChat;
+  return client.generateShort(HYDE_PROMPT(query), { maxTokens: 150, timeoutMs: 4000 });
+};
 const hyde = (Bun.env.PALACE_USE_HYDE ?? "").toLowerCase() === "true"
   ? hydeGenerator
   : undefined;

@@ -259,6 +259,28 @@ export class SlotResolver {
   }
 
   /**
+   * HyDE-specific resolver — same shape as embedClient. Returns an
+   * OllamaClient because HyDE uses `generateShort` which lives on
+   * OllamaClient (not the InferenceChatProvider interface today).
+   * Wave 2d: familiar.ts's hydeGenerator closure consults this per
+   * call before falling back to the legacy ollamaChat client.
+   * Returns null when:
+   *   - the slot is disabled (legitimate — HyDE is optional)
+   *   - the variant id is unknown
+   *   - the variant lacks "hyde" capability
+   *   - the variant.runtime isn't "ollama"
+   */
+  async hydeClient(override?: string | null): Promise<OllamaClient | null> {
+    const slots = await this.readSlots();
+    const id = override ?? slots.slots.hyde.variant_id;
+    if (id === null) return null;
+    const variant = await this.registry.getVariant(id);
+    if (!variant || !variant.capabilities.includes("hyde")) return null;
+    if (variant.runtime !== "ollama") return null;
+    return new OllamaClient({ baseUrl: variant.url, defaultModel: variant.model });
+  }
+
+  /**
    * Snapshot for the GET /api/familiar/slots endpoint: registry + live
    * slots + computed GPU usage. The picker uses this verbatim.
    */
