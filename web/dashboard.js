@@ -37,6 +37,8 @@ const GAP_PX = 8;
 const MIN_W = 2;            // minimum block width in cells
 const MIN_H = 3;            // minimum block height in cells
 const MOBILE_BREAKPOINT = 768;
+const LONG_PRESS_MS = 500;  // long-press duration to enter touch-edit mode
+const LONG_PRESS_SLOP_PX = 10;  // movement above this aborts the press (treats as scroll)
 
 /**
  * @typedef {Object} BlockRect
@@ -71,6 +73,13 @@ let layout = loadLayout();
 let activeSettingsBlockId = null;
 let prefersReducedMotion = false;
 let isMobile = window.innerWidth < MOBILE_BREAKPOINT;
+// `(hover: none) and (pointer: coarse)` is the conventional "real touch
+// device" signal — excludes desktop with a touchscreen attached (which
+// usually reports `hover: hover`). We use it to gate long-press logic
+// without breaking desktop drag/resize.
+let isTouch = window.matchMedia?.("(hover: none) and (pointer: coarse)").matches ?? false;
+/** @type {string | null} blockId currently in touch edit-mode (null = none) */
+let touchEditingId = null;
 
 function loadLayout() {
   try {
@@ -158,6 +167,19 @@ function buildBlockEl(type, id, state) {
   title.textContent = type.name;
   head.appendChild(title);
 
+  // Reorder chevrons — shown only when the block is in touch edit-mode
+  // and the dashboard is in single-column stacked mobile layout. On wide
+  // viewports the gesture is real drag; on mobile, source-order swap.
+  const reorder = document.createElement("div");
+  reorder.className = "block-reorder";
+  const upBtn = mkIconBtn("reorder-up", "move up", svgChevronUp());
+  upBtn.addEventListener("click", (e) => { e.stopPropagation(); reorderBlock(id, -1); });
+  reorder.appendChild(upBtn);
+  const downBtn = mkIconBtn("reorder-down", "move down", svgChevronDown());
+  downBtn.addEventListener("click", (e) => { e.stopPropagation(); reorderBlock(id, +1); });
+  reorder.appendChild(downBtn);
+  head.appendChild(reorder);
+
   const ctrls = document.createElement("div");
   ctrls.className = "block-ctrls";
 
@@ -240,6 +262,30 @@ function svgX() {
   }));
   return s;
 }
+function svgChevronUp() {
+  const s = mkSvg(14, 14);
+  s.appendChild(mkPath({
+    fill: "none",
+    stroke: "currentColor",
+    "stroke-width": "1.6",
+    "stroke-linecap": "round",
+    "stroke-linejoin": "round",
+    d: "M3 10 L8 5 L13 10",
+  }));
+  return s;
+}
+function svgChevronDown() {
+  const s = mkSvg(14, 14);
+  s.appendChild(mkPath({
+    fill: "none",
+    stroke: "currentColor",
+    "stroke-width": "1.6",
+    "stroke-linecap": "round",
+    "stroke-linejoin": "round",
+    d: "M3 6 L8 11 L13 6",
+  }));
+  return s;
+}
 
 // ---- Drag ----------------------------------------------------------------
 
@@ -248,10 +294,146 @@ function wireDrag(el, handleEl, id) {
     // Only the bar itself, not children with their own click semantics
     // (the gear/hide buttons stop propagation, so this is mostly belt+brace).
     if (e.target.closest(".block-btn")) return;
-    if (isMobile) return;
     if (e.button !== 0) return;
+
+    if (isTouch) {
+      // Touch path: long-press promotes the block into edit-mode. On wide
+      // touch viewports (tablet) edit-mode also enables free drag. On
+      // narrow viewports (phone, single-column) it shows reorder chevrons.
+      if (touchEditingId === id) {
+        // Already in edit-mode for this block — start drag immediately
+        // (only meaningful on non-mobile touch — mobile uses chevrons).
+        if (!isMobile) startDrag(e, el, id);
+        return;
+      }
+      startLongPress(e, el, id);
+      return;
+    }
+
+    if (isMobile) return;   // mouse on a narrow window: no-op
     startDrag(e, el, id);
   });
+}
+
+/**
+ * Begin a long-press timer on touch. If the finger holds still for
+ * LONG_PRESS_MS, the block enters touch edit-mode. If it moves more
+ * than LONG_PRESS_SLOP_PX before then, the press is cancelled (treat
+ * as a scroll gesture and let the page pan).
+ */
+function startLongPress(e, el, id) {
+  const startX = e.clientX;
+  const startY = e.clientY;
+  const head = el.querySelector(".block-header");
+  if (head) head.classList.add("pressing");
+
+  let cancelled = false;
+  const timerId = setTimeout(() => {
+    if (cancelled) return;
+    cleanup();
+    enterTouchEdit(id);
+  }, LONG_PRESS_MS);
+
+  function cleanup() {
+    if (head) head.classList.remove("pressing");
+    document.removeEventListener("pointermove", onMove);
+    document.removeEventListener("pointerup", onCancel);
+    document.removeEventListener("pointercancel", onCancel);
+  }
+  function onMove(ev) {
+    const dx = ev.clientX - startX;
+    const dy = ev.clientY - startY;
+    if (Math.hypot(dx, dy) > LONG_PRESS_SLOP_PX) {
+      cancelled = true;
+      clearTimeout(timerId);
+      cleanup();
+    }
+  }
+  function onCancel() {
+    cancelled = true;
+    clearTimeout(timerId);
+    cleanup();
+  }
+  document.addEventListener("pointermove", onMove);
+  document.addEventListener("pointerup", onCancel);
+  document.addEventListener("pointercancel", onCancel);
+}
+
+/** Enter touch edit-mode for a block — exits any previous edit-mode. */
+function enterTouchEdit(id) {
+  if (touchEditingId && touchEditingId !== id) exitTouchEdit();
+  const el = blockEls.get(id);
+  if (!el) return;
+  el.classList.add("touch-editing");
+  touchEditingId = id;
+  refreshReorderState(id);
+  // Outside-tap dismiss. Wait one frame so the long-press release
+  // doesn't fire it.
+  requestAnimationFrame(() => {
+    document.addEventListener("pointerdown", onTouchEditOutside, true);
+  });
+}
+
+function exitTouchEdit() {
+  if (!touchEditingId) return;
+  const el = blockEls.get(touchEditingId);
+  if (el) el.classList.remove("touch-editing");
+  touchEditingId = null;
+  document.removeEventListener("pointerdown", onTouchEditOutside, true);
+}
+
+function onTouchEditOutside(e) {
+  if (!touchEditingId) return;
+  const el = blockEls.get(touchEditingId);
+  if (!el) { exitTouchEdit(); return; }
+  if (el.contains(e.target)) return;
+  exitTouchEdit();
+}
+
+/** Re-enable/disable up/down chevrons based on this block's source-order
+ *  position relative to visible siblings. */
+function refreshReorderState(id) {
+  const el = blockEls.get(id);
+  if (!el || !root) return;
+  const visibleSiblings = Array.from(root.children).filter(
+    (n) => n.classList.contains("block") && !n.classList.contains("hidden"),
+  );
+  const idx = visibleSiblings.indexOf(el);
+  const up = el.querySelector(".block-btn-reorder-up");
+  const down = el.querySelector(".block-btn-reorder-down");
+  if (up) up.toggleAttribute("disabled", idx <= 0);
+  if (down) down.toggleAttribute("disabled", idx < 0 || idx >= visibleSiblings.length - 1);
+}
+
+/** Swap a block with its neighbor in source order (by flex order index).
+ *  Persists by re-numbering the `order` CSS property on all blocks. */
+function reorderBlock(id, dir) {
+  if (!root) return;
+  const el = blockEls.get(id);
+  if (!el) return;
+  const visibleSiblings = Array.from(root.children).filter(
+    (n) => n.classList.contains("block") && !n.classList.contains("hidden"),
+  );
+  const idx = visibleSiblings.indexOf(el);
+  const target = idx + dir;
+  if (idx < 0 || target < 0 || target >= visibleSiblings.length) return;
+
+  // Swap DOM order (also drives CSS flex order). Persist as state.order on
+  // each block so a reload restores the same arrangement.
+  if (dir < 0) {
+    root.insertBefore(el, visibleSiblings[target]);
+  } else {
+    root.insertBefore(el, visibleSiblings[target].nextSibling);
+  }
+  // Renumber `style.order` and persist into layout[id].order for restore.
+  const allBlocks = Array.from(root.children).filter((n) => n.classList.contains("block"));
+  allBlocks.forEach((node, i) => {
+    node.style.order = String(i);
+    const bid = node.dataset.blockId;
+    if (bid && layout[bid]) layout[bid].order = i;
+  });
+  saveLayout();
+  refreshReorderState(id);
 }
 
 function startDrag(e, el, id) {
@@ -315,6 +497,9 @@ function wireResize(el, handle, id) {
   handle.addEventListener("pointerdown", (e) => {
     if (isMobile) return;
     if (e.button !== 0) return;
+    // On touch (tablet), resize requires edit-mode first to prevent
+    // accidental resize during normal interaction with block content.
+    if (isTouch && touchEditingId !== id) return;
     e.stopPropagation();
     startResize(e, el, id);
   });
@@ -605,6 +790,9 @@ function mount(rootEl) {
       const wasMobile = isMobile;
       isMobile = window.innerWidth < MOBILE_BREAKPOINT;
       if (wasMobile !== isMobile) {
+        // Exit any lingering touch-edit so its outline doesn't leak across
+        // the layout swap.
+        exitTouchEdit();
         for (const [id, el] of blockEls) {
           const state = layout[id];
           if (state) applyRect(el, state.rect);
@@ -613,15 +801,35 @@ function mount(rootEl) {
     }, 100);
   });
 
+  // Touch capability can flip on hybrid devices (Surface, iPad with mouse).
+  const touchMQ = window.matchMedia?.("(hover: none) and (pointer: coarse)");
+  touchMQ?.addEventListener?.("change", (e) => {
+    isTouch = e.matches;
+    if (!isTouch) exitTouchEdit();
+  });
+
   // Instantiate one block per registered type. Skip any types we have no
   // rect for AND that opted out of a default (defaultRect: null).
+  // Sort by saved `order` if present so reorder chevrons persist across
+  // reloads; fall back to registration order.
+  const types = Array.from(blockTypes.values());
+  types.sort((a, b) => {
+    const ao = layout[a.id]?.order;
+    const bo = layout[b.id]?.order;
+    if (typeof ao === "number" && typeof bo === "number") return ao - bo;
+    if (typeof ao === "number") return -1;
+    if (typeof bo === "number") return 1;
+    return 0;
+  });
   let order = 0;
-  for (const type of blockTypes.values()) {
+  for (const type of types) {
     const id = type.id;
     const state = ensureBlockState(type.id, id, type.defaultRect);
     const { el, content } = buildBlockEl(type, id, state);
     applyRect(el, state.rect);
-    el.style.order = String(order++);   // mobile: source order
+    el.style.order = String(order);   // mobile: source order
+    state.order = order;
+    order++;
     blockEls.set(id, el);
     root.appendChild(el);
     try { type.render(content); }
@@ -681,6 +889,7 @@ function hideBlock(blockId) {
   const state = layout[blockId];
   const el = blockEls.get(blockId);
   if (!state || !el) return;
+  if (touchEditingId === blockId) exitTouchEdit();
   state.visible = false;
   // Exit choreography — play the reverse, then commit display:none. Reduced
   // motion skips the wait via CSS (animation: none → animationend never fires,
@@ -739,6 +948,20 @@ const PRESETS = {
     "stats-mem":  { col: 9, row: 10, w: 3,  h: 4  },
     "stats-disk": { col: 0, row: 26, w: 6,  h: 4  },
     "stats-net":  { col: 6, row: 26, w: 6,  h: 4  },
+  },
+  // Mobile-stack: full-width per block, stacked top-to-bottom. CSS already
+  // does this at <768px viewports; this preset lets desktop operators
+  // preview the mobile experience without resizing the window.
+  "mobile-stack": {
+    chat:         { col: 0, row: 0,  w: 12, h: 10 },
+    palace:       { col: 0, row: 10, w: 12, h: 12 },
+    model:        { col: 0, row: 22, w: 12, h: 5  },
+    "slot-picker":{ col: 0, row: 27, w: 12, h: 8  },
+    "stats-gpu":  { col: 0, row: 35, w: 12, h: 5  },
+    "stats-cpu":  { col: 0, row: 40, w: 12, h: 4  },
+    "stats-mem":  { col: 0, row: 44, w: 12, h: 4  },
+    "stats-disk": { col: 0, row: 48, w: 12, h: 4  },
+    "stats-net":  { col: 0, row: 52, w: 12, h: 5  },
   },
 };
 

@@ -1893,15 +1893,78 @@ main {
     width: 100%;
   }
   .block-resize-handle { display: none; }
+  /* Default header on mobile: scrollable (touch-action:auto) so a normal
+     tap-and-drag pans the page. Long-press promotes the block into
+     edit-mode where the header recaptures the gesture for reorder. */
   .block-header { cursor: default; touch-action: auto; }
   .block-settings-drawer { width: 100vw; max-width: 100vw; }
   .dashboard-picker { left: 8px !important; right: 8px !important; max-width: none; }
 }
 
-/* ----- Touch-friendly hit-areas (coarse pointers e.g. tablets) ----- */
+/* ----- Touch-friendly hit-areas (coarse pointers — tablets, phones) -----
+ * Apple HIG / Material Design minimum tap target is 44x44. The header
+ * height naturally provides this once block-btn is 44x44 (padding adds
+ * to it). Resize handle bumped from 14 → 28px for fingertip reach. */
 @media (pointer: coarse) {
-  .block-btn { width: 1.85rem; height: 1.85rem; }
-  .block-resize-handle { width: 22px; height: 22px; }
+  .block-btn { width: 2.75rem; height: 2.75rem; }
+  .block-resize-handle { width: 28px; height: 28px; opacity: 0.8; }
+  .block-header { padding: 0.5rem 0.65rem; min-height: 2.75rem; }
+}
+
+/* ----- Touch edit-mode: long-press a block on touch to expose
+ *       reorder/resize affordances. Gold outline matches Ember's
+ *       snap-guide aesthetic. ----- */
+.block.touch-editing {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+  box-shadow: 0 0 0 4px color-mix(in srgb, var(--accent) 25%, transparent);
+}
+.block.touch-editing .block-header {
+  background: color-mix(in srgb, var(--accent) 12%, var(--sidebar-bg));
+}
+@media (prefers-reduced-motion: reduce) {
+  .block.touch-editing { transition: none; }
+}
+
+/* Reorder chevrons (mobile single-column edit-mode only). */
+.block-reorder {
+  display: none;
+  flex-shrink: 0;
+  gap: 0.15rem;
+  align-items: center;
+}
+.block.touch-editing .block-reorder {
+  display: inline-flex;
+}
+.block-reorder .block-btn[disabled] {
+  opacity: 0.3;
+  cursor: not-allowed;
+  pointer-events: none;
+}
+
+/* Long-press progress ring — appears while finger held before edit-mode kicks
+ * in. Pure CSS animation; cancelled by removing the .pressing class. */
+.block-header.pressing::after {
+  content: "";
+  position: absolute;
+  inset: auto 0.5rem auto auto;
+  top: 50%;
+  width: 14px;
+  height: 14px;
+  margin-top: -7px;
+  border-radius: 50%;
+  border: 2px solid color-mix(in srgb, var(--accent) 40%, transparent);
+  border-top-color: var(--accent);
+  animation: longPressSpin 500ms linear forwards;
+  pointer-events: none;
+}
+.block-header { position: relative; }
+@keyframes longPressSpin {
+  from { transform: rotate(0deg); opacity: 0.4; }
+  to   { transform: rotate(360deg); opacity: 1;   }
+}
+@media (prefers-reduced-motion: reduce) {
+  .block-header.pressing::after { animation: none; opacity: 0.7; }
 }
 
 /* ----- Block-settings note (informational text in drawer) ----- */
