@@ -1361,6 +1361,11 @@ form.addEventListener("submit", async (e) => {
           const obj = JSON.parse(payload);
           const delta = obj.choices?.[0]?.delta?.content;
           if (delta) {
+            // First content byte → hide typing indicator. The dots stay
+            // visible while palace search + grounding runs; once the
+            // model's first token arrives, the dots become redundant
+            // with the streamed text itself.
+            if (!full) hideTyping();
             full += delta;
             scheduleRender();
           }
