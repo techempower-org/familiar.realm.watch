@@ -9,11 +9,15 @@ Output schema (consumed by kg-extract-poll.py):
   kg_completed       - completed extraction rows
   kg_incomplete      - pending extraction rows
   kg_errors          - rows with error NOT NULL
-  kg_total_triples   - SUM(triples_extracted)
   kg_rate_per_min    - rows completed in the last 60 seconds
   worker_<N>         - "active" or "inactive" per mempalace-kg-extract@N.service
 
 No external deps - stdlib only.
+
+Triple counts are intentionally NOT in this collector. The queue table
+has no triples_extracted column on this fork; if a future caller needs
+them, query the AGE graph directly (see ``collect_kg_extract``'s
+docstring). Issue: techempower-org/familiar.realm.watch#48.
 
 NOTE 2026-05-27: original file was deleted accidentally during a refactor.
 This is a reconstruction from the interface contract in kg-extract-poll.py
@@ -32,10 +36,28 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 
 
 def _run(cmd: list[str], timeout: int = 10) -> str:
+    """Run ``cmd`` and return stripped stdout.
+
+    Logs stderr to ``sys.stderr`` when the process exits non-zero (or
+    when timing out). Previous behaviour was a silent ``except: return
+    empty-string``, which masked the schema mismatch behind issue #48
+    for an unknown period: downstream consumers saw missing keys but
+    no error trail. Logging surfaces the failure on the caller's
+    journal without changing the return contract.
+    """
     try:
         r = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout)
+        if r.returncode != 0 and r.stderr:
+            print(
+                f"kgops-collect: {cmd[0]} exited {r.returncode}: {r.stderr.strip()[:500]}",
+                file=sys.stderr,
+            )
         return r.stdout.strip()
-    except Exception:
+    except subprocess.TimeoutExpired as e:
+        print(f"kgops-collect: {cmd[0]} timed out after {timeout}s: {e}", file=sys.stderr)
+        return ""
+    except Exception as e:  # noqa: BLE001
+        print(f"kgops-collect: {cmd[0]} failed: {e}", file=sys.stderr)
         return ""
 
 
@@ -59,7 +81,21 @@ def collect_sysmon() -> dict:
 
 
 def collect_kg_extract() -> dict:
-    """KG-extract queue counters from the mempalace database."""
+    """KG-extract queue counters from the mempalace database.
+
+    The ``total_triples`` row was removed 2026-05-28 (issue #48): the
+    ``mempalace_kg_extraction_queue`` table never had a
+    ``triples_extracted`` column on this fork — the prior query failed
+    silently in ``_psql``'s broad ``except`` and downstream consumers
+    saw all-zeros, masking the failure. Triple counts (if anyone needs
+    them) come from the AGE graph directly:
+        SELECT count(*) FROM cypher('mempalace_kg',
+          $$ MATCH ()-[r:RELATION]->() RETURN count(r) $$
+        ) AS (n agtype);
+    Adding that as a separate ``collect_age_triples()`` is the right
+    shape if a future caller needs it — not bolting it back into this
+    queue-counter function via a different SELECT.
+    """
     m: dict = {}
     rows = _psql(
         "SELECT 'completed', count(*) FROM mempalace_kg_extraction_queue WHERE completed_at IS NOT NULL "
@@ -67,8 +103,6 @@ def collect_kg_extract() -> dict:
         "SELECT 'incomplete', count(*) FROM mempalace_kg_extraction_queue WHERE completed_at IS NULL "
         "UNION ALL "
         "SELECT 'errors', count(*) FROM mempalace_kg_extraction_queue WHERE error IS NOT NULL "
-        "UNION ALL "
-        "SELECT 'total_triples', COALESCE(SUM(triples_extracted), 0)::bigint FROM mempalace_kg_extraction_queue "
         "UNION ALL "
         "SELECT 'rate_per_min', count(*) FROM mempalace_kg_extraction_queue "
         "WHERE completed_at > now() - interval '1 minute';"
@@ -88,8 +122,6 @@ def collect_kg_extract() -> dict:
             m["kg_incomplete"] = n
         elif k == "errors":
             m["kg_errors"] = n
-        elif k == "total_triples":
-            m["kg_total_triples"] = n
         elif k == "rate_per_min":
             m["kg_rate_per_min"] = float(n)
     return m
