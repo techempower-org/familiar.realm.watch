@@ -193,17 +193,15 @@ fail-open fallback for `slot_resolver.chat()` / `.embedClient()`.
 
 | Slot | Resolver wired? | Falls back to | Notes |
 |---|---|---|---|
-| `chat` | ✅ Wave 2b (commit `dc97bc0`) | `inferenceRouter` (legacy) | `pickChatProvider` in `src/routes/chat.ts` consults resolver per request |
-| `embed` | ✅ Wave 2c (commit `01d9684`) | `ollamaEmbed` (legacy) | `resolver.embedClient()` returns ollama-runtime only |
+| `chat` | ✅ Wave 2b (`dc97bc0`) | `inferenceRouter` (legacy) | `pickChatProvider` in `src/routes/chat.ts` consults resolver per request |
+| `embed` | ✅ Wave 2c (`01d9684`) | `ollamaEmbed` (legacy) | `resolver.embedClient()` — ollama runtime only |
 | `extract` | n/a (worker is separate process) | n/a | extract slot picks which `llama-server-extractor*.service` is up; kg-extract worker connects to whichever URL is in slots.json |
-| `hyde` | ⏳ Wave 2d (tracked in #69) | `ollamaChat` (legacy closure) | hydeGenerator captures ollamaChat at startup; needs per-call lookup |
-| `reflect` | ⏳ Wave 2d (tracked in #69) | `inferenceRouter` (legacy) | ReflectWriter holds inference at constructor time; needs getInference callback |
+| `hyde` | ✅ Wave 2d.1 (`e8d86c4`) | `ollamaChat` (legacy closure) | hydeGenerator now consults `resolver.hydeClient()` per call |
+| `reflect` | ✅ Wave 2d.2 (`71e2485`) | `inferenceRouter` (legacy) | ReflectWriter `getInference` callback consults `resolver.reflect()` per extraction |
 
-For Wave 2b + 2c (chat + embed), PATCHing a slot takes effect on the
+**The 5-slot loop is closed.** PATCHing any slot takes effect on the
 **very next** request — the resolver mtime-checks `slots.json` (1s
-cache window) so disk edits propagate without restart.
-
-For HyDE + reflect, PATCHing the slot updates `slots.json` and the
-systemd state, but the running familiar-api process still calls the
-legacy closures captured at startup. Restart familiar-api or wait for
-Wave 2d to ship.
+cache window) so disk edits propagate without restart. Each slot has
+a backward-compatible fallback to its legacy provider, so a cold-start
+deploy (no `slots.json`) behaves exactly as before the slot picker
+landed.
