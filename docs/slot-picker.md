@@ -186,15 +186,24 @@ specifically.
 Pre-Wave 1, familiar-api routed everything through a static
 `InferenceRouter` constructed from env vars `OLLAMA_CHAT_URL`,
 `OLLAMA_CHAT_MODEL`, `LLAMA_CPP_URL`, etc. Those env vars are still read
-(see `src/config.ts`) and the router is still constructed — but for v1
-of the slot picker, the chat/embed/HyDE/reflect routes continue to use
-the legacy router rather than the new resolver. The slot picker exposes
-its admin endpoints; the runtime routing switch lands in a follow-up
-commit (Wave 2b) once the dashboard UI is wired in to drive it.
+(see `src/config.ts`) and the router is still constructed — now as the
+fail-open fallback for `slot_resolver.chat()` / `.embedClient()`.
 
-Until that switch lands, PATCHing slots changes systemd state on the host
-but does **not** affect which model serves chat/embed traffic. This is
-intentional — operators can pre-warm variants and inspect the picker's
-behavior without disrupting production. To make the picker's choices
-take effect at the routing layer, follow up Wave 2b will swap the static
-provider injection for `await resolver.chat()` etc.
+## Runtime routing — what's live
+
+| Slot | Resolver wired? | Falls back to | Notes |
+|---|---|---|---|
+| `chat` | ✅ Wave 2b (commit `dc97bc0`) | `inferenceRouter` (legacy) | `pickChatProvider` in `src/routes/chat.ts` consults resolver per request |
+| `embed` | ✅ Wave 2c (commit `01d9684`) | `ollamaEmbed` (legacy) | `resolver.embedClient()` returns ollama-runtime only |
+| `extract` | n/a (worker is separate process) | n/a | extract slot picks which `llama-server-extractor*.service` is up; kg-extract worker connects to whichever URL is in slots.json |
+| `hyde` | ⏳ Wave 2d (tracked in #69) | `ollamaChat` (legacy closure) | hydeGenerator captures ollamaChat at startup; needs per-call lookup |
+| `reflect` | ⏳ Wave 2d (tracked in #69) | `inferenceRouter` (legacy) | ReflectWriter holds inference at constructor time; needs getInference callback |
+
+For Wave 2b + 2c (chat + embed), PATCHing a slot takes effect on the
+**very next** request — the resolver mtime-checks `slots.json` (1s
+cache window) so disk edits propagate without restart.
+
+For HyDE + reflect, PATCHing the slot updates `slots.json` and the
+systemd state, but the running familiar-api process still calls the
+legacy closures captured at startup. Restart familiar-api or wait for
+Wave 2d to ship.
