@@ -2505,6 +2505,18 @@ renderTranscript();
 renderSessionsList();
 checkHealth();
 setInterval(checkHealth, 60_000);
+
+// Connection-aware status — when the browser loses network, flip the
+// status pill to "offline" and surface a toast. On reconnect, re-probe
+// /health (which updates status to "connected" or "warn") + toast.
+window.addEventListener("offline", () => {
+  setStatus("error", "offline");
+  window.familiarToast?.warn?.("offline — assistant unreachable");
+});
+window.addEventListener("online", () => {
+  window.familiarToast?.success?.("back online");
+  checkHealth();
+});
 refreshMemories();
 
 // Rotating placeholder — cycles through prompts every ~12s when the input
