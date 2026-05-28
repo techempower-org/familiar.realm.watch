@@ -239,25 +239,6 @@ export class SlotResolver {
   reflect(override?: string | null): Promise<ResolvedSlot> { return this.resolve("reflect", override); }
 
   /**
-   * Embed-specific resolver — returns an OllamaClient configured to the
-   * variant bound to the embed slot, or null if the slot is disabled,
-   * the variant is unknown, or the variant's runtime isn't "ollama"
-   * (llama-cpp doesn't implement the embed contract today).
-   *
-   * Wave 2c: embeddings.ts calls this before falling back to the
-   * legacy `deps.ollamaEmbed`.
-   */
-  async embedClient(override?: string | null): Promise<OllamaClient | null> {
-    const slots = await this.readSlots();
-    const id = override ?? slots.slots.embed.variant_id;
-    if (id === null) return null;
-    const variant = await this.registry.getVariant(id);
-    if (!variant || !variant.capabilities.includes("embed")) return null;
-    if (variant.runtime !== "ollama") return null;
-    return new OllamaClient({ baseUrl: variant.url, defaultModel: variant.model });
-  }
-
-  /**
    * Snapshot for the GET /api/familiar/slots endpoint: registry + live
    * slots + computed GPU usage. The picker uses this verbatim.
    */
