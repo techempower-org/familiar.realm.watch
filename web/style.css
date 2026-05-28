@@ -1365,7 +1365,10 @@ body {
 .palace-search-input:focus {
   outline: none;
   border-color: var(--accent);
-  box-shadow: 0 0 0 2px rgba(212, 160, 80, 0.15);
+  /* Use the accent token instead of hardcoded rgba so light/dark themes
+     produce matching glow tints. (Was: rgba(212, 160, 80, 0.15) — dark
+     gold literal that washed out in light mode.) */
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 18%, transparent);
 }
 .search-results {
   list-style: none;
