@@ -26,9 +26,13 @@
         fetch("/api/version", { credentials: "same-origin" })
           .then((r) => (r.ok ? r.json() : null))
           .then((d) => {
-            if (d && typeof d.word === "string" && d.word.length) {
-              document.title = `${d.word} · familiar`;
-            }
+            if (!d || typeof d.word !== "string" || !d.word.length) return;
+            document.title = `${d.word} · familiar`;
+            // Populate the sidebar realm word immediately — without this,
+            // the placeholder "·" stays until the slower /api/familiar/health
+            // probe completes (~4s under load). /api/version is much faster.
+            const w = document.getElementById("word");
+            if (w && w.textContent === "·") w.textContent = d.word;
           })
           .catch(() => { /* offline / 5xx — keep static title */ });
       } catch { /* no fetch (very old browser) — keep static */ }
