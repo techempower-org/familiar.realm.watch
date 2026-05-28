@@ -630,10 +630,17 @@ body {
   font-size: 0.9rem;
   font-style: italic;
   color: var(--fg-muted);
-  opacity: 0.7;
+  opacity: 0;
   text-align: center;
   padding: 2rem 1rem;
   pointer-events: none;
+  animation: empty-hint-fade-in 800ms ease-out 200ms forwards;
+}
+@keyframes empty-hint-fade-in {
+  to { opacity: 0.7; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .log:empty::before { animation: none; opacity: 0.7; }
 }
 @media (prefers-reduced-motion: reduce) {
   .log { scroll-behavior: auto; }
