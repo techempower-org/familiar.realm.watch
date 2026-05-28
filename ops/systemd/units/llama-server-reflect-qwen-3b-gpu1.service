@@ -1,0 +1,24 @@
+[Unit]
+Description=llama.cpp Reflect — Qwen 2.5 Coder 3B on GPU1 (slot picker variant)
+After=network.target
+
+[Service]
+Type=simple
+User=jp
+Environment=CUDA_VISIBLE_DEVICES=1
+ExecStart=/opt/llama.cpp/build/bin/llama-server \
+  --model /var/cache/llama/models/qwen2.5-coder-3b.gguf \
+  --port 11440 --host 0.0.0.0 \
+  --n-gpu-layers 999 \
+  --ctx-size 4096 \
+  --parallel 2 \
+  --threads 8 \
+  --cont-batching \
+  --alias reflect-qwen-3b
+Restart=on-failure
+RestartSec=5
+MemoryMax=2G
+OOMScoreAdjust=-500
+
+[Install]
+WantedBy=multi-user.target

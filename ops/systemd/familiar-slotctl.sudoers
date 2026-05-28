@@ -1,0 +1,9 @@
+# /etc/sudoers.d/familiar-slotctl
+#
+# Grants the unprivileged familiar-api user passwordless sudo for the
+# slot-picker systemctl wrapper, and ONLY that wrapper. The wrapper
+# itself narrows further (action whitelist + unit-name allow-list).
+#
+# Install: copy to /etc/sudoers.d/familiar-slotctl with mode 0440 and
+# validate with visudo -cf /etc/sudoers.d/familiar-slotctl before use.
+familiar ALL=(root) NOPASSWD: /usr/local/sbin/familiar-slotctl

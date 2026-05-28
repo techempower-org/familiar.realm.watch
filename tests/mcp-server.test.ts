@@ -15,6 +15,12 @@ const baseCfg: Config = {
   sessionTtlMinutes: 60,
   realmSigilRealm: "fantasy",
   logLevel: "warn",
+  slots: {
+    registryPath: "/tmp/familiar-test-registry.json",
+    configPath: "/tmp/familiar-test-slots.json",
+    slotctlPath: "/tmp/familiar-test-slotctl",
+    adminEnabled: false,
+  },
 };
 
 function mockPalace(drawers: PalaceDrawer[]): PalaceClient {

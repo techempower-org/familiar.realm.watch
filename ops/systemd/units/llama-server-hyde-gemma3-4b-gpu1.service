@@ -1,0 +1,24 @@
+[Unit]
+Description=llama.cpp HyDE — Gemma 3 4B on GPU1 (slot picker variant)
+After=network.target
+
+[Service]
+Type=simple
+User=jp
+Environment=CUDA_VISIBLE_DEVICES=1
+ExecStart=/opt/llama.cpp/build/bin/llama-server \
+  --model /var/cache/llama/models/gemma-4-E4B-it-Q4_K_M.gguf \
+  --port 11439 --host 0.0.0.0 \
+  --n-gpu-layers 999 \
+  --ctx-size 2048 \
+  --parallel 2 \
+  --threads 8 \
+  --cont-batching \
+  --alias hyde-gemma3-4b
+Restart=on-failure
+RestartSec=5
+MemoryMax=2G
+OOMScoreAdjust=-500
+
+[Install]
+WantedBy=multi-user.target
