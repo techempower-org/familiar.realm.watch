@@ -745,7 +745,12 @@ body {
   font-size: 0.85rem;
   cursor: pointer;
 }
-.palace-refresh:hover { color: var(--accent); border-color: var(--accent); }
+.palace-refresh:hover, .palace-refresh:focus-visible {
+  color: var(--accent);
+  border-color: var(--accent);
+  outline: none;
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 18%, transparent);
+}
 
 .palace-treemap {
   display: grid;
@@ -1475,7 +1480,12 @@ body {
   transition: color 120ms ease, border-color 120ms ease;
   flex-shrink: 0;
 }
-.browser-back:hover { color: var(--accent); border-color: var(--accent); }
+.browser-back:hover, .browser-back:focus-visible {
+  color: var(--accent);
+  border-color: var(--accent);
+  outline: none;
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 18%, transparent);
+}
 .browser-col-body {
   flex: 1;
   overflow-y: auto;
