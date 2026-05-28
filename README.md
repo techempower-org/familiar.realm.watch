@@ -6,16 +6,16 @@ Local-first AI companion — reads [mempalace](https://github.com/techempower-or
 
 - **familiar-api** — TypeScript + [Bun](https://bun.sh) HTTP + MCP server
 - **familiar-web** — Static PWA served from the same Bun process
-- **[llama.cpp](https://github.com/ggml-org/llama.cpp)** (`llama-server`) — Local LLM inference (chat + embed) on GPU via OpenAI-compatible `/v1/*` API. Built locally from source on familiar with `-DCMAKE_CUDA_ARCHITECTURES=52;61` to support Pascal (P102) + Maxwell (GTX 970). Stock Ollama doesn't ship Pascal SASS in its prebuilt binaries and silently CPU-fallbacks — we migrated off it on 2026-05-15.
+- **[llama.cpp](https://github.com/ggml-org/llama.cpp)** (`llama-server`) — Local LLM inference (chat + embed + extract + HyDE + reflect) on GPU via OpenAI-compatible `/v1/*` API. Built locally from source on familiar with `-DCMAKE_CUDA_ARCHITECTURES=52;61` to support Pascal SASS. Stock Ollama doesn't ship Pascal SASS in its prebuilt binaries and silently CPU-fallbacks — we migrated off it on 2026-05-15.
 - **[palace-daemon](https://github.com/techempower-org/palace-daemon)** — mempalace coordination gateway (our fork — adds hook detach, postgres backend gates, `/cypher` + `/embed`, `/search/keyword` + `/search/hybrid`, `/backfill-age`)
 - **[mempalace](https://github.com/techempower-org/mempalace)** — mempalace fork, pip-installed into palace-daemon (adds postgres + pgvector + Apache AGE backend, hybrid search, canonical room taxonomy, KG writethrough)
-- **Caddy + Authelia** — reverse proxy + auth on ubox0
+- **Caddy + Authelia** — TLS termination + Authelia forward-auth on ubox0. Tailnet-only; not public-facing. See [ubox0/docs/three-horizon-dns.md](https://github.com/jphein/ubox0/blob/main/docs/three-horizon-dns.md) for the split-horizon DNS setup.
 
 ## Hosts
 
 - `katana` (10.0.6.129) — workstation; dev/test target for familiar-api
-- `familiar` (10.0.6.124) — production inference server (llama-server + familiar-api). Two GPUs: P102-100 (10 GB, runs the chat model on `:11434`) + GTX 970 (4 GB, runs the embed model on `:11435`). Public-facing `familiar.jphe.in` lands here.
-- `disks` (10.0.6.120) — palace-daemon + Postgres (pgvector + AGE, 335K+ drawers) + palace data home (`/mnt/raid/projects/mempalace-data/palace`)
+- `familiar` (10.0.6.124) — production. Runs `familiar-api` (Bun/TS), `palace-daemon` (postgres gateway), `mempalace-db` (Docker, postgres + pgvector + AGE, 375K+ drawers, 1.7M KG triples), plus the llama-server inference variants. Two **P102-100** GPUs (10 GB each).
+- `ubox0` (10.0.6.11) — tailnet-side TLS edge + dnsmasq for the `*.jphe.in` zone
 
 ## Quickstart (dev)
 
@@ -33,6 +33,38 @@ bun run dev
 - `web/` — PWA assets (served by Bun at `/`)
 - `ops/` — systemd units, Caddy snippets, install/deploy scripts
 - `docs/superpowers/` — spec + implementation plans
+
+## Dashboard
+
+The web UI at `https://familiar.jphe.in/` is a **Wave Terminal-style block dashboard** — every UI element is a movable, resizable block with its own settings drawer.
+
+- **Chat block** — conversation UI with streaming responses, palace grounding, reflection
+- **Palace block** — browse drawers + wings + rooms
+- **Slot picker block** — change which model serves each of the five inference slots (chat / embed / extract / HyDE / reflect) without touching systemd by hand. See [docs/slot-picker.md](docs/slot-picker.md).
+- **Stat widgets** — GPU / CPU / memory / disk / network bars fed by `/api/familiar/stats`. See [docs/stat-widgets.md](docs/stat-widgets.md).
+- **Add-block picker, layout presets, reset, settings drawers** — see [docs/dashboard.md](docs/dashboard.md).
+
+Layout persists per browser via `localStorage`. Mobile collapses to a single column. Theme variables in `web/style.css` enforce a parchment+sigil-gold aesthetic that responds to `prefers-color-scheme`.
+
+## Inference slots
+
+Familiar runs five distinct inference workloads, each independently switchable:
+
+| Slot | Workload | Default backend | Variant types |
+|---|---|---|---|
+| `chat` | `/v1/chat/completions` | llama-server or Ollama | qwen 7B/14B/coder, gemma 4B, phi-4 |
+| `embed` | `/v1/embeddings` | Ollama (nomic-embed-text v1.5) | ollama-only today |
+| `extract` | KG triple worker (`mempalace.kg_triple_worker`) | llama-server phi-4-mini | dedicated GPU pin |
+| `hyde` | Pre-search hypothetical-doc generator | shares chat | designed for a tiny model |
+| `reflect` | Post-turn fact extraction | shares chat | designed for structured output |
+
+Pick a variant per slot from the dashboard's slot-picker block, or via the admin endpoint:
+
+```
+PATCH /api/familiar/admin/slots/:slot   { "variant_id": "chat-gemma3-4b-gpu1" }
+```
+
+The slot resolver mtime-caches `/var/lib/familiar/slots.json` and re-reads on change, so PATCH takes effect on the very next chat/embed request. Authelia-gated.
 
 ## Retrieval modes
 
