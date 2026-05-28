@@ -11,6 +11,25 @@
   <meta name="apple-mobile-web-app-title" content="familiar">
   <meta name="description" content="Your familiar — reads the palace before speaking, writes it after.">
   <title>familiar</title>
+  <!-- Dynamic title: stamp the deploy's realm word into the browser tab.
+       Each deploy gets a unique poetic name from realm-sigil ("Noble Beacon",
+       "Spectral Sigil", etc.) — surfacing it makes the tab feel like a
+       page rather than a generic web app. Fails silently on offline /
+       /api/version 5xx; the static "familiar" title above remains. -->
+  <script>
+    (function () {
+      try {
+        fetch("/api/version", { credentials: "same-origin" })
+          .then((r) => (r.ok ? r.json() : null))
+          .then((d) => {
+            if (d && typeof d.word === "string" && d.word.length) {
+              document.title = `${d.word} · familiar`;
+            }
+          })
+          .catch(() => { /* offline / 5xx — keep static title */ });
+      } catch { /* no fetch (very old browser) — keep static */ }
+    })();
+  </script>
   <!-- FOUC preventer: read localStorage 'drw-theme' BEFORE any stylesheet
        so explicit user theme applies before first paint. Inlined (not <script src>)
        so it's render-blocking even before connection setup. -->
