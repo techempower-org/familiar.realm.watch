@@ -1887,7 +1887,12 @@ main {
   padding: 0;
   transition: color 120ms ease, border-color 120ms ease, background 120ms ease;
 }
-.block-btn:hover { color: var(--accent); border-color: var(--accent); }
+.block-btn:hover, .block-btn:focus-visible {
+  color: var(--accent);
+  border-color: var(--accent);
+  outline: none;
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 18%, transparent);
+}
 
 .block-content {
   flex: 1;
