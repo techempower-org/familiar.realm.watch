@@ -827,11 +827,11 @@ body {
   max-width: 85%;
   word-wrap: break-word;
   position: relative;
-  animation: msg-appear 280ms ease-out backwards;
+  animation: msg-appear 360ms cubic-bezier(0.2, 0.7, 0.2, 1) backwards;
 }
 @keyframes msg-appear {
-  from { opacity: 0; transform: translateY(4px); }
-  to   { opacity: 1; transform: translateY(0); }
+  from { opacity: 0; transform: translateY(6px) scale(0.99); }
+  to   { opacity: 1; transform: translateY(0) scale(1); }
 }
 .msg.user {
   background: var(--user-bg);
