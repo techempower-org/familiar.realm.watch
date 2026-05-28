@@ -1,11 +1,20 @@
 // Minimal service worker for offline PWA shell.
 // Caches only the static shell — API calls always hit the network.
 // Bump CACHE name on shell file changes so old clients pick up new HTML/CSS/JS.
-const CACHE = "familiar-shell-v23";
+const CACHE = "familiar-shell-v24";
 const SHELL = [
   "/", "/index.html", "/style.css", "/app.js", "/favicon.svg", "/manifest.webmanifest",
   "/highlight.min.js", "/highlight-dark.css", "/highlight-light.css",
   "/dark.css", "/dark.js", "/dark-toggle.js",
+  // v24 — Wave Terminal dashboard shell:
+  "/dashboard.js", "/dashboard-init.js",
+  // Stat widgets (Luna) + shared poller/util:
+  "/widgets/stats.css",
+  "/widgets/stats-init.js", "/widgets/stats-poller.js", "/widgets/stats-util.js",
+  "/widgets/stats-cpu.js", "/widgets/stats-disk.js", "/widgets/stats-gpu.js",
+  "/widgets/stats-mem.js", "/widgets/stats-net.js",
+  // Slot picker block (Selene):
+  "/widgets/slot-picker.css", "/widgets/slot-picker.js",
 ];
 
 self.addEventListener("install", (e) => {
