@@ -204,7 +204,24 @@ function onPickerOutside(e) {
   closePicker();
 }
 function onPickerEscape(e) {
-  if (e.key === "Escape") closePicker();
+  if (!pickerEl) return;
+  if (e.key === "Escape") {
+    closePicker();
+    // Return focus to the trigger so keyboard users keep their place.
+    if (addBtn) addBtn.focus();
+    return;
+  }
+  // Arrow-key navigation within the picker (#65).
+  if (e.key !== "ArrowUp" && e.key !== "ArrowDown") return;
+  const rows = Array.from(pickerEl.querySelectorAll(".dashboard-picker-row"));
+  if (rows.length === 0) return;
+  e.preventDefault();
+  const active = document.activeElement;
+  const idx = rows.indexOf(active);
+  let next;
+  if (e.key === "ArrowDown") next = idx < 0 ? 0 : (idx + 1) % rows.length;
+  else next = idx <= 0 ? rows.length - 1 : idx - 1;
+  rows[next].focus();
 }
 function openPicker() {
   if (pickerEl) { closePicker(); return; }
@@ -260,9 +277,12 @@ function openPicker() {
   document.body.appendChild(pop);
   pickerEl = pop;
   // Defer attaching outside-click handler one tick so the opening click doesn't fire it.
+  // Auto-focus the first row so keyboard users land somewhere actionable (#65).
   requestAnimationFrame(() => {
     document.addEventListener("pointerdown", onPickerOutside, true);
     document.addEventListener("keydown", onPickerEscape, true);
+    const firstRow = pop.querySelector(".dashboard-picker-row");
+    if (firstRow) firstRow.focus();
   });
 }
 if (addBtn) addBtn.addEventListener("click", openPicker);

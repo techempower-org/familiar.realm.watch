@@ -401,10 +401,11 @@ function ensureDrawer() {
     if (e.target.closest('.block-btn-gear')) return;
     closeSettings();
   });
-  // Escape dismiss.
+  // Escape dismiss + Tab focus trap (#65).
   document.addEventListener("keydown", (e) => {
     if (!drawer || drawer.hidden) return;
-    if (e.key === "Escape") { e.stopPropagation(); closeSettings(); }
+    if (e.key === "Escape") { e.stopPropagation(); closeSettings(); return; }
+    trapDrawerFocus(e);
   });
 }
 
@@ -439,15 +440,52 @@ function openSettings(blockId) {
   }
 
   drawer.hidden = false;
-  requestAnimationFrame(() => drawer.classList.add("open"));
+  // Remember which element to return focus to on close (#65).
+  drawer._returnFocus = document.activeElement;
+  requestAnimationFrame(() => {
+    drawer.classList.add("open");
+    // Move keyboard focus into the drawer — close button is the
+    // safest first stop because it's always present and pressing
+    // Enter on it cleanly dismisses. Settings inputs receive Tab.
+    const firstInput = drawer.querySelector("input, select, textarea, button");
+    if (firstInput) firstInput.focus();
+  });
+}
+
+/**
+ * Focus trap for the settings drawer (#65). Tab + Shift-Tab wrap
+ * around the drawer's focusable children when the drawer is open.
+ */
+function trapDrawerFocus(e) {
+  if (!drawer || drawer.hidden) return;
+  if (e.key !== "Tab") return;
+  const focusables = drawer.querySelectorAll(
+    'input, select, textarea, button, a[href], [tabindex]:not([tabindex="-1"])',
+  );
+  if (focusables.length === 0) return;
+  const first = focusables[0];
+  const last = focusables[focusables.length - 1];
+  if (e.shiftKey && document.activeElement === first) {
+    e.preventDefault();
+    last.focus();
+  } else if (!e.shiftKey && document.activeElement === last) {
+    e.preventDefault();
+    first.focus();
+  }
 }
 
 function closeSettings() {
   if (!drawer) return;
   drawer.classList.remove("open");
+  // Return focus to the gear that opened us, so keyboard users keep their place.
+  const returnTo = drawer._returnFocus;
+  drawer._returnFocus = null;
   // Wait for transition unless reduced-motion (in which case it's instant).
   const dur = prefersReducedMotion ? 0 : 220;
-  setTimeout(() => { if (drawer) drawer.hidden = true; }, dur);
+  setTimeout(() => {
+    if (drawer) drawer.hidden = true;
+    if (returnTo && typeof returnTo.focus === "function") returnTo.focus();
+  }, dur);
   activeSettingsBlockId = null;
 }
 
