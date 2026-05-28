@@ -2253,7 +2253,18 @@ main {
 }
 .toast.show { opacity: 1; transform: translateX(0); }
 .toast-info    { border-left: 3px solid var(--accent); }
-/* Actionable toasts get a subtle hover hint so it's clear they DO something. */
+/* Actionable toasts get a subtle hover hint + always-on accent dot to
+   signal interactivity (otherwise toasts look identical whether they
+   do something on click or just dismiss). */
+.toast-actionable::after {
+  content: "↺";
+  margin-left: 0.5rem;
+  color: var(--accent);
+  font-family: var(--mono);
+  font-size: 0.8em;
+  vertical-align: middle;
+  opacity: 0.85;
+}
 .toast-actionable:hover {
   border-color: var(--accent);
   box-shadow: 0 6px 24px color-mix(in srgb, var(--accent) 28%, transparent);
