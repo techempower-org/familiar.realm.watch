@@ -1,0 +1,426 @@
+/* ===================== Slot picker block =====================
+ * Model/GPU selector for familiar's five inference slots.
+ * Lives inside Reverie's block chrome; this stylesheet only owns the
+ * inner content layout. All colors via CSS custom properties so the
+ * widget tracks parchment + dark themes equally.
+ *
+ * State surfaces:
+ *   .slot-row                  default
+ *   .slot-row--expanded        variant list open beneath the row
+ *   .slot-row--pending         PATCH in flight (pulse on the row chevron)
+ *   .slot-row--error           503/4xx response — red tint for ERROR_TINT_MS
+ *   .slot-row--conflict        409 VRAM overflow — amber tint
+ *
+ * The block content area gets .block-content-slot-picker on mount, which
+ * we use to scope all other selectors and to avoid colliding with the
+ * stat widgets (which share .stat-bar etc.). */
+
+.block-content-slot-picker {
+  padding: 0;
+}
+
+.slot-picker {
+  display: flex;
+  flex-direction: column;
+  gap: 0.45rem;
+  padding: 0.6rem 0.7rem 0.75rem;
+  width: 100%;
+  height: 100%;
+  min-height: 0;
+}
+
+.slot-picker-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0.6rem;
+}
+.slot-picker-title {
+  font-family: var(--serif);
+  font-size: 1.05rem;
+  letter-spacing: 0.04em;
+  color: var(--fg);
+}
+.slot-picker-sub {
+  font-family: var(--mono);
+  font-size: 0.65rem;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--fg-muted);
+}
+
+/* ---------- List of slot rows ---------- */
+.slot-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+}
+
+.slot-row {
+  border: 1px solid transparent;
+  border-radius: 6px;
+  transition: background 150ms ease, border-color 150ms ease;
+  position: relative;
+}
+.slot-row:hover {
+  background: color-mix(in srgb, var(--accent) 8%, transparent);
+}
+.slot-row--expanded {
+  background: color-mix(in srgb, var(--accent) 5%, transparent);
+  border-color: color-mix(in srgb, var(--accent) 30%, var(--border));
+}
+.slot-row--pending {
+  /* Subtle accent glow while the PATCH is in flight. */
+  background: color-mix(in srgb, var(--accent) 6%, transparent);
+}
+.slot-row--error {
+  border-color: var(--color-error);
+  background: color-mix(in srgb, var(--color-error) 8%, transparent);
+}
+.slot-row--conflict {
+  border-color: var(--color-warn);
+  background: color-mix(in srgb, var(--color-warn) 10%, transparent);
+}
+
+/* The clickable header inside each row — keeps the whole left edge
+ * gold-accented when the row's binding is the selected one. */
+.slot-row-head {
+  display: flex;
+  align-items: center;
+  gap: 0.55rem;
+  width: 100%;
+  background: transparent;
+  border: none;
+  text-align: left;
+  padding: 0.4rem 0.55rem 0.4rem 0.5rem;
+  cursor: pointer;
+  color: inherit;
+  font: inherit;
+  border-radius: 6px;
+  position: relative;
+}
+.slot-row-head:focus-visible {
+  outline: 1px solid var(--accent);
+  outline-offset: 1px;
+}
+
+.slot-row-accent {
+  display: block;
+  width: 3px;
+  align-self: stretch;
+  border-radius: 2px;
+  background: color-mix(in srgb, var(--border) 80%, transparent);
+  transition: background 150ms ease;
+}
+.slot-row:not(.slot-row--expanded) .slot-row-head:hover .slot-row-accent,
+.slot-row--expanded .slot-row-accent {
+  background: var(--accent);
+}
+
+.slot-row-text {
+  display: flex;
+  flex-direction: column;
+  gap: 0.1rem;
+  flex: 1;
+  min-width: 0;
+}
+.slot-row-name {
+  font-family: var(--serif);
+  font-size: 0.92rem;
+  color: var(--fg);
+  letter-spacing: 0.03em;
+  text-transform: capitalize;
+}
+.slot-row-variant {
+  font-family: var(--mono);
+  font-size: 0.7rem;
+  color: var(--fg-muted);
+  letter-spacing: 0.02em;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.slot-row-variant--missing {
+  color: var(--color-error);
+}
+.slot-row-off {
+  font-family: var(--serif);
+  font-style: italic;
+  color: var(--fg-muted);
+}
+.slot-row-meta {
+  font-family: var(--mono);
+  font-size: 0.65rem;
+  color: var(--fg-muted);
+  letter-spacing: 0.04em;
+  margin-left: auto;
+  flex-shrink: 0;
+}
+
+/* Compact mode hides the variant_id sub-line on each row. */
+.slot-picker--compact .slot-row-variant {
+  display: none;
+}
+.slot-picker--compact .slot-row-head {
+  padding-top: 0.3rem;
+  padding-bottom: 0.3rem;
+}
+
+/* ---------- Pulse (PATCH in flight) ---------- */
+.slot-pulse {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.18rem;
+  margin-left: auto;
+  flex-shrink: 0;
+  padding: 0 0.2rem;
+}
+.slot-pulse-dot {
+  width: 0.28rem;
+  height: 0.28rem;
+  border-radius: 50%;
+  background: var(--accent);
+  opacity: 0.4;
+  animation: slotPulse 1.2s ease-in-out infinite;
+}
+.slot-pulse-dot:nth-child(2) { animation-delay: 0.15s; }
+.slot-pulse-dot:nth-child(3) { animation-delay: 0.3s; }
+@keyframes slotPulse {
+  0%, 80%, 100% { transform: scale(0.6); opacity: 0.3; }
+  40%           { transform: scale(0.85); opacity: 0.85; }
+}
+
+/* ---------- Variant drop-list ---------- */
+.slot-variant-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+  padding: 0.25rem 0.4rem 0.55rem 1.5rem;
+  border-top: 1px dashed color-mix(in srgb, var(--border) 60%, transparent);
+  margin-top: 0.1rem;
+}
+
+.slot-variant-opt {
+  display: flex;
+  align-items: stretch;
+  gap: 0.5rem;
+  background: transparent;
+  border: 1px solid transparent;
+  text-align: left;
+  cursor: pointer;
+  color: inherit;
+  font: inherit;
+  padding: 0.35rem 0.55rem 0.35rem 0.45rem;
+  border-radius: 5px;
+  transition: background 120ms ease, border-color 120ms ease;
+  position: relative;
+}
+.slot-variant-opt:hover {
+  background: color-mix(in srgb, var(--accent) 8%, transparent);
+  border-color: color-mix(in srgb, var(--accent) 30%, var(--border));
+}
+.slot-variant-opt:focus-visible {
+  outline: 1px solid var(--accent);
+  outline-offset: 1px;
+}
+.slot-variant-opt:disabled {
+  cursor: wait;
+  opacity: 0.55;
+}
+.slot-variant-opt--selected {
+  background: color-mix(in srgb, var(--accent) 10%, transparent);
+  border-color: color-mix(in srgb, var(--accent) 45%, var(--border));
+}
+
+.slot-variant-accent {
+  width: 3px;
+  align-self: stretch;
+  border-radius: 2px;
+  background: transparent;
+}
+.slot-variant-opt--selected .slot-variant-accent {
+  background: var(--accent);
+}
+
+.slot-variant-text {
+  display: flex;
+  flex-direction: column;
+  gap: 0.1rem;
+  min-width: 0;
+  flex: 1;
+}
+.slot-variant-label {
+  font-family: var(--serif);
+  font-size: 0.85rem;
+  color: var(--fg);
+  letter-spacing: 0.02em;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.slot-variant-sub {
+  font-family: var(--mono);
+  font-size: 0.65rem;
+  color: var(--fg-muted);
+  letter-spacing: 0.03em;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.slot-variant-off-label {
+  font-style: italic;
+  color: var(--fg-muted);
+}
+
+.slot-variant-divider {
+  height: 1px;
+  background: color-mix(in srgb, var(--border) 60%, transparent);
+  margin: 0.15rem 0.2rem;
+}
+
+.slot-row-errtip {
+  margin-top: 0.4rem;
+  padding: 0.35rem 0.5rem;
+  font-family: var(--mono);
+  font-size: 0.7rem;
+  border-radius: 4px;
+  background: color-mix(in srgb, var(--color-error) 10%, transparent);
+  border: 1px solid color-mix(in srgb, var(--color-error) 40%, var(--border));
+  color: var(--fg);
+  letter-spacing: 0.02em;
+}
+.slot-row--conflict .slot-row-errtip {
+  background: color-mix(in srgb, var(--color-warn) 10%, transparent);
+  border-color: color-mix(in srgb, var(--color-warn) 40%, var(--border));
+}
+
+/* ---------- Empty / error states ---------- */
+.slot-empty {
+  font-family: var(--serif);
+  font-style: italic;
+  font-size: 0.85rem;
+  color: var(--fg-muted);
+  text-align: center;
+  padding: 0.4rem 0.5rem;
+}
+.slot-empty--error {
+  font-style: normal;
+  font-family: var(--mono);
+  color: var(--color-error);
+  font-size: 0.75rem;
+  letter-spacing: 0.03em;
+}
+
+/* ---------- VRAM footer ---------- */
+.slot-vram-foot {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  padding-top: 0.4rem;
+  border-top: 1px solid color-mix(in srgb, var(--border) 70%, transparent);
+}
+.slot-vram-row {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  align-items: center;
+  gap: 0.4rem;
+}
+.slot-vram-label {
+  font-family: var(--mono);
+  font-size: 0.65rem;
+  color: var(--fg-muted);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+.slot-vram-bar {
+  position: relative;
+  height: 6px;
+  background: color-mix(in srgb, var(--accent) 8%, transparent);
+  border-radius: 999px;
+  overflow: hidden;
+  border: 1px solid color-mix(in srgb, var(--border) 60%, transparent);
+}
+.slot-vram-bar-fill {
+  height: 100%;
+  width: 0;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--accent) 30%, transparent);
+  transition: width 220ms ease, background 220ms ease;
+  box-shadow: 0 0 6px -2px var(--accent);
+}
+.slot-vram-row--amber .slot-vram-bar-fill {
+  background: color-mix(in srgb, var(--color-warn) 60%, transparent);
+  box-shadow: 0 0 6px -2px var(--color-warn);
+}
+.slot-vram-meta {
+  font-family: var(--mono);
+  font-size: 0.65rem;
+  color: var(--fg-muted);
+  letter-spacing: 0.02em;
+}
+.slot-vram-row--amber .slot-vram-meta {
+  color: var(--color-warn);
+}
+
+/* ---------- Settings drawer ---------- */
+.slot-picker-settings {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+}
+.slot-picker-setting-row {
+  display: flex;
+  align-items: center;
+  gap: 0.55rem;
+  padding: 0.4rem 0.5rem;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: var(--bg);
+  font-family: var(--mono);
+  font-size: 0.78rem;
+  cursor: pointer;
+}
+.slot-picker-setting-check {
+  accent-color: var(--accent);
+  width: 1rem;
+  height: 1rem;
+}
+.slot-picker-setting-label {
+  color: var(--fg-muted);
+}
+
+/* ---------- Reduced motion ---------- */
+@media (prefers-reduced-motion: reduce) {
+  .slot-row,
+  .slot-row-accent,
+  .slot-variant-opt,
+  .slot-variant-accent,
+  .slot-vram-bar-fill { transition: none; }
+  .slot-pulse-dot {
+    animation: none;
+    opacity: 0.7;
+  }
+  /* Static glyph in place of the bouncing dots — render a centered ellipsis
+   * by collapsing the first two dots to invisible and styling the third. */
+  .slot-pulse {
+    width: auto;
+  }
+  .slot-pulse-dot:nth-child(1),
+  .slot-pulse-dot:nth-child(2) { display: none; }
+  .slot-pulse-dot:nth-child(3) {
+    display: inline-block;
+    width: auto;
+    height: auto;
+    border-radius: 0;
+    background: transparent;
+    color: var(--accent);
+    font-family: var(--mono);
+    font-size: 0.8rem;
+  }
+  .slot-pulse-dot:nth-child(3)::before {
+    content: "…";
+  }
+}
