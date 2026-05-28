@@ -403,6 +403,11 @@ function ensureDrawer() {
     if (e.target.closest('.block-btn-gear')) return;
     closeSettings();
   });
+  // Escape dismiss.
+  document.addEventListener("keydown", (e) => {
+    if (!drawer || drawer.hidden) return;
+    if (e.key === "Escape") { e.stopPropagation(); closeSettings(); }
+  });
 }
 
 function openSettings(blockId) {
@@ -597,6 +602,26 @@ function resetLayout() {
   window.location.reload();
 }
 
+/** Apply a named preset layout (rect map by type id). Reloads to remount. */
+function applyPreset(presetId) {
+  const preset = PRESETS[presetId];
+  if (!preset) return;
+  const next = {};
+  for (const type of blockTypes.values()) {
+    const rect = preset[type.id] || type.defaultRect || { col: 0, row: 0, w: 6, h: 6 };
+    const visible = preset[type.id] !== false;   // explicit false hides
+    next[type.id] = {
+      typeId: type.id,
+      rect: { ...rect },
+      visible,
+      settings: layout[type.id]?.settings || { tint: "none", fontScale: 1.0 },
+    };
+  }
+  layout = next;
+  saveLayout();
+  window.location.reload();
+}
+
 /** Toggle a hidden block back on (used by an "add block" menu). */
 function showBlock(blockId) {
   const state = layout[blockId];
@@ -607,11 +632,72 @@ function showBlock(blockId) {
   saveLayout();
 }
 
+/** Hide a block (same as the header X — keeps state for re-add). */
+function hideBlock(blockId) {
+  const state = layout[blockId];
+  const el = blockEls.get(blockId);
+  if (!state || !el) return;
+  state.visible = false;
+  el.classList.add("hidden");
+  saveLayout();
+}
+
+/** All registered types with their current visibility. */
+function listTypes() {
+  return Array.from(blockTypes.values()).map((t) => ({
+    id: t.id,
+    name: t.name,
+    visible: !!layout[t.id]?.visible,
+    registered: true,
+  }));
+}
+
+/** Built-in layout presets — rect map keyed by block-type id. */
+const PRESETS = {
+  default: {
+    chat:         { col: 0, row: 0,  w: 8,  h: 12 },
+    palace:       { col: 0, row: 12, w: 12, h: 14 },
+    model:        { col: 8, row: 0,  w: 4,  h: 6  },
+    "slot-picker":{ col: 8, row: 6,  w: 4,  h: 10 },
+    "stats-gpu":  { col: 8, row: 16, w: 4,  h: 6  },
+    "stats-cpu":  { col: 0, row: 26, w: 4,  h: 6  },
+    "stats-mem":  { col: 4, row: 26, w: 4,  h: 6  },
+    "stats-disk": { col: 8, row: 26, w: 4,  h: 6  },
+    "stats-net":  { col: 0, row: 32, w: 6,  h: 6  },
+  },
+  compact: {
+    chat:         { col: 0, row: 0,  w: 12, h: 10 },
+    palace:       { col: 0, row: 10, w: 12, h: 10 },
+    model:        { col: 0, row: 20, w: 4,  h: 4  },
+    "slot-picker":{ col: 4, row: 20, w: 4,  h: 6  },
+    "stats-gpu":  { col: 8, row: 20, w: 4,  h: 5  },
+    "stats-cpu":  { col: 0, row: 26, w: 3,  h: 4  },
+    "stats-mem":  { col: 3, row: 26, w: 3,  h: 4  },
+    "stats-disk": { col: 6, row: 26, w: 3,  h: 4  },
+    "stats-net":  { col: 9, row: 26, w: 3,  h: 4  },
+  },
+  "data-dense": {
+    chat:         { col: 0, row: 0,  w: 6,  h: 14 },
+    palace:       { col: 0, row: 14, w: 12, h: 12 },
+    model:        false,   // hidden — picker covers it
+    "slot-picker":{ col: 6, row: 0,  w: 3,  h: 14 },
+    "stats-gpu":  { col: 9, row: 0,  w: 3,  h: 5  },
+    "stats-cpu":  { col: 9, row: 5,  w: 3,  h: 5  },
+    "stats-mem":  { col: 9, row: 10, w: 3,  h: 4  },
+    "stats-disk": { col: 0, row: 26, w: 6,  h: 4  },
+    "stats-net":  { col: 6, row: 26, w: 6,  h: 4  },
+  },
+};
+
 export const dashboard = {
   registerBlockType,
   mount,
   resetLayout,
+  applyPreset,
+  presets: Object.keys(PRESETS),
   showBlock,
+  hideBlock,
+  listTypes,
   // Surfaced for the future "add block" picker.
   listBlocks() {
     return Array.from(blockEls.keys()).map((id) => ({
