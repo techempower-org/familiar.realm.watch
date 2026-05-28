@@ -592,6 +592,20 @@ body {
 .status.connected { color: var(--accent); border-color: var(--accent); }
 .status.warn { color: var(--color-warn); border-color: var(--color-warn); opacity: 0.85; }
 .status.error { color: var(--color-error); border-color: var(--color-error); }
+/* While streaming, the pill breathes — visible cue that the assistant is
+   working even when no text has appeared yet (palace search in flight). */
+.status.streaming {
+  color: var(--accent);
+  border-color: var(--accent);
+  animation: status-breathe 1.6s ease-in-out infinite;
+}
+@keyframes status-breathe {
+  0%, 100% { opacity: 0.55; box-shadow: 0 0 0 0 transparent; }
+  50%      { opacity: 1; box-shadow: 0 0 8px color-mix(in srgb, var(--accent) 30%, transparent); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .status.streaming { animation: none; opacity: 1; }
+}
 
 .log {
   flex: 1;
