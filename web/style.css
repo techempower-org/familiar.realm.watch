@@ -412,6 +412,9 @@ body {
   transition: transform 150ms ease, background 150ms ease;
 }
 .voice-toggle input:checked + .voice-toggle-track { background: color-mix(in srgb, var(--accent) 35%, transparent); }
+.voice-toggle input:focus-visible + .voice-toggle-track {
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 22%, transparent);
+}
 .voice-toggle input:checked + .voice-toggle-track .voice-toggle-knob {
   transform: translateX(14px);
   background: var(--accent);
