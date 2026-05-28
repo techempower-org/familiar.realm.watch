@@ -7,6 +7,55 @@ versions follow [SemVer](https://semver.org/spec/v2.0.0.html) and the
 [realm-sigil](https://github.com/jphein/realm-sigil) convention used across
 the realm.watch ecosystem.
 
+## [Unreleased] — 2026-05-28 — *Wave Terminal dashboard + 5-slot model picker*
+
+A single afternoon's shipping: the chat-only PWA became a movable-block dashboard, the inference topology became user-controllable, and 7 dream-team agents landed 7+ PRs end-to-end. Postgres OOMs that had been recurring for a day fixed via palace-daemon side. Production host memory footprint cut.
+
+### Added — Dashboard (PRs #54, #56, #57, #67)
+
+- **Wave Terminal-style block grid** (`web/dashboard.js`, Reverie #54). Every UI element is a movable + resizable block with its own settings drawer. Layout persists to `localStorage`. Mobile collapses to single column. The chat UI + palace tab become two of the blocks.
+- **Stat widgets** (`web/widgets/stats-*.js`, Luna #56). Five blocks — GPU / CPU / memory / disk / network — backed by `/api/familiar/stats`. Threshold colours via `color-mix()` against `--accent`; `prefers-reduced-motion` zeros transitions.
+- **Slot-picker block** (`web/widgets/slot-picker.{js,css}`, Selene #57). Visual picker for the five inference slots; click a row to see variants for that slot from the registry, click a variant to PATCH. VRAM bars per GPU. Off state for hyde/reflect.
+- **Add-block picker, layout reset/presets, settings parity, theme audit** (Mira #67). `+` button in the dashboard header opens the available block-types list; closed blocks can be re-added without losing config. Every block has a meaningful gear/settings affordance now.
+
+### Added — Stats backend (PR #53)
+
+- **`GET /api/familiar/stats`** (`src/routes/stats.ts`, Echo #53). Single endpoint returning CPU/mem/disk/net/GPU snapshot. ~2s in-process cache. `nvidia-smi` shells out via `Bun.spawnSync` with argv arrays. Graceful degradation when on a non-Linux/no-GPU host.
+
+### Added — Slot picker backend (PR #55)
+
+Five inference slots (chat / embed / extract / hyde / reflect) each independently switchable:
+
+- **Registry + slots files** (`/var/lib/familiar/registry.json` ops-owned, `/var/lib/familiar/slots.json` api-owned atomic-write). Mtime-cached at request time (1s coalesce).
+- **Admin endpoint** `PATCH /api/familiar/admin/slots/:slot` with full mutation flow: validate → 0.92×total VRAM preflight → stop outgoing units → start incoming → poll `/health` 30s × 500ms → atomic-write `slots.json`. Rolls back systemd state + leaves `slots.json` unchanged on any failure (503 with structured detail).
+- **`familiar-slotctl` wrapper** (`/usr/local/sbin/familiar-slotctl`) with passwordless sudo grant, unit-name regex + allow-list defense in depth. Auditable via `journalctl -u sudo`.
+- **Wave 2b chat-route switch** (`src/routes/chat.ts`). Chat requests consult `resolver.chat()` per-call; fall back to legacy `InferenceRouter` when the resolver yields null (cold-start safety).
+- **Wave 2c embed-route switch** (`src/routes/embeddings.ts`). Embed requests consult `resolver.embedClient()`; fall back to legacy `ollamaEmbed` on null. Restricted to `runtime: "ollama"` variants (llama-cpp doesn't implement embed yet).
+- **Caddy `@admin` block** on ubox0 forwards `/api/familiar/admin/*` through Authelia at `10.0.6.134:9091` (matching the existing `@write` pattern).
+- 40 new tests + an operator runbook at [`docs/slot-picker.md`](docs/slot-picker.md).
+
+### Fixed — Production memory pressure (PR #60, palace-daemon #117, palace-daemon #132)
+
+- **mempalace-db cgroup OOMs** (#50, palace-daemon #117 by Lucid). The container was running with `MemoryMax=3G` but `shared_buffers=4GB` — postgres OOM-killed 5+ times under writethrough load. Codified mempalace-db as a first-class compose service in palace-daemon repo and raised cgroup to 6 GiB.
+- **postgres tunables** (palace-daemon #132 by Drift). `max_connections` dropped 200→32 (observed peak ~16); `shared_buffers` tuned to the new cgroup ceiling.
+- **familiar host memory at 93%** (#58, PR #60 by Twilight). Diagnosed: kg-extract worker `--workers 8 --batch-size 20` was eating most of the slack; llama-server prompt-cache was unbounded under load. Capped llama-server swap to 1G via systemd unit fragment; documented further tuning options as sub-issues #61 + #62.
+
+### Fixed — Caddy LAN-resolution
+
+- **familiar.jphe.in 502 Bad Gateway**. The `familiar.jphe.in` block in ubox0's Caddyfile used bare `familiar:8080` upstreams. From ubox0, MagicDNS was resolving the bare name to the tailnet IP (unreachable from Caddy's systemd unit). Fixed by appending the LAN search suffix — same trap as Trap 1 in `ubox0/docs/three-horizon-dns.md` (originally applied to `palace.jphe.in`, missed for the newer familiar block).
+
+### Filed during the session (in-flight or backlog)
+
+- familiar #61 — postgres max_connections (closed by palace-daemon #132)
+- familiar #62 — move palace-daemon and/or kg-extract worker off familiar (architectural discussion)
+- familiar #63 — replace manual SW cache bump with content-hashed or network-first strategy
+- familiar #64 — stat widget scripts not loaded in index.html (closed by hot-fix in 7ab0209)
+- techempower-org/multipass#87, #88 — moved the reranker bench + probe sweep tracking out of familiar (benchmarking work belongs in multipass)
+
+### Deploys this session
+
+In order: Obsidian Monolith (7f7d052) → Hallowed Monolith (2884087, SW v24) → Hallowed Keystone (a1a8693, SW v25) → Jade Keystone (7ab0209, SW v27) → Gilded Aegis (425b842) → Twilight Jewel (c3a5936) → Radiant Oracle (01d9684). Each `realm_sigil_post` confirms the deployed hash matches /api/version.
+
 ## [Unreleased] — 2026-05-24 — *Temporal retrieval + AGE knowledge graph backfill*
 
 Closes the loop on the AGE knowledge graph integration from
