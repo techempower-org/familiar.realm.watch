@@ -2088,7 +2088,24 @@ tabPalace.addEventListener("click", () => setTab("palace"));
 if (palaceRefresh) palaceRefresh.addEventListener("click", () => showPalace(true));
 
 if ("serviceWorker" in navigator) {
-  navigator.serviceWorker.register("/sw.js").catch(() => {});
+  navigator.serviceWorker.register("/sw.js")
+    .then((reg) => {
+      if (!reg) return;
+      // Notify when a new SW takes over (a deploy landed). The
+      // controllerchange fires once the new SW has activated and
+      // controls the page. Reload-on-next-interaction is the
+      // friendly pattern — surface a toast, let the user click.
+      let toastShown = false;
+      navigator.serviceWorker.addEventListener("controllerchange", () => {
+        if (toastShown) return;
+        toastShown = true;
+        window.familiarToast?.info?.(
+          "new familiar build available — refresh to load",
+          { ttl: 20000 },
+        );
+      });
+    })
+    .catch(() => { /* silent */ });
 }
 
 // ---- Voice (Web Speech API) ----
