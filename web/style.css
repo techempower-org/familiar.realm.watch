@@ -461,7 +461,13 @@ body {
 .copy-btn  { right: 2.2rem; }
 .msg.assistant:hover .speak-btn,
 .msg.assistant:hover .copy-btn { opacity: 1; }
-.speak-btn:hover, .copy-btn:hover { color: var(--accent); border-color: var(--accent); }
+.speak-btn:hover, .copy-btn:hover,
+.speak-btn:focus-visible, .copy-btn:focus-visible {
+  color: var(--accent);
+  border-color: var(--accent);
+  opacity: 1;
+  outline: none;
+}
 .speak-btn.speaking { opacity: 1; color: var(--accent); border-color: var(--accent); }
 .copy-btn-done { opacity: 1; color: var(--accent); border-color: var(--accent); }
 @media (max-width: 720px) {
