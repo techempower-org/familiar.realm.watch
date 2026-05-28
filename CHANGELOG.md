@@ -87,12 +87,46 @@ Five inference slots (chat / embed / extract / hyde / reflect) each independentl
 - Sigil hover gets a soft gold drop-shadow
 - Sidebar form controls gained `aria-label` (screen reader compliance)
 
-### Issues filed (open for future)
+### Third wave — late-session polish (closed)
+
+- **familiar #78** — copy-to-clipboard button on assistant turns (hover-revealed, ↺ glyph confirms)
+- **familiar #79** — unified toast notification module (`/widgets/toast.js`) with onClick + actionable variant
+- **familiar #80** — per-message timestamps (hover-revealed in corner)
+- **familiar #83** — undo-toast for session delete (6s window, click to restore) — replaces native `confirm()`
+- **familiar #84** — closed as already-shipped (renameSessionInline used contenteditable)
+
+### Filed for future
 
 - familiar #62 — evaluate moving palace-daemon and/or kg-extract worker off familiar (architectural)
 - familiar #74 — voice integration via gnome-speaks TTS (cross-host design needed)
 - familiar #77 — A/B sweep runbook for #71 × #99 (needs production restart)
 - familiar #81 — playwright/headless UI tests for the dashboard
+- familiar #82 — cross-tab session sync via BroadcastChannel
+
+### Misc polish in the late session
+
+- Triple-click sigil easter egg (`sound.flourish()` + scale-glow + toast)
+- Sigil turn-end pulse (gold-glow flash when assistant stream completes)
+- Sigil hover gets a soft gold drop-shadow
+- Sessions count badge + memories count badge in sidebar
+- Expanded sidebar shortcut hints
+- Typing indicator hides on first stream content byte (was: stayed visible)
+- Connection-aware status (offline/online events, toasts)
+- Status pill breathes during streaming
+- Slash commands: `/help` `/clear` `/abort` `/stop` `/version`
+- Chat input focus glow ring + draft persistence (`familiar_chat_draft`)
+- Empty-log welcome hint (fades in 800ms)
+- `Ctrl+Home` / `Ctrl+End` scroll the chat log; send button greys when input empty
+- Scroll-to-bottom floating button
+- noscript fallback for JS-disabled visitors
+- SW update notification toast on `controllerchange`
+- Springier message-appear animation (cubic-bezier + slight scale)
+- Chat log gains `role="log"` + `aria-relevant="additions"`
+- Chat input rotating placeholder expanded to 12 prompts
+- Realm word in sidebar: click for build detail toast, shift-click opens commit URL
+- Welcome flourish on first visit per deploy hash
+- Smooth scroll on chat log; `meta color-scheme` for theme-matched scrollbars
+- Sidebar form controls gained `aria-label`
 
 ### Deploys this session (chronological)
 
