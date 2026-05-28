@@ -1169,6 +1169,16 @@ document.addEventListener("keydown", (e) => {
   if (e.key === "Escape" && chatAbort) {
     chatAbort.abort();
   }
+  // Ctrl+Home / Ctrl+End scrolls the chat log to start/end. Standard
+  // browser shortcut behavior except the .log is a nested overflow:auto
+  // container — the browser default doesn't reach it without help.
+  if (e.ctrlKey && (e.key === "Home" || e.key === "End") && log) {
+    const active = document.activeElement;
+    const inField = active && (active.tagName === "INPUT" || active.tagName === "TEXTAREA" || active.isContentEditable);
+    if (inField) return; // don't override field navigation
+    e.preventDefault();
+    log.scrollTop = e.key === "Home" ? 0 : log.scrollHeight;
+  }
   if (e.ctrlKey && e.shiftKey && e.key === "N") {
     e.preventDefault();
     createSession();
