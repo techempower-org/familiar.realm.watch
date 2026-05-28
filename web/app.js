@@ -863,6 +863,25 @@ function toggleSidebar() { document.body.classList.toggle("sidebar-open"); }
 function closeSidebar() { document.body.classList.remove("sidebar-open"); }
 
 sigilBtn.addEventListener("click", (e) => { e.stopPropagation(); toggleSidebar(); });
+// Triple-click the sigil → magical flourish. Tiny easter egg.
+// Plays sound.flourish() if audio is enabled, adds a brief sparkle
+// class on the sigil itself.
+let sigilClicks = 0;
+let sigilClickTimer = null;
+sigilBtn.addEventListener("click", () => {
+  sigilClicks++;
+  clearTimeout(sigilClickTimer);
+  sigilClickTimer = setTimeout(() => { sigilClicks = 0; }, 600);
+  if (sigilClicks >= 3) {
+    sigilClicks = 0;
+    sigilBtn.classList.add("sigil-flourish");
+    setTimeout(() => sigilBtn.classList.remove("sigil-flourish"), 1200);
+    import("/widgets/sound.js")
+      .then((m) => m.sound?.flourish?.())
+      .catch(() => { /* silent */ });
+    window.familiarToast?.success?.("✦ the sigil hums");
+  }
+});
 hdrMenu.addEventListener("click", (e) => { e.stopPropagation(); toggleSidebar(); });
 sidebarScrim.addEventListener("click", () => closeSidebar());
 sessionsNew.addEventListener("click", (e) => { e.stopPropagation(); createSession(); });

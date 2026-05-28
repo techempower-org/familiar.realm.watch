@@ -186,6 +186,20 @@ body {
   border-color: var(--border);
   filter: drop-shadow(0 0 6px color-mix(in srgb, var(--accent) 50%, transparent));
 }
+/* Triple-click easter egg — sigil glows brightly + spins faster briefly. */
+.sigil.sigil-flourish {
+  color: var(--accent);
+  filter: drop-shadow(0 0 16px color-mix(in srgb, var(--accent) 80%, transparent));
+  animation: sigil-rotate 1.5s linear infinite, sigil-flourish-glow 1.2s ease-out;
+}
+@keyframes sigil-flourish-glow {
+  0%   { transform: scale(1); }
+  30%  { transform: scale(1.18); }
+  100% { transform: scale(1); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .sigil.sigil-flourish { animation: none; }
+}
 .sigil:focus-visible { outline: 1px solid var(--accent); outline-offset: 2px; }
 .sigil svg { width: 100%; height: 100%; display: block; }
 @keyframes sigil-rotate {
