@@ -85,32 +85,6 @@ Block-type opt-in goes in `renderSettings(el, state, save)`.
 - Respect `prefers-reduced-motion: reduce` — kill transitions, keep state
   changes instant.
 
-## Micro-animations + sound design (v29)
-
-The dashboard has a small "vibe layer" of magical feedback:
-
-| Cue | Trigger | Where |
-| --- | --- | --- |
-| Gold ripple on send | submit any chat turn | `.send-ripple` overlay on `#send-btn` |
-| Block enter/exit | add via "+" picker; hide via X | `.block-entering` / `.block-leaving` |
-| Slot-picker patch wash | 200 from `PATCH /api/familiar/admin/slots/:slot` | `.slot-row--success` gold sweep |
-| Synthesized chime | same trigger, when sound is enabled | `sound.chime()` |
-| Synthesized thunk | 503 / 409 / network error on slot PATCH | `sound.thunk()` |
-| Synthesized tick | send button submit, when sound is enabled | `sound.tick()` |
-
-**Sound is OFF by default.** Enable it via the "sound fx" toggle in the
-sidebar voice section. Persisted to `localStorage["familiar_sound"]`
-(`"on"` / `"off"`). The toggle's first click also unlocks the
-`AudioContext` (browsers gate audio behind a user gesture).
-
-Both `prefers-reduced-motion: reduce` and the `familiar_sound` opt-out
-disable all synthesized cues — independently. Animations gated only by
-reduced-motion still respect that media query via CSS.
-
-The realm word (e.g. "Twilight Jewel") is mirrored into the connection
-status pill's tooltip so you can hover the pill from anywhere to see
-which build is loaded.
-
 ## Public API surface
 
 ```ts

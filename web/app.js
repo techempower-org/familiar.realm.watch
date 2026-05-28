@@ -1,6 +1,5 @@
 // Vanilla chat UI. Streams /v1/chat/completions SSE into the transcript.
 // v0.3.1 — multi-session sidebar, reflect pill, finer status.
-import { sound } from "/widgets/sound.js";
 const log = document.getElementById("log");
 const form = document.getElementById("form");
 const input = document.getElementById("input");
@@ -1020,13 +1019,6 @@ async function checkHealth() {
       setStatus("connected", "connected");
     }
     if (d.version?.word && word.textContent !== d.version.word) word.textContent = d.version.word;
-    // Surface the realm word in the status pill tooltip too — a quiet
-    // reminder of which build the familiar is wearing. Hover the pill
-    // anywhere on the page to see it.
-    if (d.version?.word && status) {
-      const hash = d.version.hash ? ` · ${d.version.hash}` : "";
-      status.title = `${d.version.word}${hash}`;
-    }
   } catch {
     setStatus("error", "offline");
   }
@@ -1094,39 +1086,12 @@ document.addEventListener("keydown", (e) => {
   }
 });
 
-// Send-button gold ripple — emanates a single ring from the button center on
-// every submit. Cheap: one transient span, CSS animation does the rest.
-function triggerSendRipple() {
-  if (window.matchMedia?.("(prefers-reduced-motion: reduce)").matches) return;
-  const btn = document.getElementById("send-btn");
-  if (!btn) return;
-  const ring = document.createElement("span");
-  ring.className = "send-ripple";
-  ring.addEventListener("animationend", () => ring.remove(), { once: true });
-  btn.appendChild(ring);
-}
-
-// Sound-fx toggle: mirrors the voice toggle's UX but controls the synthesized
-// UI cues from /widgets/sound.js (chime, thunk, tick, flourish).
-const soundEnabledEl = document.getElementById("sound-enabled");
-if (soundEnabledEl) {
-  soundEnabledEl.checked = sound.enabled();
-  soundEnabledEl.addEventListener("change", () => {
-    sound.setEnabled(soundEnabledEl.checked);
-    if (soundEnabledEl.checked) sound.chime();   // brief preview on enable
-  });
-}
-
 form.addEventListener("submit", async (e) => {
   e.preventDefault();
   const text = input.value.trim();
   if (!text) return;
   // Stop any ongoing TTS so the familiar doesn't talk over the next exchange.
   if (currentUtterance) cancelSpeech();
-  // Magical send ripple — a single gold ring emanating from the send button.
-  // Pure CSS via a transient .send-ripple child; cleans itself up onanimationend.
-  triggerSendRipple();
-  sound.tick();
   input.value = "";
   autoResize();
   submit.disabled = true;

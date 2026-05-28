@@ -168,7 +168,9 @@ function buildBlockEl(type, id, state) {
   const hideBtn = mkIconBtn("hide", "hide block", svgX());
   hideBtn.addEventListener("click", (e) => {
     e.stopPropagation();
-    hideBlock(id);
+    state.visible = false;
+    el.classList.add("hidden");
+    saveLayout();
   });
   ctrls.appendChild(hideBtn);
 
@@ -627,14 +629,6 @@ function showBlock(blockId) {
   if (!state || !el) return;
   state.visible = true;
   el.classList.remove("hidden");
-  // Enter choreography — strip any leftover .block-leaving and play the
-  // fade+scale. Reduced motion: animation is no-op via CSS media query.
-  el.classList.remove("block-leaving");
-  el.classList.add("block-entering");
-  const cleanup = () => el.classList.remove("block-entering");
-  el.addEventListener("animationend", cleanup, { once: true });
-  // Belt-and-braces in case animation never runs (e.g. reduced motion).
-  setTimeout(cleanup, 320);
   saveLayout();
 }
 
@@ -644,16 +638,7 @@ function hideBlock(blockId) {
   const el = blockEls.get(blockId);
   if (!state || !el) return;
   state.visible = false;
-  // Exit choreography — play the reverse, then commit display:none. Reduced
-  // motion skips the wait via CSS (animation: none → animationend never fires,
-  // so we fall back to the timeout cleanup).
-  el.classList.add("block-leaving");
-  const finish = () => {
-    el.classList.remove("block-leaving");
-    el.classList.add("hidden");
-  };
-  el.addEventListener("animationend", finish, { once: true });
-  setTimeout(finish, 250);
+  el.classList.add("hidden");
   saveLayout();
 }
 

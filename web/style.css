@@ -1497,32 +1497,6 @@ textarea.palace-detail-body.editing {
   font-style: italic;
 }
 
-/* ===================== Send-button gold ripple =====================
- * A single accent-coloured ring emanates from the send button on submit.
- * The .send-ripple span is created in JS (app.js → triggerSendRipple)
- * and removed onanimationend. Position: absolute over the button; the
- * button is already a flex item with sufficient size to host an overlay.
- * Reduced motion: ripple is never appended (JS gate).
- */
-.form button[type="submit"] { position: relative; overflow: visible; }
-.send-ripple {
-  position: absolute;
-  inset: 0;
-  margin: auto;
-  width: 100%;
-  height: 100%;
-  border-radius: 6px;
-  pointer-events: none;
-  border: 1px solid var(--accent);
-  background: color-mix(in srgb, var(--accent) 25%, transparent);
-  opacity: 0.8;
-  animation: send-ripple 520ms cubic-bezier(0.2, 0.7, 0.3, 1) forwards;
-}
-@keyframes send-ripple {
-  from { transform: scale(1);   opacity: 0.75; }
-  to   { transform: scale(1.9); opacity: 0;    }
-}
-
 /* ===================== Typing indicator (streaming) ===================== */
 .typing-indicator {
   display: flex;
@@ -1636,33 +1610,6 @@ main {
   box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
 }
 .block.hidden { display: none; }
-
-/* Block enter/exit choreography — a brief fade + scale when a block is
- * un-hidden via the "+" picker or re-hidden via the X. Layered on top of
- * the dragging/resizing transitions so they don't fight.
- * The .block-entering class is applied for a single animation tick by
- * dashboard.showBlock(); .block-leaving plays the reverse before display:none. */
-.block.block-entering {
-  animation: block-enter 260ms cubic-bezier(0.2, 0.7, 0.3, 1.05);
-  transform-origin: top left;
-}
-.block.block-leaving {
-  animation: block-leave 200ms cubic-bezier(0.4, 0, 0.6, 1) forwards;
-  transform-origin: top left;
-  pointer-events: none;
-}
-@keyframes block-enter {
-  from { opacity: 0; transform: scale(0.95); }
-  to   { opacity: 1; transform: scale(1);    }
-}
-@keyframes block-leave {
-  from { opacity: 1; transform: scale(1);    }
-  to   { opacity: 0; transform: scale(0.95); }
-}
-@media (prefers-reduced-motion: reduce) {
-  .block.block-entering,
-  .block.block-leaving { animation: none; }
-}
 .block[data-tint="warm"] {
   background: color-mix(in srgb, var(--accent) 6%, var(--assistant-bg));
 }

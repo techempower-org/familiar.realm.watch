@@ -1,7 +1,7 @@
 // Minimal service worker for offline PWA shell.
 // Caches only the static shell — API calls always hit the network.
 // Bump CACHE name on shell file changes so old clients pick up new HTML/CSS/JS.
-const CACHE = "familiar-shell-v29";
+const CACHE = "familiar-shell-v28";
 const SHELL = [
   "/", "/index.html", "/style.css", "/app.js", "/favicon.svg", "/manifest.webmanifest",
   "/highlight.min.js", "/highlight-dark.css", "/highlight-light.css",
@@ -15,8 +15,6 @@ const SHELL = [
   "/widgets/stats-mem.js", "/widgets/stats-net.js",
   // Slot picker block (Selene):
   "/widgets/slot-picker.css", "/widgets/slot-picker.js",
-  // v29 — sound design + magical micro-animations (Ember):
-  "/widgets/sound.js",
 ];
 
 self.addEventListener("install", (e) => {

@@ -15,7 +15,6 @@
 // pulse running for the full duration — no client-side timeout.
 
 import { dashboard } from "../dashboard.js";
-import { sound } from "./sound.js";
 
 const SLOT_ORDER = ["chat", "embed", "extract", "hyde", "reflect"];
 const NULLABLE_SLOTS = new Set(["hyde", "reflect"]);
@@ -359,14 +358,11 @@ function render(host) {
         // Optimistic local update; refresh to pick up usage shifts.
         snapshot.slots.slots[slot] = { variant_id: variantId };
         repaint();
-        flashRowSuccess(slot);
-        sound.chime();
         loadSnapshot();
       } else {
         const e = describeError(result.status, result.body || {});
         errors.set(slot, e);
         scheduleErrorClear(slot);
-        sound.thunk();
         // State stays at priorBinding (we never wrote the new value to snapshot.slots).
         repaint();
       }
@@ -374,24 +370,8 @@ function render(host) {
       pending.slot = null;
       errors.set(slot, { kind: "error", message: err?.message || String(err) });
       scheduleErrorClear(slot);
-      sound.thunk();
       repaint();
     }
-  }
-
-  // Brief gold-wash animation across the row that just committed. The
-  // .slot-row--success class adds a transient overlay (CSS keyframes); we
-  // strip it after the animation ends so it can play again on the next
-  // commit.
-  function flashRowSuccess(slot) {
-    // Find the row in the next paint frame — `repaint()` above has just
-    // rebuilt the DOM synchronously, so we can query right now.
-    const row = host.querySelector(`.slot-row[data-slot="${slot}"]`);
-    if (!row) return;
-    row.classList.add("slot-row--success");
-    const cleanup = () => row.classList.remove("slot-row--success");
-    row.addEventListener("animationend", cleanup, { once: true });
-    setTimeout(cleanup, 900);   // belt + braces for reduced-motion path
   }
 
   function scheduleErrorClear(slot) {

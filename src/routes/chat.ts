@@ -60,7 +60,7 @@ export interface ChatRouteDeps {
  * back to the legacy router. Called once per request — resolver does its
  * own mtime-cache so cost is one stat() at most.
  */
-async function pickChatProvider(deps: ChatRouteDeps): Promise<InferenceChatProvider> {
+export async function pickChatProvider(deps: ChatRouteDeps): Promise<InferenceChatProvider> {
   if (deps.resolver) {
     const resolved = await deps.resolver.chat();
     if (resolved.provider) return resolved.provider;
