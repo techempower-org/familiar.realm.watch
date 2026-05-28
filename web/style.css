@@ -1726,9 +1726,14 @@ main {
   border-radius: 4px;
   cursor: pointer;
   text-transform: uppercase;
-  transition: color 100ms ease, border-color 100ms ease;
+  transition: color 150ms ease, border-color 150ms ease, box-shadow 150ms ease;
 }
-.hdr-action:hover { color: var(--accent); border-color: var(--accent); }
+.hdr-action:hover, .hdr-action:focus-visible {
+  color: var(--accent);
+  border-color: var(--accent);
+  outline: none;
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 12%, transparent);
+}
 
 .dashboard {
   flex: 1;
