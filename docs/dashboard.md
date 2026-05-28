@@ -160,8 +160,23 @@ interface Dashboard {
 | `Ctrl+L` | Focus the chat input (shell muscle memory) |
 | `Ctrl+Shift+N` | New session |
 | `Ctrl+Shift+S` | Toggle sidebar |
-| `Esc` (in dashboard picker) | Close + return focus to trigger |
+| `Ctrl+Home` / `Ctrl+End` | Scroll chat log to start / end |
+| `Esc` | Abort in-flight assistant stream (also closes the dashboard picker, returning focus to its trigger) |
 | `Tab` (in settings drawer) | Cycles within the drawer (focus trap) |
+
+## Chat slash commands
+
+Typed into the chat input — intercepted before the LLM sees them.
+
+| Command | Action |
+|---|---|
+| `/help` or `/?` | Toast with the full shortcut list |
+| `/clear` | Soft-clear the visible log (session intact; switching sessions restores) |
+| `/abort` or `/stop` | Cancel the in-flight assistant stream |
+| `/version` | Show the build's realm word, hash, branch, built timestamp |
+
+Unknown `/`-prefixed input falls through to the assistant normally —
+typing `/path/to/file` in a question still works.
 
 ## Mobile / touch
 
