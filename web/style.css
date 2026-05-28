@@ -291,7 +291,11 @@ body {
   font-family: var(--serif);
   line-height: 1.4;
 }
-.sessions-new:hover { border-color: var(--accent); }
+.sessions-new:hover, .sessions-new:focus-visible {
+  border-color: var(--accent);
+  outline: none;
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 18%, transparent);
+}
 .sessions-count {
   font-family: var(--mono);
   font-size: 0.65rem;
