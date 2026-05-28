@@ -14,6 +14,7 @@ import { handleEval } from "./routes/eval.ts";
 import { handleGraph } from "./routes/graph.ts";
 import { handleReflect } from "./routes/reflect.ts";
 import { handleMemories, handleMemoryDelete, handleMemoryPatch } from "./routes/memories.ts";
+import { handleStats } from "./routes/stats.ts";
 import { ReflectWriter } from "./reflect/writer.ts";
 
 const REFLECT_WING = "reflect";
@@ -176,6 +177,9 @@ const server = Bun.serve({
       }
       if (url.pathname === "/api/familiar/memories" && req.method === "GET") {
         return await handleMemories(req, { palace, reflectWing: REFLECT_WING });
+      }
+      if (url.pathname === "/api/familiar/stats" && req.method === "GET") {
+        return await handleStats(req);
       }
       // /api/familiar/memories/<drawer_id> — DELETE/PATCH a single drawer.
       const memoryMatch = url.pathname.match(/^\/api\/familiar\/memories\/(drawer_[a-z0-9_]+)$/);
