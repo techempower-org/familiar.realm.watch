@@ -48,8 +48,41 @@ function isDisabled(): boolean {
   return v === "off" || v === "false" || v === "0";
 }
 
+/**
+ * Optional widening multiplier for the static factor table (closes #72).
+ *
+ * Aurora's 4-config sweep ([multipass PR #94](https://github.com/techempower-org/multipass-structural-memory-eval/pull/94))
+ * showed that the ±15-20% range in `ROOM_MODALITY` was too narrow to swap
+ * drawers in/out of top-5 once temporal-decay had been applied. Rather
+ * than hard-coding a new wider table — which would change defaults for
+ * everyone — we expose the multiplier as an env var. Default 1.0 preserves
+ * existing behavior bit-for-bit. Higher values pull factors further from
+ * 1.0; neutral (1.0) factors stay neutral at any intensity.
+ *
+ * - PALACE_MODALITY_INTENSITY=1.0 (default): ±15-20% (today's behavior)
+ * - PALACE_MODALITY_INTENSITY=2.0: ±30-40%
+ * - PALACE_MODALITY_INTENSITY=2.5: ±37-50% (Aurora's recommendation 2 target)
+ * - PALACE_MODALITY_INTENSITY=0.0: factors collapse to 1.0 (modality off
+ *   without disabling the path; useful for ablation)
+ */
+export function getModalityIntensity(): number {
+  const raw = Bun.env.PALACE_MODALITY_INTENSITY ?? "1.0";
+  const v = parseFloat(raw);
+  if (!Number.isFinite(v) || v < 0) return 1.0;
+  return v;
+}
+
+/**
+ * Pull a per-room factor toward or away from neutral (1.0) by the
+ * configured intensity. Pure function for testability.
+ */
+export function intensify(factor: number, intensity: number): number {
+  return 1.0 + (factor - 1.0) * intensity;
+}
+
 export function modalityWeight(results: PalaceDrawer[], queryIntent: string): PalaceDrawer[] {
   if (isDisabled()) return results;
+  const intensity = getModalityIntensity();
   const intent: QueryIntent =
     queryIntent === "detail" || queryIntent === "synthesis" || queryIntent === "general"
       ? queryIntent
@@ -58,7 +91,8 @@ export function modalityWeight(results: PalaceDrawer[], queryIntent: string): Pa
     .map((d) => {
       const base = d.similarity ?? 0;
       const factors = ROOM_MODALITY[d.room];
-      const factor = factors ? factors[intent] : 1.0;
+      const rawFactor = factors ? factors[intent] : 1.0;
+      const factor = intensify(rawFactor, intensity);
       return { ...d, similarity: base * factor };
     })
     .sort((a, b) => (b.similarity ?? 0) - (a.similarity ?? 0));

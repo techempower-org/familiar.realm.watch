@@ -1,5 +1,5 @@
 import { test, expect, describe, beforeEach, afterEach } from "bun:test";
-import { detectQueryIntent, modalityWeight } from "../src/retrieval/modality.ts";
+import { detectQueryIntent, modalityWeight, intensify, getModalityIntensity } from "../src/retrieval/modality.ts";
 import type { PalaceDrawer } from "../src/types.ts";
 
 function drawer(
@@ -194,5 +194,72 @@ describe("modalityWeight", () => {
     expect(out.matched_via).toBe("drawer");
     expect(out.created_at).toBe("2026-05-20T00:00:00Z");
     expect(out.similarity).toBeCloseTo(0.5 * 1.1, 6);
+  });
+});
+
+describe("intensify (#72 widening multiplier)", () => {
+  test("intensity 1.0 returns factor unchanged", () => {
+    expect(intensify(0.85, 1.0)).toBeCloseTo(0.85, 6);
+    expect(intensify(1.15, 1.0)).toBeCloseTo(1.15, 6);
+    expect(intensify(1.0, 1.0)).toBe(1.0);
+  });
+
+  test("intensity 2.0 doubles the distance from neutral", () => {
+    expect(intensify(0.85, 2.0)).toBeCloseTo(0.7, 6);   // 1 - 2*(1-0.85)
+    expect(intensify(1.15, 2.0)).toBeCloseTo(1.3, 6);   // 1 + 2*(1.15-1)
+    expect(intensify(1.0, 2.0)).toBe(1.0);              // neutral stays neutral
+  });
+
+  test("intensity 0.0 collapses every factor to 1.0 (ablation arm)", () => {
+    expect(intensify(0.5, 0.0)).toBe(1.0);
+    expect(intensify(1.5, 0.0)).toBe(1.0);
+    expect(intensify(0.85, 0.0)).toBe(1.0);
+  });
+
+  test("intensity 2.5 (Aurora rec) widens 0.85→0.625 and 1.15→1.375", () => {
+    expect(intensify(0.85, 2.5)).toBeCloseTo(0.625, 6);
+    expect(intensify(1.15, 2.5)).toBeCloseTo(1.375, 6);
+  });
+});
+
+describe("getModalityIntensity (#72 env parsing)", () => {
+  const ORIG = Bun.env.PALACE_MODALITY_INTENSITY;
+  afterEach(() => {
+    if (ORIG === undefined) delete Bun.env.PALACE_MODALITY_INTENSITY;
+    else Bun.env.PALACE_MODALITY_INTENSITY = ORIG;
+  });
+
+  test("defaults to 1.0 when env unset", () => {
+    delete Bun.env.PALACE_MODALITY_INTENSITY;
+    expect(getModalityIntensity()).toBe(1.0);
+  });
+
+  test("parses a numeric env value", () => {
+    Bun.env.PALACE_MODALITY_INTENSITY = "2.5";
+    expect(getModalityIntensity()).toBe(2.5);
+  });
+
+  test("falls back to 1.0 on negative or NaN input", () => {
+    Bun.env.PALACE_MODALITY_INTENSITY = "-1";
+    expect(getModalityIntensity()).toBe(1.0);
+    Bun.env.PALACE_MODALITY_INTENSITY = "garbage";
+    expect(getModalityIntensity()).toBe(1.0);
+  });
+
+  test("intensity flows through to modalityWeight (widened factors observable)", () => {
+    Bun.env.PALACE_MODALITY_INTENSITY = "2.5";
+    const out = modalityWeight(
+      [drawer({ id: "a", room: "architecture", similarity: 1.0 }),
+       drawer({ id: "b", room: "references",   similarity: 1.0 })],
+      "synthesis",
+    );
+    // architecture×synthesis = 1.15 → intensified at 2.5 = 1.375
+    // references×synthesis   = 0.85 → intensified at 2.5 = 0.625
+    const a = out.find((d) => d.id === "a")!;
+    const b = out.find((d) => d.id === "b")!;
+    expect(a.similarity).toBeCloseTo(1.375, 6);
+    expect(b.similarity).toBeCloseTo(0.625, 6);
+    expect(out[0].id).toBe("a");   // architecture sorts above references for synthesis
+    expect(out[1].id).toBe("b");
   });
 });
