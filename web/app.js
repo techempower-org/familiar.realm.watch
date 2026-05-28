@@ -785,8 +785,12 @@ function renderTranscript() {
     const el = appendMessage(t.role, t.content);
     if (t.role === "assistant") {
       renderWithCitations(el, t.content);
-      // Reloaded turns also get a speak button so you can replay them.
+      // Reloaded turns also get speak + copy buttons so you can replay
+      // or copy any historical turn. New-this-turn assistant messages
+      // get these attached inline (post-stream); we mirror that here
+      // for past-session restore.
       el.appendChild(buildSpeakButton(() => t.content));
+      el.appendChild(buildCopyButton(() => t.content));
     }
   }
 }
