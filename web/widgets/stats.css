@@ -72,11 +72,14 @@
   justify-content: center;
   transition: color 150ms ease, border-color 150ms ease, transform 250ms ease;
 }
-.stat-widget-settings-btn:hover {
+.stat-widget-settings-btn:hover,
+.stat-widget-settings-btn:focus-visible {
   color: var(--accent);
   border-color: var(--accent);
-  transform: rotate(60deg);
+  outline: none;
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 18%, transparent);
 }
+.stat-widget-settings-btn:hover { transform: rotate(60deg); }
 .stat-widget-content {
   padding: 0.6rem 0.75rem;
   display: flex;
