@@ -1275,6 +1275,9 @@ form.addEventListener("submit", async (e) => {
     // Speak button — always added; visible on hover or on touch.
     const speakBtn = buildSpeakButton(() => full);
     assistantEl.appendChild(speakBtn);
+    // Copy button — same hover-reveal pattern, sits left of speak (#78).
+    const copyBtn = buildCopyButton(() => full);
+    assistantEl.appendChild(copyBtn);
     // Always render the footer so the user can see the pipeline (memories
     // grounded, reflect outcome) even when reflect was skipped/timed-out.
     assistantEl.appendChild(buildTurnFooter(tracePayload, reflectPayload));
@@ -2315,6 +2318,29 @@ function speakText(text, btn) {
   };
   currentUtterance = utt;
   window.speechSynthesis.speak(utt);
+}
+
+function buildCopyButton(getText) {
+  const btn = document.createElement("button");
+  btn.type = "button";
+  btn.className = "copy-btn";
+  btn.title = "copy this turn";
+  btn.setAttribute("aria-label", "copy assistant response");
+  btn.textContent = "⧉";
+  btn.addEventListener("click", async (e) => {
+    e.stopPropagation();
+    const txt = getText();
+    if (!txt) return;
+    try {
+      await navigator.clipboard.writeText(txt);
+      btn.classList.add("copy-btn-done");
+      window.familiarToast?.success?.("copied");
+      setTimeout(() => btn.classList.remove("copy-btn-done"), 1200);
+    } catch {
+      window.familiarToast?.error?.("clipboard unavailable");
+    }
+  });
+  return btn;
 }
 
 function buildSpeakButton(getText) {

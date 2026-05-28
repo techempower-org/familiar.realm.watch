@@ -404,10 +404,9 @@ body {
 .model-picker:disabled { opacity: 0.55; cursor: not-allowed; }
 
 /* Per-message speak button. */
-.speak-btn {
+.speak-btn, .copy-btn {
   position: absolute;
   top: 0.5rem;
-  right: 0.5rem;
   background: transparent;
   border: 1px solid transparent;
   color: var(--fg-muted);
@@ -423,9 +422,13 @@ body {
   font-size: 0.85rem;
   padding: 0;
 }
-.msg.assistant:hover .speak-btn { opacity: 1; }
-.speak-btn:hover { color: var(--accent); border-color: var(--accent); }
+.speak-btn { right: 0.5rem; }
+.copy-btn  { right: 2.2rem; }
+.msg.assistant:hover .speak-btn,
+.msg.assistant:hover .copy-btn { opacity: 1; }
+.speak-btn:hover, .copy-btn:hover { color: var(--accent); border-color: var(--accent); }
 .speak-btn.speaking { opacity: 1; color: var(--accent); border-color: var(--accent); }
+.copy-btn-done { opacity: 1; color: var(--accent); border-color: var(--accent); }
 @media (max-width: 720px) {
   .speak-btn { opacity: 0.6; }
 }
