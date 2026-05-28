@@ -15,6 +15,8 @@ const SHELL = [
   "/widgets/stats-mem.js", "/widgets/stats-net.js",
   // Slot picker block (Selene):
   "/widgets/slot-picker.css", "/widgets/slot-picker.js",
+  // Toast notifications (#79):
+  "/widgets/toast.js",
   // v29 — sound design + magical micro-animations (Ember):
   "/widgets/sound.js",
   // Ctrl+K command palette (Sage):

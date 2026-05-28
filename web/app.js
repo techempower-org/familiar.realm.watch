@@ -36,13 +36,10 @@ if (word) {
       const r = await fetch("/api/version");
       if (!r.ok) return;
       const v = await r.json();
-      const lines = [
-        `${v.word} · ${v.hash}`,
-        `branch: ${v.branch || "?"}${v.dirty ? " (dirty)" : ""}`,
-        `built: ${v.built || "?"}`,
-        v.commit_url ? `commit: ${v.commit_url}` : "",
-      ].filter(Boolean);
-      alert(lines.join("\n"));
+      const detail = `${v.word} · ${v.hash} · ${v.branch || "?"}${v.dirty ? " (dirty)" : ""} · built ${v.built || "?"}`;
+      const t = window.familiarToast;
+      if (t?.info) t.info(detail, { ttl: 6000 });
+      else alert(detail);
     } catch { /* offline — silent */ }
   });
 }
