@@ -354,6 +354,8 @@ body {
 }
 .sessions-list li:hover .session-rename,
 .sessions-list li:hover .session-delete,
+.sessions-list li:focus-within .session-rename,
+.sessions-list li:focus-within .session-delete,
 .sessions-list li.active .session-rename,
 .sessions-list li.active .session-delete { opacity: 1; }
 .sessions-list .session-rename:hover,
