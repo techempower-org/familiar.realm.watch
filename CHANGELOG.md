@@ -52,9 +52,51 @@ Five inference slots (chat / embed / extract / hyde / reflect) each independentl
 - familiar #64 — stat widget scripts not loaded in index.html (closed by hot-fix in 7ab0209)
 - techempower-org/multipass#87, #88 — moved the reranker bench + probe sweep tracking out of familiar (benchmarking work belongs in multipass)
 
-### Deploys this session
+### Later in the session — second wave (closed)
 
-In order: Obsidian Monolith (7f7d052) → Hallowed Monolith (2884087, SW v24) → Hallowed Keystone (a1a8693, SW v25) → Jade Keystone (7ab0209, SW v27) → Gilded Aegis (425b842) → Twilight Jewel (c3a5936) → Radiant Oracle (01d9684). Each `realm_sigil_post` confirms the deployed hash matches /api/version.
+- **familiar #65** — keyboard nav for picker + settings drawer (auto-focus, arrow keys, focus trap, focus restoration)
+- **familiar #66** — mobile drag/resize via long-press + reorder chevrons (Solace)
+- **familiar #69** — Wave 2d HyDE + reflect slot routing — closes the 5-slot loop end-to-end
+- **familiar #70** — PR retarget-before-merge gotcha (documented in `~/.claude/skills/dreamteam/SKILL.md`)
+- **familiar #71** — `PALACE_PIPELINE_ORDER` env flag for decay/rerank order (Aurora's recommendation 1, env-gated for safe A/B)
+- **familiar #72** — `PALACE_MODALITY_INTENSITY` env multiplier widening modality factor range (Aurora's recommendation 2)
+- **familiar #75** — Ctrl+K command palette (Sage)
+- **familiar #78** — copy-to-clipboard button on assistant messages
+- **familiar #79** — toast notification module (`/widgets/toast.js`)
+- **familiar #80** — per-message timestamps (hover-revealed)
+- **familiar #63** — SW cache auto-bake from git hash + shell integrity tripwire (`ops/scripts/check-sw-shell.js`); manual sw.js bumps are now history
+- **techempower-org/multipass#73 / fork #99** — narrow-age paraphrase corpus (Lyra)
+
+### Other polish landed (no issue)
+
+- Wave 2c embed slot wiring (`resolver.embedClient → /v1/embeddings`)
+- `pickChatProvider` test coverage for Wave 2b fallback contract
+- README + CHANGELOG + `docs/dashboard.md` + `docs/slot-picker.md` refreshed
+- Browser tab title shows realm word per deploy
+- Welcome flourish — realm word fades in on first visit per deploy hash, plays `sound.flourish()`
+- Smooth scroll on chat log; `meta color-scheme` for matching scrollbars
+- Sidebar realm word becomes a button → opens build-detail toast
+- Rotating chat input placeholder (6 prompts cycling every 12s)
+- Connection-aware status (offline/online events, toasts)
+- Status pill breathes during streaming
+- Slash commands: `/help` `/clear` `/abort` `/version`
+- Chat input focus glow ring + draft persistence (survives tab close)
+- Empty-log welcome hint (fades in 800ms)
+- `Ctrl+Home` / `Ctrl+End` scroll the chat log; send button greys when input empty
+- Scroll-to-bottom floating button
+- Sigil hover gets a soft gold drop-shadow
+- Sidebar form controls gained `aria-label` (screen reader compliance)
+
+### Issues filed (open for future)
+
+- familiar #62 — evaluate moving palace-daemon and/or kg-extract worker off familiar (architectural)
+- familiar #74 — voice integration via gnome-speaks TTS (cross-host design needed)
+- familiar #77 — A/B sweep runbook for #71 × #99 (needs production restart)
+- familiar #81 — playwright/headless UI tests for the dashboard
+
+### Deploys this session (chronological)
+
+Obsidian Monolith (7f7d052) → Hallowed Monolith (2884087, SW v24) → Hallowed Keystone (a1a8693, SW v25) → Jade Keystone (7ab0209, SW v27) → Gilded Aegis (425b842) → Twilight Jewel (c3a5936) → Radiant Oracle (01d9684) → many more across the second wave culminating in Spectral Aegis (93c1011) with auto-baked SW cache names. Each `realm_sigil_post` confirmed the deployed hash matches /api/version.
 
 ## [Unreleased] — 2026-05-24 — *Temporal retrieval + AGE knowledge graph backfill*
 
