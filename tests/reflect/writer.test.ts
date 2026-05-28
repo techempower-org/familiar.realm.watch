@@ -145,3 +145,69 @@ describe("ReflectWriter.review", () => {
     expect(decisions[0].reason).toBe("write_failed");
   });
 });
+
+describe("ReflectWriter getInference (Wave 2d.2)", () => {
+  test("uses getInference's provider when it returns non-null", async () => {
+    let usedSlot = false;
+    const legacyInference = stubInference(JSON.stringify([{ fact: "legacy fact long enough to pass gate", source_span: [0, 30] }]));
+    const slotInference: InferenceChatProvider = {
+      isHealthy: async () => true,
+      chatStream: async function* () {
+        usedSlot = true;
+        yield { model: "slot", created_at: "", message: { role: "assistant", content: JSON.stringify([{ fact: "slot fact long enough to pass gate", source_span: [0, 30] }]) }, done: true };
+      },
+    };
+    const writer = new ReflectWriter({
+      palace: stubPalace(undefined),
+      inference: legacyInference,
+      getInference: async () => slotInference,
+      threshold: 0.85,
+      maxFactsPerTurn: 5,
+      wing: "reflect",
+    });
+    await writer.review({ sessionId: "s-slot", assistantTurn: "x" });
+    expect(usedSlot).toBe(true);
+  });
+
+  test("falls back to legacy inference when getInference returns null", async () => {
+    let usedLegacy = false;
+    const legacyInference: InferenceChatProvider = {
+      isHealthy: async () => true,
+      chatStream: async function* () {
+        usedLegacy = true;
+        yield { model: "legacy", created_at: "", message: { role: "assistant", content: JSON.stringify([{ fact: "legacy fact long enough to pass gate", source_span: [0, 30] }]) }, done: true };
+      },
+    };
+    const writer = new ReflectWriter({
+      palace: stubPalace(undefined),
+      inference: legacyInference,
+      getInference: async () => null,
+      threshold: 0.85,
+      maxFactsPerTurn: 5,
+      wing: "reflect",
+    });
+    await writer.review({ sessionId: "s-leg", assistantTurn: "x" });
+    expect(usedLegacy).toBe(true);
+  });
+
+  test("falls back to legacy when getInference throws", async () => {
+    let usedLegacy = false;
+    const legacyInference: InferenceChatProvider = {
+      isHealthy: async () => true,
+      chatStream: async function* () {
+        usedLegacy = true;
+        yield { model: "legacy", created_at: "", message: { role: "assistant", content: JSON.stringify([{ fact: "legacy fact long enough to pass gate", source_span: [0, 30] }]) }, done: true };
+      },
+    };
+    const writer = new ReflectWriter({
+      palace: stubPalace(undefined),
+      inference: legacyInference,
+      getInference: async () => { throw new Error("resolver down"); },
+      threshold: 0.85,
+      maxFactsPerTurn: 5,
+      wing: "reflect",
+    });
+    await writer.review({ sessionId: "s-thr", assistantTurn: "x" });
+    expect(usedLegacy).toBe(true);
+  });
+});

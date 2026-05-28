@@ -20,7 +20,18 @@ export interface ReflectReviewResult {
 
 export interface ReflectWriterDeps {
   palace: PalaceClient;
+  /**
+   * Legacy fallback inference provider. Used when getInference is
+   * absent or returns null. Captured at construction time.
+   */
   inference: InferenceChatProvider;
+  /**
+   * Wave 2d.2: optional per-call inference lookup. When present,
+   * ReflectWriter calls this before each extraction; whatever provider
+   * comes back wins. Falls back to `inference` on null/undefined.
+   * Enables the reflect slot to take effect at runtime without restart.
+   */
+  getInference?: () => Promise<InferenceChatProvider | null>;
   /** Cosine threshold above which a candidate is considered duplicate. */
   threshold: number;
   /** Cap on candidates considered per call. */
@@ -51,8 +62,19 @@ export class ReflectWriter {
   async reviewWithTiming(opts: ReflectReviewOpts): Promise<ReflectReviewResult> {
     const t0 = Date.now();
     const tExtractStart = Date.now();
+    // Wave 2d.2: pick the inference provider per extraction. Slot-resolver
+    // lookup wins; legacy `this.deps.inference` is the safety floor.
+    let inference: InferenceChatProvider = this.deps.inference;
+    if (this.deps.getInference) {
+      try {
+        const resolved = await this.deps.getInference();
+        if (resolved) inference = resolved;
+      } catch {
+        // getInference threw — log silently and fall through to legacy.
+      }
+    }
     const candidates = await extractCandidates(opts.assistantTurn, {
-      inference: this.deps.inference,
+      inference,
       maxFacts: this.deps.maxFactsPerTurn,
     });
     const extractMs = Date.now() - tExtractStart;

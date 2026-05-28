@@ -128,6 +128,11 @@ process.on("SIGINT", () => { diaryBuffer.flush().catch(() => { /* drain best-eff
 const reflectWriter = new ReflectWriter({
   palace,
   inference: inferenceRouter,
+  // Wave 2d.2 (#69): per-call slot lookup. ReflectWriter still has the
+  // legacy `inference` as its floor; this callback gives the resolver
+  // a chance to override per extraction. PATCHing the reflect slot
+  // takes effect on the next assistant turn that triggers reflect.
+  getInference: async () => (await slotResolver.reflect()).provider,
   threshold: 0.85,
   maxFactsPerTurn: 5,
   wing: REFLECT_WING,
