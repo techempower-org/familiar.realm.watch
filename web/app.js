@@ -1176,6 +1176,16 @@ form.addEventListener("submit", async (e) => {
   e.preventDefault();
   const text = input.value.trim();
   if (!text) return;
+  // Slash commands — intercept before sending to the assistant.
+  if (text.startsWith("/")) {
+    if (handleSlashCommand(text)) {
+      input.value = "";
+      autoResize();
+      return;
+    }
+    // Unknown slash command — fall through to send literally (might be a
+    // legit message that starts with "/", like a path).
+  }
   // Stop any ongoing TTS so the familiar doesn't talk over the next exchange.
   if (currentUtterance) cancelSpeech();
   // Magical send ripple — a single gold ring emanating from the send button.
@@ -2324,6 +2334,41 @@ function speakText(text, btn) {
   };
   currentUtterance = utt;
   window.speechSynthesis.speak(utt);
+}
+
+/**
+ * Slash-command parser. Returns true if the input was consumed (don't
+ * send to assistant), false to let it fall through.
+ */
+function handleSlashCommand(text) {
+  const t = window.familiarToast;
+  const cmd = text.split(/\s+/)[0].slice(1).toLowerCase();
+  switch (cmd) {
+    case "help":
+    case "?":
+      t?.info(
+        "shortcuts: / focus input · Ctrl+K palette · Ctrl+Shift+N new session · " +
+        "Ctrl+Shift+S sidebar · Esc abort · /clear /abort /version",
+        { ttl: 8000 },
+      );
+      return true;
+    case "clear":
+      // Soft clear of the visible log; transcript persists.
+      if (log) while (log.firstChild) log.removeChild(log.firstChild);
+      t?.success?.("log cleared (session intact)");
+      return true;
+    case "abort":
+    case "stop":
+      if (chatAbort) chatAbort.abort();
+      else t?.info?.("nothing to abort");
+      return true;
+    case "version":
+      // Trigger the realm-word click handler synthetically.
+      document.getElementById("word")?.click();
+      return true;
+    default:
+      return false;
+  }
 }
 
 function buildCopyButton(getText) {
