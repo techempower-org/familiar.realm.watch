@@ -7,6 +7,26 @@ const input = document.getElementById("input");
 const submit = form.querySelector('button[type="submit"]');
 const status = document.getElementById("status");
 const word = document.getElementById("word");
+// Realm-word button: clicking shows the deploy detail in a small alert.
+// Cheap discoverability — JP sees "Spectral Sigil" and wonders what hash
+// it maps to. The /api/version endpoint already has hash/branch/built/
+// commit_url; we just surface them.
+if (word) {
+  word.addEventListener("click", async () => {
+    try {
+      const r = await fetch("/api/version");
+      if (!r.ok) return;
+      const v = await r.json();
+      const lines = [
+        `${v.word} · ${v.hash}`,
+        `branch: ${v.branch || "?"}${v.dirty ? " (dirty)" : ""}`,
+        `built: ${v.built || "?"}`,
+        v.commit_url ? `commit: ${v.commit_url}` : "",
+      ].filter(Boolean);
+      alert(lines.join("\n"));
+    } catch { /* offline — silent */ }
+  });
+}
 const sigilBtn = document.getElementById("sigil");
 const sessionsList = document.getElementById("sessions-list");
 const sessionsNew = document.getElementById("sessions-new");
