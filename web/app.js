@@ -1870,16 +1870,17 @@ if (palaceSearch) {
 }
 
 function setTab(name) {
+  // In the block-grid layout chat + palace are both always visible. The tab
+  // buttons now act as scroll-to-block shortcuts rather than view toggles.
   const isChat = name === "chat";
   tabChat.classList.toggle("active", isChat);
   tabChat.setAttribute("aria-selected", String(isChat));
   tabPalace.classList.toggle("active", !isChat);
   tabPalace.setAttribute("aria-selected", String(!isChat));
-  log.hidden = !isChat;
-  log.style.display = isChat ? "" : "none";
-  form.hidden = !isChat;
-  form.style.display = isChat ? "" : "none";
-  palaceView.hidden = isChat;
+  const targetBlock = document.querySelector(
+    isChat ? '.block[data-block-type="chat"]' : '.block[data-block-type="palace"]',
+  );
+  if (targetBlock) targetBlock.scrollIntoView({ behavior: "smooth", block: "start" });
   if (!isChat) showPalace(false);
 }
 tabChat.addEventListener("click", () => setTab("chat"));

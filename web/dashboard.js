@@ -1,0 +1,626 @@
+// dashboard.js — Wave-Terminal-style movable+resizable block grid.
+//
+// Design note:
+//   Vanilla TS/JS, no third-party dep. Wave Terminal's spatial behavior is
+//   the inspiration; we hand-roll because GridStack/Muuri (~30-60 kb each)
+//   would need glue code anyway and a bespoke implementation inherits every
+//   existing CSS custom property naturally.
+//
+// Model:
+//   - The dashboard is a 12-column grid laid over `<main class="dashboard">`.
+//   - Each block has an integer cell rect {col, row, w, h}, persisted to
+//     localStorage["familiar_dashboard_layout"] as { [blockId]: { rect,
+//     visible, settings } }.
+//   - Drag uses pointer events; movement is computed in pixels, snapped to
+//     cell coords on release. A ghost preview shows the snapped target.
+//   - Resize uses a bottom-right handle (nw-se cursor); also snaps to grid.
+//   - Mobile (<768px): block rects collapse to a single-column stack;
+//     drag/resize disabled. Layout still persists; restoring on wide
+//     viewports brings back the saved rect.
+//   - Reduced motion: transitions disabled (handled in CSS via the media
+//     query — JS only adds/removes a `.dragging` class which CSS gates).
+//
+// Public API (used by app.js + future block authors):
+//   dashboard.registerBlockType({ id, name, render(el), renderSettings(el), defaultRect })
+//   dashboard.mount(rootEl)
+//   dashboard.addBlock(typeId, { id?, rect? })       // for "+ add block" menu later
+//   dashboard.resetLayout()
+//
+// Blocks are *content adapters*: render(el) gets the inner content area and
+// is expected to populate it. The block's chrome (header, drag-bar, gear,
+// close, resize handle) is managed entirely here.
+
+const LAYOUT_KEY = "familiar_dashboard_layout";
+const COLS = 12;
+const ROW_PX = 48;          // px per row; cell height anchor for snap math
+const GAP_PX = 8;
+const MIN_W = 2;            // minimum block width in cells
+const MIN_H = 3;            // minimum block height in cells
+const MOBILE_BREAKPOINT = 768;
+
+/**
+ * @typedef {Object} BlockRect
+ * @property {number} col
+ * @property {number} row
+ * @property {number} w
+ * @property {number} h
+ *
+ * @typedef {Object} BlockState
+ * @property {BlockRect} rect
+ * @property {boolean}   visible
+ * @property {Object}    settings
+ *
+ * @typedef {Object} BlockType
+ * @property {string}                       id
+ * @property {string}                       name
+ * @property {(el: HTMLElement) => void}    render
+ * @property {(el: HTMLElement, state: BlockState, save: () => void) => void} [renderSettings]
+ * @property {BlockRect}                    [defaultRect]
+ */
+
+/** @type {Map<string, BlockType>} */
+const blockTypes = new Map();
+/** @type {Map<string, HTMLElement>} */
+const blockEls = new Map();
+
+let root = null;
+let drawer = null;
+let drawerBody = null;
+let drawerTitle = null;
+let layout = loadLayout();
+let activeSettingsBlockId = null;
+let prefersReducedMotion = false;
+let isMobile = window.innerWidth < MOBILE_BREAKPOINT;
+
+function loadLayout() {
+  try {
+    const raw = localStorage.getItem(LAYOUT_KEY);
+    if (raw) return JSON.parse(raw);
+  } catch { /* corrupt — start fresh */ }
+  return {};
+}
+
+function saveLayout() {
+  try { localStorage.setItem(LAYOUT_KEY, JSON.stringify(layout)); }
+  catch { /* quota — non-fatal */ }
+}
+
+function clamp(n, lo, hi) { return Math.max(lo, Math.min(hi, n)); }
+
+function ensureBlockState(typeId, blockId, fallbackRect) {
+  if (!layout[blockId]) {
+    layout[blockId] = {
+      typeId,
+      rect: { ...(fallbackRect || { col: 0, row: 0, w: 6, h: 6 }) },
+      visible: true,
+      settings: { tint: "none", fontScale: 1.0 },
+    };
+  } else if (!layout[blockId].typeId) {
+    layout[blockId].typeId = typeId;   // migration for older layouts
+  }
+  return layout[blockId];
+}
+
+/** Apply a {col,row,w,h} rect to the block element. */
+function applyRect(el, rect) {
+  if (isMobile) {
+    // Mobile: ignore rect, let CSS flow the block in source order.
+    el.style.gridColumn = "";
+    el.style.gridRow = "";
+    return;
+  }
+  const c = clamp(rect.col, 0, COLS - MIN_W);
+  const w = clamp(rect.w, MIN_W, COLS - c);
+  const r = Math.max(0, rect.row);
+  const h = Math.max(MIN_H, rect.h);
+  el.style.gridColumn = `${c + 1} / span ${w}`;
+  el.style.gridRow = `${r + 1} / span ${h}`;
+}
+
+/** Compute current grid cell metrics (cell width in px). */
+function cellMetrics() {
+  const r = root.getBoundingClientRect();
+  // Effective width minus (COLS-1)*gap, divided by COLS.
+  const cellW = (r.width - GAP_PX * (COLS - 1)) / COLS;
+  return { cellW, cellH: ROW_PX, gridLeft: r.left, gridTop: r.top };
+}
+
+/** Convert a pointer delta in px → cell delta (rounded). */
+function pxToCell(dxPx, dyPx) {
+  const { cellW, cellH } = cellMetrics();
+  return {
+    dCol: Math.round(dxPx / (cellW + GAP_PX)),
+    dRow: Math.round(dyPx / (cellH + GAP_PX)),
+  };
+}
+
+/** Build the block chrome (header + content + resize handle). */
+function buildBlockEl(type, id, state) {
+  const el = document.createElement("section");
+  el.className = "block";
+  el.dataset.blockId = id;
+  el.dataset.blockType = type.id;
+  if (!state.visible) el.classList.add("hidden");
+  if (state.settings?.tint && state.settings.tint !== "none") {
+    el.dataset.tint = state.settings.tint;
+  }
+  if (state.settings?.fontScale && state.settings.fontScale !== 1.0) {
+    el.style.setProperty("--block-font-scale", String(state.settings.fontScale));
+  }
+
+  // Header: drag bar (the whole row is grabbable) + title + controls.
+  const head = document.createElement("header");
+  head.className = "block-header";
+  head.dataset.role = "drag-handle";
+
+  const title = document.createElement("span");
+  title.className = "block-title";
+  title.textContent = type.name;
+  head.appendChild(title);
+
+  const ctrls = document.createElement("div");
+  ctrls.className = "block-ctrls";
+
+  const gearBtn = mkIconBtn("gear", "settings", svgGear());
+  gearBtn.addEventListener("click", (e) => { e.stopPropagation(); openSettings(id); });
+  ctrls.appendChild(gearBtn);
+
+  const hideBtn = mkIconBtn("hide", "hide block", svgX());
+  hideBtn.addEventListener("click", (e) => {
+    e.stopPropagation();
+    state.visible = false;
+    el.classList.add("hidden");
+    saveLayout();
+  });
+  ctrls.appendChild(hideBtn);
+
+  head.appendChild(ctrls);
+  el.appendChild(head);
+
+  // Content area — block type renders into this.
+  const content = document.createElement("div");
+  content.className = "block-content";
+  el.appendChild(content);
+
+  // Resize handle bottom-right.
+  const handle = document.createElement("div");
+  handle.className = "block-resize-handle";
+  handle.dataset.role = "resize-handle";
+  handle.setAttribute("aria-label", "resize block");
+  el.appendChild(handle);
+
+  // Wire pointer interactions (no-ops on mobile).
+  wireDrag(el, head, id);
+  wireResize(el, handle, id);
+
+  return { el, content };
+}
+
+function mkIconBtn(cls, label, svgEl) {
+  const b = document.createElement("button");
+  b.type = "button";
+  b.className = `block-btn block-btn-${cls}`;
+  b.title = label;
+  b.setAttribute("aria-label", label);
+  b.appendChild(svgEl);
+  return b;
+}
+
+const SVG_NS = "http://www.w3.org/2000/svg";
+function mkSvg(width, height) {
+  const s = document.createElementNS(SVG_NS, "svg");
+  s.setAttribute("viewBox", "0 0 16 16");
+  s.setAttribute("width", String(width));
+  s.setAttribute("height", String(height));
+  s.setAttribute("aria-hidden", "true");
+  return s;
+}
+function mkPath(attrs) {
+  const p = document.createElementNS(SVG_NS, "path");
+  for (const [k, v] of Object.entries(attrs)) p.setAttribute(k, v);
+  return p;
+}
+function svgGear() {
+  const s = mkSvg(14, 14);
+  s.appendChild(mkPath({
+    fill: "none",
+    stroke: "currentColor",
+    "stroke-width": "1.2",
+    "stroke-linecap": "round",
+    "stroke-linejoin": "round",
+    d: "M8 5.5a2.5 2.5 0 1 0 0 5 2.5 2.5 0 0 0 0-5zM8 1.5v1.5M8 13v1.5M14.5 8H13M3 8H1.5M12.6 3.4l-1 1M4.4 11.6l-1 1M12.6 12.6l-1-1M4.4 4.4l-1-1",
+  }));
+  return s;
+}
+function svgX() {
+  const s = mkSvg(14, 14);
+  s.appendChild(mkPath({
+    stroke: "currentColor",
+    "stroke-width": "1.4",
+    "stroke-linecap": "round",
+    d: "M4 4l8 8M12 4l-8 8",
+  }));
+  return s;
+}
+
+// ---- Drag ----------------------------------------------------------------
+
+function wireDrag(el, handleEl, id) {
+  handleEl.addEventListener("pointerdown", (e) => {
+    // Only the bar itself, not children with their own click semantics
+    // (the gear/hide buttons stop propagation, so this is mostly belt+brace).
+    if (e.target.closest(".block-btn")) return;
+    if (isMobile) return;
+    if (e.button !== 0) return;
+    startDrag(e, el, id);
+  });
+}
+
+function startDrag(e, el, id) {
+  const state = layout[id];
+  if (!state) return;
+  const startRect = { ...state.rect };
+  const startX = e.clientX;
+  const startY = e.clientY;
+  const ghost = mkGhost(state.rect);
+  root.appendChild(ghost);
+  el.classList.add("dragging");
+  handleEl_capture(e);
+
+  function onMove(ev) {
+    const dx = ev.clientX - startX;
+    const dy = ev.clientY - startY;
+    const { dCol, dRow } = pxToCell(dx, dy);
+    const newRect = {
+      col: clamp(startRect.col + dCol, 0, COLS - startRect.w),
+      row: Math.max(0, startRect.row + dRow),
+      w: startRect.w,
+      h: startRect.h,
+    };
+    ghost.style.gridColumn = `${newRect.col + 1} / span ${newRect.w}`;
+    ghost.style.gridRow = `${newRect.row + 1} / span ${newRect.h}`;
+    ghost.dataset.pendingRect = JSON.stringify(newRect);
+  }
+  function onUp() {
+    el.classList.remove("dragging");
+    const pending = ghost.dataset.pendingRect ? JSON.parse(ghost.dataset.pendingRect) : null;
+    ghost.remove();
+    if (pending) {
+      state.rect = pending;
+      applyRect(el, pending);
+      saveLayout();
+    }
+    document.removeEventListener("pointermove", onMove);
+    document.removeEventListener("pointerup", onUp);
+    document.removeEventListener("pointercancel", onUp);
+  }
+  document.addEventListener("pointermove", onMove);
+  document.addEventListener("pointerup", onUp);
+  document.addEventListener("pointercancel", onUp);
+}
+
+function handleEl_capture(e) {
+  try { e.target.setPointerCapture?.(e.pointerId); } catch { /* harmless */ }
+}
+
+function mkGhost(rect) {
+  const g = document.createElement("div");
+  g.className = "block-ghost";
+  g.style.gridColumn = `${rect.col + 1} / span ${rect.w}`;
+  g.style.gridRow = `${rect.row + 1} / span ${rect.h}`;
+  return g;
+}
+
+// ---- Resize --------------------------------------------------------------
+
+function wireResize(el, handle, id) {
+  handle.addEventListener("pointerdown", (e) => {
+    if (isMobile) return;
+    if (e.button !== 0) return;
+    e.stopPropagation();
+    startResize(e, el, id);
+  });
+}
+
+function startResize(e, el, id) {
+  const state = layout[id];
+  if (!state) return;
+  const startRect = { ...state.rect };
+  const startX = e.clientX;
+  const startY = e.clientY;
+  const ghost = mkGhost(state.rect);
+  root.appendChild(ghost);
+  el.classList.add("resizing");
+  handleEl_capture(e);
+
+  function onMove(ev) {
+    const dx = ev.clientX - startX;
+    const dy = ev.clientY - startY;
+    const { dCol, dRow } = pxToCell(dx, dy);
+    const newRect = {
+      col: startRect.col,
+      row: startRect.row,
+      w: clamp(startRect.w + dCol, MIN_W, COLS - startRect.col),
+      h: Math.max(MIN_H, startRect.h + dRow),
+    };
+    ghost.style.gridColumn = `${newRect.col + 1} / span ${newRect.w}`;
+    ghost.style.gridRow = `${newRect.row + 1} / span ${newRect.h}`;
+    ghost.dataset.pendingRect = JSON.stringify(newRect);
+  }
+  function onUp() {
+    el.classList.remove("resizing");
+    const pending = ghost.dataset.pendingRect ? JSON.parse(ghost.dataset.pendingRect) : null;
+    ghost.remove();
+    if (pending) {
+      state.rect = pending;
+      applyRect(el, pending);
+      saveLayout();
+    }
+    document.removeEventListener("pointermove", onMove);
+    document.removeEventListener("pointerup", onUp);
+    document.removeEventListener("pointercancel", onUp);
+  }
+  document.addEventListener("pointermove", onMove);
+  document.addEventListener("pointerup", onUp);
+  document.addEventListener("pointercancel", onUp);
+}
+
+// ---- Settings drawer -----------------------------------------------------
+
+function ensureDrawer() {
+  if (drawer) return;
+  drawer = document.createElement("aside");
+  drawer.className = "block-settings-drawer";
+  drawer.hidden = true;
+
+  const head = document.createElement("header");
+  head.className = "block-settings-head";
+  drawerTitle = document.createElement("span");
+  drawerTitle.className = "block-settings-title";
+  drawerTitle.textContent = "settings";
+  head.appendChild(drawerTitle);
+
+  const closeBtn = document.createElement("button");
+  closeBtn.type = "button";
+  closeBtn.className = "block-btn block-btn-close-drawer";
+  closeBtn.setAttribute("aria-label", "close settings");
+  closeBtn.title = "close";
+  closeBtn.appendChild(svgX());
+  closeBtn.addEventListener("click", closeSettings);
+  head.appendChild(closeBtn);
+
+  drawer.appendChild(head);
+
+  drawerBody = document.createElement("div");
+  drawerBody.className = "block-settings-body";
+  drawer.appendChild(drawerBody);
+
+  document.body.appendChild(drawer);
+  // Click-outside dismiss.
+  document.addEventListener("pointerdown", (e) => {
+    if (!drawer || drawer.hidden) return;
+    if (drawer.contains(e.target)) return;
+    if (e.target.closest('.block-btn-gear')) return;
+    closeSettings();
+  });
+}
+
+function openSettings(blockId) {
+  ensureDrawer();
+  const state = layout[blockId];
+  if (!state) return;
+  const type = blockTypes.get(state.typeId);
+  if (!type) return;
+  activeSettingsBlockId = blockId;
+  drawerTitle.textContent = `${type.name} · settings`;
+  while (drawerBody.firstChild) drawerBody.removeChild(drawerBody.firstChild);
+
+  // Common settings (apply to all blocks).
+  drawerBody.appendChild(buildCommonSettings(blockId, state));
+
+  // Per-block settings (block-type opt-in).
+  if (type.renderSettings) {
+    const customWrap = document.createElement("div");
+    customWrap.className = "block-settings-section";
+    const heading = document.createElement("h4");
+    heading.textContent = "block options";
+    customWrap.appendChild(heading);
+    const customBody = document.createElement("div");
+    customWrap.appendChild(customBody);
+    drawerBody.appendChild(customWrap);
+    try {
+      type.renderSettings(customBody, state, () => { saveLayout(); applyCommonStyling(blockId); });
+    } catch (err) {
+      console.error(`[dashboard] renderSettings for ${type.id} threw:`, err);
+    }
+  }
+
+  drawer.hidden = false;
+  requestAnimationFrame(() => drawer.classList.add("open"));
+}
+
+function closeSettings() {
+  if (!drawer) return;
+  drawer.classList.remove("open");
+  // Wait for transition unless reduced-motion (in which case it's instant).
+  const dur = prefersReducedMotion ? 0 : 220;
+  setTimeout(() => { if (drawer) drawer.hidden = true; }, dur);
+  activeSettingsBlockId = null;
+}
+
+function buildCommonSettings(blockId, state) {
+  const wrap = document.createElement("div");
+  wrap.className = "block-settings-section";
+  const heading = document.createElement("h4");
+  heading.textContent = "appearance";
+  wrap.appendChild(heading);
+
+  // Visibility toggle.
+  const visRow = mkRow("visible");
+  const visInput = document.createElement("input");
+  visInput.type = "checkbox";
+  visInput.checked = !!state.visible;
+  visInput.addEventListener("change", () => {
+    state.visible = visInput.checked;
+    const el = blockEls.get(blockId);
+    if (el) el.classList.toggle("hidden", !state.visible);
+    saveLayout();
+  });
+  visRow.appendChild(visInput);
+  wrap.appendChild(visRow);
+
+  // Tint.
+  const tintRow = mkRow("tint");
+  const tintSel = document.createElement("select");
+  for (const opt of ["none", "warm", "cool"]) {
+    const o = document.createElement("option");
+    o.value = opt; o.textContent = opt;
+    tintSel.appendChild(o);
+  }
+  tintSel.value = state.settings?.tint || "none";
+  tintSel.addEventListener("change", () => {
+    state.settings = { ...(state.settings || {}), tint: tintSel.value };
+    applyCommonStyling(blockId);
+    saveLayout();
+  });
+  tintRow.appendChild(tintSel);
+  wrap.appendChild(tintRow);
+
+  // Font scale.
+  const scaleRow = mkRow("font scale");
+  const scaleSel = document.createElement("select");
+  for (const opt of [0.85, 1.0, 1.15]) {
+    const o = document.createElement("option");
+    o.value = String(opt); o.textContent = `${Math.round(opt * 100)}%`;
+    scaleSel.appendChild(o);
+  }
+  scaleSel.value = String(state.settings?.fontScale ?? 1.0);
+  scaleSel.addEventListener("change", () => {
+    state.settings = { ...(state.settings || {}), fontScale: parseFloat(scaleSel.value) };
+    applyCommonStyling(blockId);
+    saveLayout();
+  });
+  scaleRow.appendChild(scaleSel);
+  wrap.appendChild(scaleRow);
+
+  return wrap;
+}
+
+function applyCommonStyling(blockId) {
+  const el = blockEls.get(blockId);
+  const state = layout[blockId];
+  if (!el || !state) return;
+  if (state.settings?.tint && state.settings.tint !== "none") {
+    el.dataset.tint = state.settings.tint;
+  } else {
+    delete el.dataset.tint;
+  }
+  if (state.settings?.fontScale && state.settings.fontScale !== 1.0) {
+    el.style.setProperty("--block-font-scale", String(state.settings.fontScale));
+  } else {
+    el.style.removeProperty("--block-font-scale");
+  }
+}
+
+function mkRow(labelText) {
+  const r = document.createElement("label");
+  r.className = "block-settings-row";
+  const l = document.createElement("span");
+  l.className = "block-settings-row-label";
+  l.textContent = labelText;
+  r.appendChild(l);
+  return r;
+}
+
+// ---- Public API ----------------------------------------------------------
+
+/** @param {BlockType} type */
+function registerBlockType(type) {
+  if (!type || !type.id || typeof type.render !== "function") {
+    throw new Error("registerBlockType: { id, name, render } required");
+  }
+  blockTypes.set(type.id, type);
+}
+
+/**
+ * Mount the dashboard. Creates one block per registered type (using
+ * defaultRect or saved rect from localStorage).
+ *
+ * @param {HTMLElement} rootEl  the `<main class="dashboard">` element.
+ */
+function mount(rootEl) {
+  root = rootEl;
+  root.classList.add("dashboard");
+  prefersReducedMotion = window.matchMedia?.("(prefers-reduced-motion: reduce)").matches ?? false;
+  window.matchMedia?.("(prefers-reduced-motion: reduce)")?.addEventListener?.("change", (e) => {
+    prefersReducedMotion = e.matches;
+  });
+
+  // Mobile reflow on resize.
+  let resizeT = null;
+  window.addEventListener("resize", () => {
+    clearTimeout(resizeT);
+    resizeT = setTimeout(() => {
+      const wasMobile = isMobile;
+      isMobile = window.innerWidth < MOBILE_BREAKPOINT;
+      if (wasMobile !== isMobile) {
+        for (const [id, el] of blockEls) {
+          const state = layout[id];
+          if (state) applyRect(el, state.rect);
+        }
+      }
+    }, 100);
+  });
+
+  // Instantiate one block per registered type. Skip any types we have no
+  // rect for AND that opted out of a default (defaultRect: null).
+  let order = 0;
+  for (const type of blockTypes.values()) {
+    const id = type.id;
+    const state = ensureBlockState(type.id, id, type.defaultRect);
+    const { el, content } = buildBlockEl(type, id, state);
+    applyRect(el, state.rect);
+    el.style.order = String(order++);   // mobile: source order
+    blockEls.set(id, el);
+    root.appendChild(el);
+    try { type.render(content); }
+    catch (err) { console.error(`[dashboard] render for ${type.id} threw:`, err); }
+  }
+
+  saveLayout();   // persist any defaults that were synthesized
+}
+
+function resetLayout() {
+  layout = {};
+  saveLayout();
+  // Reload to rebuild blocks from defaults.
+  window.location.reload();
+}
+
+/** Toggle a hidden block back on (used by an "add block" menu). */
+function showBlock(blockId) {
+  const state = layout[blockId];
+  const el = blockEls.get(blockId);
+  if (!state || !el) return;
+  state.visible = true;
+  el.classList.remove("hidden");
+  saveLayout();
+}
+
+export const dashboard = {
+  registerBlockType,
+  mount,
+  resetLayout,
+  showBlock,
+  // Surfaced for the future "add block" picker.
+  listBlocks() {
+    return Array.from(blockEls.keys()).map((id) => ({
+      id,
+      typeId: layout[id]?.typeId,
+      visible: !!layout[id]?.visible,
+    }));
+  },
+};
+
+// Also expose on window for non-module consumers / debug.
+if (typeof window !== "undefined") window.familiarDashboard = dashboard;

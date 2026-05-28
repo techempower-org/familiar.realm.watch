@@ -15,6 +15,7 @@ import { handleGraph } from "./routes/graph.ts";
 import { handleReflect } from "./routes/reflect.ts";
 import { handleMemories, handleMemoryDelete, handleMemoryPatch } from "./routes/memories.ts";
 import { handleSlotsGet, handleSlotPatch } from "./routes/admin-slots.ts";
+import { handleStats } from "./routes/stats.ts";
 import { SlotResolver } from "./slots/resolver.ts";
 import { Slotctl } from "./slots/slotctl.ts";
 import { ReflectWriter } from "./reflect/writer.ts";
@@ -202,6 +203,9 @@ const server = Bun.serve({
       const slotPatchMatch = url.pathname.match(/^\/api\/familiar\/admin\/slots\/([a-z]+)$/);
       if (slotPatchMatch && req.method === "PATCH") {
         return await handleSlotPatch(req, slotPatchMatch[1], { cfg, resolver: slotResolver, slotctl });
+      }
+      if (url.pathname === "/api/familiar/stats" && req.method === "GET") {
+        return await handleStats(req);
       }
       // /api/familiar/memories/<drawer_id> — DELETE/PATCH a single drawer.
       const memoryMatch = url.pathname.match(/^\/api\/familiar\/memories\/(drawer_[a-z0-9_]+)$/);
