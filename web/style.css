@@ -2293,6 +2293,7 @@ main {
   background: var(--accent);
   border-color: var(--accent);
   outline: none;
+  box-shadow: 0 4px 16px color-mix(in srgb, var(--accent) 40%, transparent);
 }
 @media (prefers-reduced-motion: reduce) {
   .scroll-to-bottom { transition: none; }
