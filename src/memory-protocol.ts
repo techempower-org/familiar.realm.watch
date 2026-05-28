@@ -232,28 +232,55 @@ export async function retrieveAndGround(opts: RetrieveAndGroundOpts): Promise<Re
   }
   timings.filter_ms = Math.round(performance.now() - tFilter);
 
-  // Emmimal component 2 — domain-weighted rerank.
-  // Adjusts similarity using wing-match + recency; raw cosine/bm25 preserved.
-  const tRerank = performance.now();
-  drawers = domainRerank(drawers, opts.wingScope);
-  timings.rerank_ms = Math.round(performance.now() - tRerank);
-
-  // Phase 0 modality-aware weighting (issue #44).
-  // Biases score toward rooms whose content shape fits the query intent
-  // (detail vs synthesis). Disabled via PALACE_MODALITY_WEIGHT=off.
-  const tModality = performance.now();
+  // Pipeline order is env-controlled (#71, closes Aurora #94 finding 1).
+  //
+  // Default ("rerank-modality-decay") is the legacy order. Aurora's
+  // multipass#94 showed that with this order, temporal-decay's final
+  // re-sort can override the gains from rerank/modality on age-diverse
+  // corpora — toggling rerank-on/off returned bit-identical retrieval.
+  //
+  // Alternative ("decay-rerank-modality") applies decay first as a
+  // baseline score multiplier, then rerank + modality compose ON TOP
+  // of the decayed score — preserving their relative ordering effects.
+  //
+  // Multiplications are associative for the final score, so this is
+  // equivalent in pure math terms — what changes is what each stage
+  // SEES when it applies its formula. domainRerank uses similarity in
+  // a weighted sum (not multiply), so it's non-commutative; applying
+  // decay first means rerank's wing-match bonus gets added to a
+  // decayed base rather than a raw one, which shifts top-N membership
+  // on the narrow-age corpus (#73).
+  const pipelineOrder = (Bun.env.PALACE_PIPELINE_ORDER ?? "rerank-modality-decay").toLowerCase();
   const intent = detectQueryIntent(opts.userMessage);
-  drawers = modalityWeight(drawers, intent);
-  timings.modality_ms = Math.round(performance.now() - tModality);
 
-  // Emmimal component 3 — exponential temporal decay.
-  // Multiplies similarity by exp(-λ * age_days) where λ = ln(2) / half_life.
-  const tDecay = performance.now();
-  drawers = temporalDecay(drawers, { halfLifeDays: DEFAULT_HALF_LIFE_DAYS });
-  // Re-sort: decay can change the order significantly when older drawers
-  // had high rerank scores.
-  drawers.sort((a, b) => (b.similarity ?? 0) - (a.similarity ?? 0));
-  timings.decay_ms = Math.round(performance.now() - tDecay);
+  if (pipelineOrder === "decay-rerank-modality") {
+    // Aurora-recommended order — decay first.
+    const tDecay = performance.now();
+    drawers = temporalDecay(drawers, { halfLifeDays: DEFAULT_HALF_LIFE_DAYS });
+    timings.decay_ms = Math.round(performance.now() - tDecay);
+
+    const tRerank = performance.now();
+    drawers = domainRerank(drawers, opts.wingScope);
+    timings.rerank_ms = Math.round(performance.now() - tRerank);
+
+    const tModality = performance.now();
+    drawers = modalityWeight(drawers, intent);
+    timings.modality_ms = Math.round(performance.now() - tModality);
+  } else {
+    // Default / legacy — rerank first, decay last.
+    const tRerank = performance.now();
+    drawers = domainRerank(drawers, opts.wingScope);
+    timings.rerank_ms = Math.round(performance.now() - tRerank);
+
+    const tModality = performance.now();
+    drawers = modalityWeight(drawers, intent);
+    timings.modality_ms = Math.round(performance.now() - tModality);
+
+    const tDecay = performance.now();
+    drawers = temporalDecay(drawers, { halfLifeDays: DEFAULT_HALF_LIFE_DAYS });
+    drawers.sort((a, b) => (b.similarity ?? 0) - (a.similarity ?? 0));
+    timings.decay_ms = Math.round(performance.now() - tDecay);
+  }
 
   // Emmimal component 4 — extractive compression.
   // Long drawers (>500 chars) get trimmed to top-3 query-relevant sentences.
