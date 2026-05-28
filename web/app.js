@@ -1407,6 +1407,13 @@ form.addEventListener("submit", async (e) => {
     hideTyping();
     exitStreamingState();
     chatAbort = null;
+    // Sigil pulse — the page acknowledges every completed turn with a
+    // brief gold flash on the sidebar sigil. Visible feedback that
+    // "your turn just landed in the palace." Skipped on reduced motion.
+    if (!window.matchMedia?.("(prefers-reduced-motion: reduce)").matches && sigilBtn) {
+      sigilBtn.classList.add("sigil-pulse");
+      setTimeout(() => sigilBtn.classList.remove("sigil-pulse"), 900);
+    }
     if (!assistantEl.classList.contains("aborted")) {
       setStatus("connected", "connected");
     }
