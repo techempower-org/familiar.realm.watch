@@ -612,7 +612,12 @@ body {
   align-items: center;
   justify-content: center;
 }
-.hdr-menu:hover { color: var(--fg); border-color: var(--border); }
+.hdr-menu:hover, .hdr-menu:focus-visible {
+  color: var(--fg);
+  border-color: var(--accent);
+  outline: none;
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 18%, transparent);
+}
 .hdr-title-mobile {
   display: none;
   flex: 1;
