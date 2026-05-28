@@ -84,6 +84,37 @@
   border-color: var(--color-warn);
   background: color-mix(in srgb, var(--color-warn) 10%, transparent);
 }
+/* Gold wash on successful PATCH — animated background sweep + brief glow.
+ * Triggered by slot-picker.js for ~700ms after a 200 commit, then removed.
+ * Reduced motion: animation collapses to a static accent tint then back. */
+.slot-row--success {
+  position: relative;
+  animation: slot-row-wash 700ms ease-out;
+}
+.slot-row--success::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: 6px;
+  pointer-events: none;
+  background: linear-gradient(
+    90deg,
+    transparent 0%,
+    color-mix(in srgb, var(--accent) 28%, transparent) 50%,
+    transparent 100%
+  );
+  background-size: 200% 100%;
+  animation: slot-row-sweep 700ms ease-out;
+}
+@keyframes slot-row-wash {
+  0%   { box-shadow: 0 0 0 0 color-mix(in srgb, var(--accent) 35%, transparent); }
+  40%  { box-shadow: 0 0 0 4px color-mix(in srgb, var(--accent) 18%, transparent); }
+  100% { box-shadow: 0 0 0 0 transparent; }
+}
+@keyframes slot-row-sweep {
+  0%   { background-position: -100% 0; opacity: 0.8; }
+  100% { background-position: 100% 0;  opacity: 0;   }
+}
 
 /* The clickable header inside each row — keeps the whole left edge
  * gold-accented when the row's binding is the selected one. */
@@ -399,6 +430,8 @@
   .slot-variant-opt,
   .slot-variant-accent,
   .slot-vram-bar-fill { transition: none; }
+  .slot-row--success { animation: none; }
+  .slot-row--success::after { animation: none; opacity: 0; }
   .slot-pulse-dot {
     animation: none;
     opacity: 0.7;
