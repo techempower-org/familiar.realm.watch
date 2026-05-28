@@ -2438,6 +2438,30 @@ renderSessionsList();
 checkHealth();
 setInterval(checkHealth, 60_000);
 refreshMemories();
+
+// Rotating placeholder — cycles through prompts every ~12s when the input
+// is empty + unfocused. Tiny magical touch; one of the few moments where
+// the UI shows the familiar has personality without being intrusive.
+// Respects prefers-reduced-motion (skips rotation entirely).
+(function rotatePlaceholder() {
+  if (!input) return;
+  if (window.matchMedia?.("(prefers-reduced-motion: reduce)").matches) return;
+  const prompts = [
+    "speak to the familiar… (enter to send · shift+enter for newline)",
+    "ask about your palace…",
+    "what would you like to remember?",
+    "describe a problem · the familiar reads the palace first",
+    "press / to focus here · ctrl+k for the command palette",
+    "the familiar listens · 374K drawers indexed",
+  ];
+  let i = 0;
+  setInterval(() => {
+    if (document.activeElement === input) return;
+    if (input.value.length > 0) return;
+    i = (i + 1) % prompts.length;
+    input.placeholder = prompts[i];
+  }, 12_000);
+})();
 // Refresh memories when the page regains focus (catches reflect writes
 // that happened while the tab was backgrounded).
 document.addEventListener("visibilitychange", () => {
