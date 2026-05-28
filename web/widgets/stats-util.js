@@ -20,7 +20,7 @@
   function colorVarForTemp(c, t = DEFAULT_TEMP) {
     if (c >= t.red) return 'var(--color-error)';
     if (c >= t.amber) return 'var(--color-warn)';
-    return 'var(--accent-cool, #6ab68f)';
+    return 'var(--accent-cool)';
   }
 
   // Format MB into a human string. unit ∈ 'auto'|'mb'|'gb'.

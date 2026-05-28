@@ -228,10 +228,9 @@ function collectDisk(spawnSync: (cmd: string[]) => { stdout: string; exitCode: n
   for (const line of lines) {
     const parts = line.trim().split(/\s+/);
     if (parts.length < 6) continue;
-    const [, fs, mount, sizeStr, usedStr, availStr] = parts;
+    const [, fs, mount, sizeStr, usedStr] = parts;
     const total = Number(sizeStr) || 0;
     const used = Number(usedStr) || 0;
-    const avail = Number(availStr) || 0;
     // df's "size" can be 0 for special mounts that slipped past the filters
     // (e.g. snap-loop devices). Skip them so the widget doesn't render a
     // 0/0 GB pie chart.
@@ -243,9 +242,6 @@ function collectDisk(spawnSync: (cmd: string[]) => { stdout: string; exitCode: n
       total_gb: Math.round((total / 1_000_000_000) * 10) / 10,
       used_gb: Math.round((used / 1_000_000_000) * 10) / 10,
       used_pct: usedPct,
-      // avail is implicit (total - used) and not part of the public shape; if
-      // a widget wants it, derive it. Keeps the contract minimal.
-      ...(avail ? {} : {}),
     });
   }
   return out;
