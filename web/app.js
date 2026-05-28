@@ -1082,6 +1082,36 @@ const autoResize = () => {
 };
 input.addEventListener("input", autoResize);
 
+// Draft persistence — save unsent chat input to localStorage as the user
+// types, restore on page load. Survives accidental tab close, browser
+// crash, machine sleep. Cleared on submit. Per-browser (no per-session
+// scope; the chat input is global). Debounced 400ms so we're not writing
+// to localStorage on every keystroke.
+const DRAFT_KEY = "familiar_chat_draft";
+try {
+  const saved = localStorage.getItem(DRAFT_KEY);
+  if (saved && !input.value) {
+    input.value = saved;
+    autoResize();
+  }
+} catch { /* private mode, no localStorage — silent */ }
+let draftSaveTimer = null;
+input.addEventListener("input", () => {
+  clearTimeout(draftSaveTimer);
+  draftSaveTimer = setTimeout(() => {
+    try {
+      const v = input.value;
+      if (v) localStorage.setItem(DRAFT_KEY, v);
+      else localStorage.removeItem(DRAFT_KEY);
+    } catch { /* quota / private mode */ }
+  }, 400);
+});
+// Clear the draft on successful submit (also clears on abort path since
+// the submit handler always clears input.value).
+form.addEventListener("submit", () => {
+  try { localStorage.removeItem(DRAFT_KEY); } catch { /* silent */ }
+});
+
 // Keyboard: Enter submits, Shift+Enter inserts a newline.
 input.addEventListener("keydown", (e) => {
   if (e.key === "Enter" && !e.shiftKey && !e.isComposing) {
