@@ -1092,6 +1092,19 @@ document.addEventListener("keydown", (e) => {
     e.preventDefault();
     toggleSidebar();
   }
+  // Focus the chat input from anywhere on the page. Both "/" (Slack-style
+  // and the convention used by GitHub, etc.) and Ctrl+L (clear-line shell
+  // muscle memory). Both no-op when an input/textarea already has focus
+  // or when the picker/drawer is open (Esc closes those first).
+  const focusChatKey = e.key === "/" || (e.ctrlKey && e.key.toLowerCase() === "l");
+  if (focusChatKey) {
+    const active = document.activeElement;
+    const inField = active && (active.tagName === "INPUT" || active.tagName === "TEXTAREA" || active.isContentEditable);
+    if (inField) return;
+    if (document.querySelector(".dashboard-picker, .block-settings-drawer.open")) return;
+    e.preventDefault();
+    if (input) input.focus();
+  }
 });
 
 // Send-button gold ripple — emanates a single ring from the button center on
