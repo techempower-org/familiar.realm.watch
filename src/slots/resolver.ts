@@ -19,7 +19,7 @@
  * (read, write, build a provider).
  */
 
-import { readFile, rename, stat, writeFile, mkdir } from "node:fs/promises";
+import { readFile, rename, stat, unlink, writeFile, mkdir } from "node:fs/promises";
 import { randomBytes } from "node:crypto";
 import { dirname } from "node:path";
 import { OllamaClient } from "../ollama-client.ts";
@@ -183,8 +183,22 @@ export class SlotResolver {
     await mkdir(dir, { recursive: true });
     const tmpName = `${this.cfg.slots.configPath}.tmp.${randomBytes(6).toString("hex")}`;
     const text = JSON.stringify({ ...next, updated_at: new Date().toISOString() }, null, 2) + "\n";
-    await writeFile(tmpName, text, { encoding: "utf8", mode: 0o644 });
-    await rename(tmpName, this.cfg.slots.configPath);
+    let renamed = false;
+    try {
+      await writeFile(tmpName, text, { encoding: "utf8", mode: 0o644 });
+      await rename(tmpName, this.cfg.slots.configPath);
+      renamed = true;
+    } finally {
+      // If the rename succeeded, the tmpfile is gone (consumed by rename).
+      // If anything between writeFile and rename threw, the tmpfile is
+      // orphaned on disk — clean it up. unlink errors are swallowed
+      // because (a) the rename may have raced, (b) the tmpfile may not
+      // exist if writeFile itself threw. Either way, the caller already
+      // sees the original error.
+      if (!renamed) {
+        try { await unlink(tmpName); } catch { /* best-effort cleanup */ }
+      }
+    }
     this.slotsCache = null; // force re-read on next call
   }
 
