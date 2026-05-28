@@ -1,10 +1,21 @@
 import type { OllamaClient } from "../ollama-client.ts";
 import type { CircuitBreaker } from "../circuit-breaker.ts";
 import type { Config } from "../types.ts";
+import type { SlotResolver } from "../slots/resolver.ts";
 
 export interface EmbeddingsRouteDeps {
   cfg: Config;
+  /**
+   * Legacy fallback embed client. Used when `resolver` is absent or
+   * its embed slot returns null (unconfigured, invalid variant, or
+   * non-ollama runtime — llama-cpp doesn't implement embed today).
+   */
   ollamaEmbed: OllamaClient;
+  /**
+   * Slot resolver — Wave 2c. When present, every embed request asks
+   * `resolver.embedClient()` first; falls back to `ollamaEmbed` on null.
+   */
+  resolver?: SlotResolver;
   breaker: CircuitBreaker;
 }
 
@@ -29,11 +40,16 @@ export async function handleEmbeddings(req: Request, deps: EmbeddingsRouteDeps):
     return new Response(JSON.stringify({ error: "input required" }), { status: 400 });
   }
   const inputs = Array.isArray(body.input) ? body.input : [body.input];
-  const model = body.model ?? deps.cfg.ollamaEmbed.model;
+  // Pick the embed client per request: slot resolver wins if it yields
+  // a variant; otherwise the legacy ollamaEmbed (env-configured) takes
+  // over. Build once, reuse across all input strings in this request.
+  const slotClient = deps.resolver ? await deps.resolver.embedClient() : null;
+  const embedClient = slotClient ?? deps.ollamaEmbed;
+  const model = body.model ?? (slotClient ? undefined : deps.cfg.ollamaEmbed.model);
 
   try {
     const vectors = await deps.breaker.run(async () => {
-      return Promise.all(inputs.map((text) => deps.ollamaEmbed.embed({ model, text })));
+      return Promise.all(inputs.map((text) => embedClient.embed({ model: model ?? "", text })));
     });
     const resp = {
       object: "list",

@@ -106,26 +106,10 @@ interface Dashboard {
   registerBlockType(type: BlockType): void;
   mount(root: HTMLElement): void;
   resetLayout(): void;                       // wipes localStorage + reloads
-  applyPreset(id: string): void;             // rebuilds from a named preset
-  presets: string[];                          // available preset ids
   showBlock(id: string): void;                // un-hide a hidden block
-  hideBlock(id: string): void;                // hide (preserves rect+settings)
-  listTypes(): Array<{ id: string; name: string; visible: boolean; registered: true }>;
   listBlocks(): Array<{ id: string; typeId: string; visible: boolean }>;
 }
 ```
-
-## Header controls (`dashboard-init.js`)
-
-- **`+` (add block)** — opens a popover listing every registered block type with
-  its current visibility. Click a row to toggle show/hide. Esc or click-outside
-  dismisses.
-- **layout** — opens a popover with named presets (`default`, `compact`,
-  `data-dense`) plus a destructive `reset all` row. Selecting a preset rebuilds
-  the layout map from `PRESETS[id]` and reloads; reset wipes localStorage.
-
-Preset definitions live in `PRESETS` in `dashboard.js` — add a key per
-block-type id (rect map), or `false` to hide a type in that preset.
 
 Also exposed as `window.familiarDashboard` for debugging.
 

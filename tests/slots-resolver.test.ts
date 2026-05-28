@@ -223,6 +223,48 @@ describe("SlotResolver.validateAssignment", () => {
   });
 });
 
+describe("SlotResolver.embedClient (Wave 2c)", () => {
+  test("returns null when embed slot is disabled", async () => {
+    await writeFile(join(tmpRoot, "registry.json"), JSON.stringify(REGISTRY_CONTENT));
+    const r = new SlotResolver(makeCfg());
+    expect(await r.embedClient()).toBeNull();
+  });
+
+  test("returns OllamaClient when embed slot bound to ollama variant", async () => {
+    await writeFile(join(tmpRoot, "registry.json"), JSON.stringify(REGISTRY_CONTENT));
+    await writeFile(
+      join(tmpRoot, "slots.json"),
+      JSON.stringify({
+        schema_version: 1, updated_at: "x",
+        slots: { chat: { variant_id: null }, embed: { variant_id: "embed-x" }, extract: { variant_id: null }, hyde: { variant_id: null }, reflect: { variant_id: null } },
+      }),
+    );
+    const r = new SlotResolver(makeCfg());
+    const client = await r.embedClient();
+    expect(client).not.toBeNull();
+    expect(typeof (client as { embed: unknown }).embed).toBe("function");
+  });
+
+  test("returns null when variant lacks embed capability (even if known)", async () => {
+    await writeFile(join(tmpRoot, "registry.json"), JSON.stringify(REGISTRY_CONTENT));
+    await writeFile(
+      join(tmpRoot, "slots.json"),
+      JSON.stringify({
+        schema_version: 1, updated_at: "x",
+        slots: { chat: { variant_id: null }, embed: { variant_id: "chat-a" }, extract: { variant_id: null }, hyde: { variant_id: null }, reflect: { variant_id: null } },
+      }),
+    );
+    const r = new SlotResolver(makeCfg());
+    expect(await r.embedClient()).toBeNull();
+  });
+
+  test("returns null when override variant_id is unknown to registry", async () => {
+    await writeFile(join(tmpRoot, "registry.json"), JSON.stringify(REGISTRY_CONTENT));
+    const r = new SlotResolver(makeCfg());
+    expect(await r.embedClient("nope")).toBeNull();
+  });
+});
+
 describe("Registry validation", () => {
   test("rejects schema_version != 1", async () => {
     await writeFile(

@@ -148,7 +148,7 @@ const server = Bun.serve({
         return await handleChat(req, { cfg, palace, ollama: inferenceRouter, resolver: slotResolver, sessions, diaryBuffer, reflectWriter, hydeGenerate: hyde, breakers: { palace: breakers.palace, ollama: breakers.ollamaChat } });
       }
       if (url.pathname === "/v1/embeddings" && req.method === "POST") {
-        return await handleEmbeddings(req, { cfg, ollamaEmbed, breaker: breakers.ollamaEmbed });
+        return await handleEmbeddings(req, { cfg, ollamaEmbed, resolver: slotResolver, breaker: breakers.ollamaEmbed });
       }
       if (url.pathname === "/api/version" && req.method === "GET") {
         return await handleVersion(req, sigil);
