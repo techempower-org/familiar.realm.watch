@@ -976,8 +976,17 @@ body {
   line-height: 1.5;
   font-family: var(--sans);
   overflow-y: auto;
+  /* Soft border-color transition on focus + subtle gold glow. */
+  transition: border-color 180ms ease, box-shadow 180ms ease;
 }
-#input:focus { outline: 1px solid var(--accent); border-color: var(--accent); }
+#input:focus {
+  outline: 1px solid var(--accent);
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 18%, transparent);
+}
+@media (prefers-reduced-motion: reduce) {
+  #input { transition: none; }
+}
 #input::placeholder { color: var(--fg-muted); opacity: 0.7; }
 .form button[type="submit"] {
   background: var(--accent);
