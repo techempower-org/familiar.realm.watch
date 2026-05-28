@@ -283,9 +283,12 @@
   text-transform: uppercase;
   cursor: pointer;
 }
-.command-palette-version .cpv-foot button:hover {
+.command-palette-version .cpv-foot button:hover,
+.command-palette-version .cpv-foot button:focus-visible {
   border-color: var(--accent);
   color: var(--accent);
+  outline: none;
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 18%, transparent);
 }
 
 @media (max-width: 600px) {
