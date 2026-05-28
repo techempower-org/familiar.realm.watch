@@ -535,8 +535,15 @@ body {
   border-radius: 3px;
   transition: color 100ms ease, border-color 100ms ease;
 }
-.memories-list .memory-edit:hover { color: var(--accent); border-color: var(--accent); }
-.memories-list .memory-delete:hover { color: var(--color-error); border-color: var(--color-error); }
+.memories-list .memory-edit:hover,
+.memories-list .memory-edit:focus-visible {
+  color: var(--accent); border-color: var(--accent); outline: none;
+}
+.memories-list .memory-delete:hover,
+.memories-list .memory-delete:focus-visible {
+  color: var(--color-error); border-color: var(--color-error); outline: none;
+}
+.memories-list li:focus-within .memory-actions { opacity: 1; }
 .memories-list .memory-fact[contenteditable="true"] {
   outline: 1px solid var(--accent);
   outline-offset: 2px;
