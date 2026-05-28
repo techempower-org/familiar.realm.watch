@@ -1556,7 +1556,7 @@ textarea.palace-detail-body.editing {
  * the same coords as the resting state. Mobile (<768px) collapses to a
  * single-column stack via the media query at the bottom.
  */
-.main {
+main {
   /* Lift the 960px cap so the dashboard can use the full main column. */
   max-width: none;
 }

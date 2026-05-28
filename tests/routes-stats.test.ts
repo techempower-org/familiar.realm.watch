@@ -58,9 +58,12 @@ function fakeSpawn(): (cmd: string[]) => { stdout: string; exitCode: number } {
       };
     }
     if (cmd[0] === "df") {
+      // Matches stats.ts's `df -B1 --output=source,fstype,target,size,used,avail`.
+      // stats.ts skips the header line, so any first row works — kept here so a
+      // reader can map columns to the --output= fields at a glance.
       return {
         stdout: [
-          "Filesystem     Type     Mounted on   1B-blocks         Used        Avail",
+          "source         fstype   target       size          used         avail",
           "/dev/nvme0n1p2 ext4     /            1000000000000 500000000000 500000000000",
           "/dev/nvme1n1   btrfs    /mnt/games   250000000000  125000000000 125000000000",
         ].join("\n") + "\n",

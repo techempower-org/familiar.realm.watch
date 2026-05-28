@@ -29,6 +29,7 @@ for (const key of ["gpu", "cpu", "mem", "disk", "net"]) {
     id: def.id,
     name: def.name,
     defaultRect: def.defaultRect,
+    defaultSettings: def.defaultSettings,
     render: def.render,
     renderSettings: def.renderSettings,
   });
