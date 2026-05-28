@@ -62,15 +62,15 @@ def collect_kg_extract() -> dict:
     """KG-extract queue counters from the mempalace database."""
     m: dict = {}
     rows = _psql(
-        "SELECT 'completed', count(*) FROM kg_extract_queue WHERE completed_at IS NOT NULL "
+        "SELECT 'completed', count(*) FROM mempalace_kg_extraction_queue WHERE completed_at IS NOT NULL "
         "UNION ALL "
-        "SELECT 'incomplete', count(*) FROM kg_extract_queue WHERE completed_at IS NULL "
+        "SELECT 'incomplete', count(*) FROM mempalace_kg_extraction_queue WHERE completed_at IS NULL "
         "UNION ALL "
-        "SELECT 'errors', count(*) FROM kg_extract_queue WHERE error IS NOT NULL "
+        "SELECT 'errors', count(*) FROM mempalace_kg_extraction_queue WHERE error IS NOT NULL "
         "UNION ALL "
-        "SELECT 'total_triples', COALESCE(SUM(triples_extracted), 0)::bigint FROM kg_extract_queue "
+        "SELECT 'total_triples', COALESCE(SUM(triples_extracted), 0)::bigint FROM mempalace_kg_extraction_queue "
         "UNION ALL "
-        "SELECT 'rate_per_min', count(*) FROM kg_extract_queue "
+        "SELECT 'rate_per_min', count(*) FROM mempalace_kg_extraction_queue "
         "WHERE completed_at > now() - interval '1 minute';"
     )
     for line in rows.splitlines():
@@ -98,7 +98,7 @@ def collect_kg_extract() -> dict:
 def collect_workers() -> dict:
     """Active/inactive flag per mempalace-kg-extract@N.service worker unit."""
     out = _run([
-        "systemctl", "--user", "list-units", "--type=service", "--all",
+        "systemctl", "list-units", "--type=service", "--all",
         "--no-legend", "--plain", "mempalace-kg-extract@*",
     ])
     m: dict = {}
