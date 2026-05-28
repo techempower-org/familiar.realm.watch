@@ -32,11 +32,34 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 
 
 def _run(cmd: list[str], timeout: int = 10) -> str:
+    """Run a subprocess and return stdout.
+
+    Failures (non-zero exit, timeout, OSError, etc.) emit a stderr
+    diagnostic line instead of silently swallowing the error. The
+    previous behavior — bare ``except Exception: return ""`` — let
+    `kgops-collect` quietly produce all-zeros output when a SQL
+    column went missing (#48), which downstream defaulted to "no
+    work pending" and triggered false-alarm investigations.
+    """
     try:
         r = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout)
-        return r.stdout.strip()
-    except Exception:
+    except subprocess.TimeoutExpired:
+        print(f"[kgops-collect] _run timeout after {timeout}s: {cmd[:3]}...",
+              file=sys.stderr)
         return ""
+    except (FileNotFoundError, OSError) as e:
+        print(f"[kgops-collect] _run exec failed: {e}: {cmd[:3]}...",
+              file=sys.stderr)
+        return ""
+    if r.returncode != 0:
+        stderr_snippet = (r.stderr or "").strip()[:300]
+        print(
+            f"[kgops-collect] _run rc={r.returncode}: {cmd[:3]}... "
+            f"stderr: {stderr_snippet}",
+            file=sys.stderr,
+        )
+        return ""
+    return r.stdout.strip()
 
 
 def _psql(query: str) -> str:
@@ -59,7 +82,24 @@ def collect_sysmon() -> dict:
 
 
 def collect_kg_extract() -> dict:
-    """KG-extract queue counters from the mempalace database."""
+    """KG-extract queue counters from the mempalace database.
+
+    #48 — dropped the ``total_triples`` row from the UNION ALL. The
+    queue table has no ``triples_extracted`` column (verified live
+    2026-05-28); the row caused the whole query to error and the
+    enclosing _run/_psql to silently return "", which dropped ALL
+    kg_* metrics. Downstream defaulted each missing key to 0,
+    masking the failure for months.
+
+    If a true triple-count metric is wanted later, query AGE directly:
+
+        SELECT count(*) FROM cypher('mempalace_kg',
+            $$ MATCH ()-[r:RELATION]->() RETURN count(r) $$
+        ) AS (n agtype);
+
+    That's an order of magnitude slower but is the actual source of
+    truth (the extractor doesn't persist a per-queue-item count today).
+    """
     m: dict = {}
     rows = _psql(
         "SELECT 'completed', count(*) FROM mempalace_kg_extraction_queue WHERE completed_at IS NOT NULL "
@@ -67,8 +107,6 @@ def collect_kg_extract() -> dict:
         "SELECT 'incomplete', count(*) FROM mempalace_kg_extraction_queue WHERE completed_at IS NULL "
         "UNION ALL "
         "SELECT 'errors', count(*) FROM mempalace_kg_extraction_queue WHERE error IS NOT NULL "
-        "UNION ALL "
-        "SELECT 'total_triples', COALESCE(SUM(triples_extracted), 0)::bigint FROM mempalace_kg_extraction_queue "
         "UNION ALL "
         "SELECT 'rate_per_min', count(*) FROM mempalace_kg_extraction_queue "
         "WHERE completed_at > now() - interval '1 minute';"
@@ -88,8 +126,6 @@ def collect_kg_extract() -> dict:
             m["kg_incomplete"] = n
         elif k == "errors":
             m["kg_errors"] = n
-        elif k == "total_triples":
-            m["kg_total_triples"] = n
         elif k == "rate_per_min":
             m["kg_rate_per_min"] = float(n)
     return m
