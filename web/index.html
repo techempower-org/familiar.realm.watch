@@ -241,6 +241,16 @@
     </template>
   </main>
   <script type="module" src="/widgets/slot-picker.js"></script>
+  <!-- Stat widget scripts — load order specified at top of stats-init.js (#64). -->
+  <link rel="stylesheet" href="/widgets/stats.css">
+  <script src="/widgets/stats-util.js"></script>
+  <script src="/widgets/stats-poller.js"></script>
+  <script src="/widgets/stats-gpu.js"></script>
+  <script src="/widgets/stats-cpu.js"></script>
+  <script src="/widgets/stats-mem.js"></script>
+  <script src="/widgets/stats-disk.js"></script>
+  <script src="/widgets/stats-net.js"></script>
+  <script type="module" src="/widgets/stats-init.js"></script>
   <script type="module" src="/dashboard-init.js"></script>
   <script type="module" src="/app.js"></script>
 </body>
