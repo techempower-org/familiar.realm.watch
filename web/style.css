@@ -616,7 +616,12 @@ body {
   text-transform: uppercase;
   transition: color 100ms ease, border-color 100ms ease, background 100ms ease;
 }
-.hdr-tab:hover { color: var(--accent); border-color: var(--accent); }
+.hdr-tab:hover, .hdr-tab:focus-visible {
+  color: var(--accent);
+  border-color: var(--accent);
+  outline: none;
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 12%, transparent);
+}
 .hdr-tab.active {
   color: var(--accent);
   border-color: var(--accent);
