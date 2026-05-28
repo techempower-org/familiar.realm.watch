@@ -1,0 +1,21 @@
+# /var/lib/familiar/allowed-units.txt
+#
+# Unit names familiar-slotctl is permitted to start/stop/restart/probe.
+# One unit per line; # comments allowed. The wrapper rejects anything
+# not on this list, AND anything not matching ^[a-z0-9-]+\.service$.
+#
+# This list is ops-owned and should be regenerated whenever registry.json
+# adds or removes a variant. The intent is that every variant.unit value
+# in registry.json appears here exactly once.
+
+# Currently-deployed units (2026-05-28)
+llama-server-extractor.service
+llama-server-extractor-gpu1.service
+ollama-chat.service
+ollama-embed.service
+
+# New units shipped by the slot picker (see ops/systemd/units/)
+llama-server-chat-gemma3-4b-gpu1.service
+llama-server-chat-gemma3-4b-cpu.service
+llama-server-hyde-gemma3-4b-gpu1.service
+llama-server-reflect-qwen-3b-gpu1.service

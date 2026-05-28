@@ -29,6 +29,19 @@ export interface Config {
   sessionTtlMinutes: number;
   realmSigilRealm: string;
   logLevel: "debug" | "info" | "warn" | "error";
+  slots: {
+    /** Path to ops-owned registry.json enumerating available variants. */
+    registryPath: string;
+    /** Path to api-owned slots.json tracking live per-slot bindings. */
+    configPath: string;
+    /** Path to the sudo-able systemctl wrapper (familiar-slotctl). */
+    slotctlPath: string;
+    /**
+     * Master enable. False by default so tests never accidentally invoke
+     * sudo. Production sets FAMILIAR_SLOTS_ADMIN=true via the env file.
+     */
+    adminEnabled: boolean;
+  };
 }
 
 /**
@@ -109,6 +122,79 @@ export interface Session {
    * and to nudge the assistant to suggest rephrasing or wing scope.
    */
   recentQueryHashes: string[];
+  /**
+   * v2: per-session model overrides keyed by SlotName. Defined in v1 so the
+   * Session shape is stable; not written by any v1 surface. When a slot is
+   * present, the resolver picks the override variant_id over the system
+   * default. If the underlying unit is no longer running, the chat route
+   * silently clears the entry and retries with system default.
+   */
+  modelOverrides?: Partial<Record<SlotName, string>>;
+}
+
+/**
+ * The five inference slots familiar manages. Fixed enum — not user-extensible
+ * because each slot has slot-specific code in the chat/embed/eval routes and
+ * in reflect/HyDE wiring. Adding a slot is a typed code change, not a config
+ * edit.
+ *
+ * - chat:    the conversational model (/v1/chat/completions)
+ * - embed:   embeddings for retrieval (/v1/embeddings, palace-client search)
+ * - extract: KG triple extraction worker (mempalace.kg_triple_worker)
+ * - hyde:    pre-search hypothetical-doc generator (palace-client.searchHybrid)
+ * - reflect: post-conversation fact extraction (reflect/writer.ts)
+ */
+export type SlotName = "chat" | "embed" | "extract" | "hyde" | "reflect";
+
+export const SLOT_NAMES: readonly SlotName[] = ["chat", "embed", "extract", "hyde", "reflect"];
+
+/** Slot names that cannot be null (chat / embed / extract always need a model). */
+export const REQUIRED_SLOTS: readonly SlotName[] = ["chat", "embed", "extract"];
+
+/**
+ * One entry in the host's variant registry — a single (model, runtime,
+ * gpu, unit) combination available to be bound to a slot. registry.json
+ * is ops-owned, edited by hand alongside the systemd unit files.
+ */
+export interface Variant {
+  /** Stable identifier, kebab-case. Used in slots.json and over the wire. */
+  id: string;
+  /** Human-readable label shown in the picker (e.g. "Qwen 2.5 7B"). */
+  label: string;
+  /** Model identifier passed in the inference request body. */
+  model: string;
+  /** Backend protocol — picks which client class instantiates the provider. */
+  runtime: "ollama" | "llama-cpp";
+  /** systemd unit name (must match a line in allowed-units.txt). */
+  unit: string;
+  /** HTTP base URL where the variant listens once started. */
+  url: string;
+  /** GPU index (0 or 1) or null for CPU. */
+  gpu: number | null;
+  /** VRAM cost in megabytes — used by the preflight to reject overflowing PATCHes. */
+  vram_mb: number;
+  /** Which slots this variant is eligible to serve. Most variants serve one. */
+  capabilities: SlotName[];
+  /** Optional context window in tokens, surfaced to the UI for display. */
+  context?: number;
+}
+
+export interface RegistryConfig {
+  schema_version: 1;
+  /** Per-GPU total memory (MB) — used by VRAM preflight as the denominator. */
+  gpu_total_mb: Record<string, number>;
+  variants: Variant[];
+}
+
+export interface SlotState {
+  /** Variant id from the registry, or null to disable the slot (hyde/reflect only). */
+  variant_id: string | null;
+}
+
+export interface SlotsConfig {
+  schema_version: 1;
+  updated_at: string;
+  slots: Record<SlotName, SlotState>;
 }
 
 // ------------------------------------------------------------

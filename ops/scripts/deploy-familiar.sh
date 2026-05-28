@@ -134,12 +134,58 @@ RETRIEVAL_LIMIT=5
 SESSION_TTL_MINUTES=60
 REALM_SIGIL_REALM=fantasy
 LOG_LEVEL=info
+# Slot picker — leave admin off until the picker UI is wired end-to-end.
+# Flip to true once registry.json + allowed-units.txt are reviewed.
+FAMILIAR_SLOTS_REGISTRY=/var/lib/familiar/registry.json
+FAMILIAR_SLOTS_CONFIG=/var/lib/familiar/slots.json
+FAMILIAR_SLOTCTL_PATH=/usr/local/sbin/familiar-slotctl
+FAMILIAR_SLOTS_ADMIN=false
 EOF"
   ssh "${DEST_HOST}" "sudo chmod 600 ${DEST_ROOT}/.env && sudo chown ${DEST_USER}:${DEST_USER} ${DEST_ROOT}/.env"
 fi
 
 echo ">>> Installing/refreshing systemd unit..."
 ssh "${DEST_HOST}" "sudo cp ${DEST_ROOT}/ops/systemd/familiar-api.service /etc/systemd/system/ && sudo systemctl daemon-reload"
+
+# Slot picker scaffolding — install on every deploy, but never overwrite
+# the live /var/lib/familiar/registry.json or slots.json once they exist
+# (those are operator-edited and must survive deploys).
+echo ">>> Installing slot picker scaffolding..."
+ssh "${DEST_HOST}" "
+  set -e
+  # Wrapper + sudoers — always refresh from source of truth.
+  sudo install -m 0755 -o root -g root ${DEST_ROOT}/ops/systemd/familiar-slotctl.sh /usr/local/sbin/familiar-slotctl
+  sudo install -m 0440 -o root -g root ${DEST_ROOT}/ops/systemd/familiar-slotctl.sudoers /etc/sudoers.d/familiar-slotctl
+  sudo visudo -cf /etc/sudoers.d/familiar-slotctl >/dev/null
+
+  # /var/lib/familiar must exist, owned by the service user, before
+  # familiar-api boots — the resolver writes slots.json there.
+  sudo mkdir -p /var/lib/familiar
+  sudo chown ${DEST_USER}:${DEST_USER} /var/lib/familiar
+  sudo chmod 0755 /var/lib/familiar
+
+  # Seed registry.json + allowed-units.txt on FIRST deploy only.
+  # Subsequent deploys leave the operator-edited files alone.
+  for f in registry.json allowed-units.txt; do
+    if ! sudo test -s /var/lib/familiar/\$f; then
+      sudo install -m 0644 -o ${DEST_USER} -g ${DEST_USER} \\
+        ${DEST_ROOT}/ops/systemd/\${f}.example /var/lib/familiar/\$f
+      echo \"    seeded /var/lib/familiar/\$f from example\"
+    else
+      echo \"    /var/lib/familiar/\$f exists — leaving in place\"
+    fi
+  done
+
+  # Install slot-variant unit files. These are inactive by default; the
+  # admin PATCH endpoint enables/starts them on demand. We refresh on
+  # every deploy because the unit definitions are part of the source of
+  # truth in ops/systemd/units/.
+  for u in ${DEST_ROOT}/ops/systemd/units/*.service; do
+    [ -e \"\$u\" ] || continue
+    sudo cp \"\$u\" /etc/systemd/system/
+  done
+  sudo systemctl daemon-reload
+"
 
 echo ">>> (Re)starting familiar-api..."
 ssh "${DEST_HOST}" "sudo systemctl enable familiar-api.service && sudo systemctl restart familiar-api.service"

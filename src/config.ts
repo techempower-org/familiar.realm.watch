@@ -21,6 +21,12 @@ function readLogLevel(name: string, fallback: Config["logLevel"]): Config["logLe
   throw new Error(`${name} must be debug|info|warn|error, got: ${v}`);
 }
 
+function readBool(name: string, fallback: boolean): boolean {
+  const v = process.env[name];
+  if (v === undefined || v === "") return fallback;
+  return v.toLowerCase() === "true" || v === "1";
+}
+
 export function loadConfig(): Config {
   return {
     port: readInt("FAMILIAR_PORT", 8080),
@@ -53,5 +59,13 @@ export function loadConfig(): Config {
     sessionTtlMinutes: readInt("SESSION_TTL_MINUTES", 60),
     realmSigilRealm: readStr("REALM_SIGIL_REALM", "fantasy"),
     logLevel: readLogLevel("LOG_LEVEL", "info"),
+    slots: {
+      registryPath: readStr("FAMILIAR_SLOTS_REGISTRY", "/var/lib/familiar/registry.json"),
+      configPath: readStr("FAMILIAR_SLOTS_CONFIG", "/var/lib/familiar/slots.json"),
+      slotctlPath: readStr("FAMILIAR_SLOTCTL_PATH", "/usr/local/sbin/familiar-slotctl"),
+      // OFF by default so unit/integration tests never accidentally shell
+      // out to sudo. Production sets FAMILIAR_SLOTS_ADMIN=true in /srv/familiar/.env.
+      adminEnabled: readBool("FAMILIAR_SLOTS_ADMIN", false),
+    },
   };
 }

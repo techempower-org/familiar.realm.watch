@@ -1,0 +1,24 @@
+[Unit]
+Description=llama.cpp chat — Gemma 3 4B on CPU (slot picker variant, fallback)
+After=network.target
+
+[Service]
+Type=simple
+User=jp
+Environment=CUDA_VISIBLE_DEVICES=
+ExecStart=/opt/llama.cpp/build/bin/llama-server \
+  --model /var/cache/llama/models/gemma-4-E4B-it-Q4_K_M.gguf \
+  --port 11448 --host 0.0.0.0 \
+  --n-gpu-layers 0 \
+  --ctx-size 4096 \
+  --parallel 2 \
+  --threads 16 \
+  --cont-batching \
+  --alias gemma3-4b-cpu
+Restart=on-failure
+RestartSec=5
+MemoryMax=8G
+OOMScoreAdjust=-300
+
+[Install]
+WantedBy=multi-user.target

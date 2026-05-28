@@ -1,5 +1,6 @@
 import type { PalaceClient } from "../palace-client.ts";
 import type { CircuitBreaker } from "../circuit-breaker.ts";
+import type { SlotResolver } from "../slots/resolver.ts";
 import type { SessionStore } from "../sessions.ts";
 import type { Config, InferenceChatProvider } from "../types.ts";
 import type { DiaryBuffer } from "../diary-buffer.ts";
@@ -23,11 +24,19 @@ export interface ChatRouteDeps {
   cfg: Config;
   palace: PalaceClient;
   /**
-   * Any InferenceChatProvider — typically the InferenceRouter, which
-   * internally wraps llama.cpp + Ollama. The chat route doesn't care which
-   * upstream serves the bytes; only that chatStream emits OllamaChatChunk shape.
+   * Legacy fallback provider — typically the InferenceRouter (llama.cpp +
+   * Ollama). Used when `resolver` is absent or its chat slot has no binding
+   * (i.e. /var/lib/familiar/slots.json doesn't exist yet on a fresh deploy).
    */
   ollama: InferenceChatProvider;
+  /**
+   * Slot resolver — Wave 2b. When present, every chat request asks the
+   * resolver for the current chat-slot provider via `resolver.chat()`.
+   * Falls back to `ollama` when the resolver returns no provider.
+   * Backward-compatible: production deploys that haven't seeded
+   * /var/lib/familiar/slots.json keep using the legacy path.
+   */
+  resolver?: SlotResolver;
   sessions: SessionStore;
   diaryBuffer: DiaryBuffer;
   /** Optional: when present, fires after each assistant turn (length-gated). */
@@ -43,6 +52,20 @@ export interface ChatRouteDeps {
     palace: CircuitBreaker;
     ollama: CircuitBreaker;
   };
+}
+
+/**
+ * Choose the chat provider for THIS request. If a slot resolver is wired
+ * and its chat slot resolves to a provider, that wins. Otherwise we fall
+ * back to the legacy router. Called once per request — resolver does its
+ * own mtime-cache so cost is one stat() at most.
+ */
+async function pickChatProvider(deps: ChatRouteDeps): Promise<InferenceChatProvider> {
+  if (deps.resolver) {
+    const resolved = await deps.resolver.chat();
+    if (resolved.provider) return resolved.provider;
+  }
+  return deps.ollama;
 }
 
 function reflectSummary(decisions: ReflectDecision[]) {
@@ -197,8 +220,9 @@ function streamResponse(opts: GenOpts): Response {
   const body = new ReadableStream<Uint8Array>({
     async start(controller) {
       try {
+        const chatProvider = await pickChatProvider(deps);
         await deps.breakers.ollama.run(async () => {
-          for await (const chunk of deps.ollama.chatStream({ model, messages: messagesForOllama })) {
+          for await (const chunk of chatProvider.chatStream({ model, messages: messagesForOllama })) {
             const delta = chunk.message?.content ?? "";
             if (delta) accumulated += delta;
             const openAIChunk = {
@@ -268,8 +292,9 @@ async function bufferResponse(opts: GenOpts): Promise<Response> {
   const { deps, model, messagesForOllama, sessionId, grounded, userContent } = opts;
   let accumulated = "";
   try {
+    const chatProvider = await pickChatProvider(deps);
     await deps.breakers.ollama.run(async () => {
-      for await (const chunk of deps.ollama.chatStream({ model, messages: messagesForOllama })) {
+      for await (const chunk of chatProvider.chatStream({ model, messages: messagesForOllama })) {
         const delta = chunk.message?.content ?? "";
         if (delta) accumulated += delta;
       }
