@@ -31,15 +31,26 @@ const word = document.getElementById("word");
 // it maps to. The /api/version endpoint already has hash/branch/built/
 // commit_url; we just surface them.
 if (word) {
-  word.addEventListener("click", async () => {
+  word.addEventListener("click", async (e) => {
     try {
       const r = await fetch("/api/version");
       if (!r.ok) return;
       const v = await r.json();
+      // Shift-click → open the GitHub commit URL in a new tab.
+      if (e.shiftKey && v.commit_url) {
+        window.open(v.commit_url, "_blank", "noopener");
+        return;
+      }
       const detail = `${v.word} · ${v.hash} · ${v.branch || "?"}${v.dirty ? " (dirty)" : ""} · built ${v.built || "?"}`;
       const t = window.familiarToast;
-      if (t?.info) t.info(detail, { ttl: 6000 });
-      else alert(detail);
+      if (t?.info) {
+        t.info(detail, {
+          ttl: 8000,
+          onClick: v.commit_url
+            ? () => window.open(v.commit_url, "_blank", "noopener")
+            : undefined,
+        });
+      } else alert(detail);
     } catch { /* offline — silent */ }
   });
 }
