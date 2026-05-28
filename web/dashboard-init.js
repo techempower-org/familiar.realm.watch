@@ -379,3 +379,51 @@ function openPresets() {
   });
 }
 if (resetBtn) resetBtn.addEventListener("click", openPresets);
+
+// ---------- Welcome ritual (once per deploy hash) ----------
+// First visit OR first visit after a new deploy: fade the realm word in
+// over the dashboard for ~1.5s before fading out. Plays sound.flourish()
+// at peak if the user has audio enabled. Stored as the realm hash so
+// each new deploy gets its own flourish. Respects prefers-reduced-motion.
+(async function welcomeRitual() {
+  if (window.matchMedia?.("(prefers-reduced-motion: reduce)").matches) return;
+  let version;
+  try {
+    const r = await fetch("/api/version", { credentials: "same-origin" });
+    if (!r.ok) return;
+    version = await r.json();
+  } catch { return; }
+  if (!version || !version.hash || !version.word) return;
+  const key = `familiar_welcomed_${version.hash}`;
+  let lastSeen;
+  try { lastSeen = localStorage.getItem(key); } catch { return; }
+  if (lastSeen) return;
+
+  const overlay = document.createElement("div");
+  overlay.className = "welcome-flourish";
+  overlay.setAttribute("aria-hidden", "true");
+  const inner = document.createElement("div");
+  inner.className = "welcome-flourish-inner";
+  const word = document.createElement("div");
+  word.className = "welcome-flourish-word";
+  word.textContent = version.word;
+  const sub = document.createElement("div");
+  sub.className = "welcome-flourish-sub";
+  sub.textContent = `· ${version.hash.slice(0, 7)} ·`;
+  inner.appendChild(word);
+  inner.appendChild(sub);
+  overlay.appendChild(inner);
+  document.body.appendChild(overlay);
+
+  try {
+    const { sound } = await import("/widgets/sound.js");
+    requestAnimationFrame(() => sound.flourish?.());
+  } catch { /* sound module not present yet — silent flourish is still fine */ }
+
+  requestAnimationFrame(() => overlay.classList.add("show"));
+  setTimeout(() => {
+    overlay.classList.remove("show");
+    setTimeout(() => overlay.remove(), 700);
+    try { localStorage.setItem(key, "1"); } catch { /* full quota */ }
+  }, 1500);
+})();

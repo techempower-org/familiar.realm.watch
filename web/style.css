@@ -2037,3 +2037,45 @@ main {
   background: color-mix(in srgb, var(--border) 60%, transparent);
   margin: 0.25rem 0.3rem;
 }
+
+/* ===================== Welcome flourish ===================== */
+/* First visit OR first visit after a new deploy: realm word fades in over
+   the dashboard for ~1.5s, then fades out. Sound.flourish() plays at peak.
+   Stored per-hash so each new deploy gets its own flourish. */
+.welcome-flourish {
+  position: fixed;
+  inset: 0;
+  z-index: 9999;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: color-mix(in srgb, var(--bg) 92%, transparent);
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 700ms ease;
+}
+.welcome-flourish.show { opacity: 1; }
+.welcome-flourish-inner {
+  text-align: center;
+  transform: scale(0.94);
+  transition: transform 800ms cubic-bezier(0.2, 0.7, 0.2, 1);
+}
+.welcome-flourish.show .welcome-flourish-inner { transform: scale(1); }
+.welcome-flourish-word {
+  font-family: var(--serif, Georgia, serif);
+  font-size: clamp(2rem, 6vw, 3.5rem);
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  color: var(--accent);
+  text-shadow: 0 0 22px color-mix(in srgb, var(--accent) 38%, transparent);
+}
+.welcome-flourish-sub {
+  margin-top: 0.5rem;
+  font-family: var(--mono, ui-monospace, Menlo, monospace);
+  font-size: 0.78rem;
+  letter-spacing: 0.18em;
+  color: var(--muted);
+}
+@media (prefers-reduced-motion: reduce) {
+  .welcome-flourish { display: none; }
+}
