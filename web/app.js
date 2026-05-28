@@ -2115,6 +2115,18 @@ function setTab(name) {
 }
 tabChat.addEventListener("click", () => setTab("chat"));
 tabPalace.addEventListener("click", () => setTab("palace"));
+// Tablist arrow-key navigation per WAI-ARIA pattern.
+// When focus is on one tab, Left/Right move between tabs; activation
+// switches the panel via the existing setTab handlers.
+[tabChat, tabPalace].forEach((t) => {
+  if (!t) return;
+  t.addEventListener("keydown", (e) => {
+    if (e.key !== "ArrowLeft" && e.key !== "ArrowRight") return;
+    e.preventDefault();
+    const other = t === tabChat ? tabPalace : tabChat;
+    if (other) { other.focus(); other.click(); }
+  });
+});
 if (palaceRefresh) palaceRefresh.addEventListener("click", () => showPalace(true));
 
 if ("serviceWorker" in navigator) {
