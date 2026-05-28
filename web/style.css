@@ -583,6 +583,12 @@ body {
   display: flex;
   flex-direction: column;
   gap: 1rem;
+  /* Smooth-scroll to bottom as new turns stream. Honors reduced-motion
+     via the media block below (auto = browser default, instant). */
+  scroll-behavior: smooth;
+}
+@media (prefers-reduced-motion: reduce) {
+  .log { scroll-behavior: auto; }
 }
 
 /* ===================== Palace view ===================== */
