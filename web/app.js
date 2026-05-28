@@ -797,6 +797,12 @@ function renderTranscript() {
 
 function renderSessionsList() {
   while (sessionsList.firstChild) sessionsList.removeChild(sessionsList.firstChild);
+  // Header count badge — n sessions visible.
+  const countEl = document.getElementById("sessions-count");
+  if (countEl) {
+    const n = state.list.length;
+    countEl.textContent = n === 0 ? "" : `· ${n}`;
+  }
   const sorted = [...state.list].sort((a, b) => b.lastSeenAt - a.lastSeenAt);
   if (sorted.length === 0) {
     const empty = document.createElement("li");
