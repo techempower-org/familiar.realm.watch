@@ -40,13 +40,25 @@ bun test                   # all tests
 bun test tests/grounding.test.ts  # one file
 ```
 
+## Slot picker
+
+Five inference workloads — **chat**, **embed**, **extract**, **hyde**, **reflect** — each get a pickable variant via `PATCH /api/familiar/admin/slots/:slot`. See [`docs/slot-picker.md`](docs/slot-picker.md) for the operator runbook.
+
+- **Registry**: `/var/lib/familiar/registry.json` — ops-owned, enumerates available variants. Templated by `ops/systemd/registry.json.example`.
+- **Live state**: `/var/lib/familiar/slots.json` — familiar-api-owned, atomic-write, mtime-cached at request time.
+- **systemctl wrapper**: `/usr/local/sbin/familiar-slotctl` (sudoers-scoped to the `familiar` user; allow-list at `/var/lib/familiar/allowed-units.txt`).
+- **Admin gating**: Caddy's `@admin` block forwards `/api/familiar/admin/*` through Authelia. The picker UI must be served from an authenticated session.
+- **Master enable**: `FAMILIAR_SLOTS_ADMIN=true` in `/srv/familiar/.env` — defaults false so tests don't shell out to sudo.
+
+v1 ships the admin endpoints + slot infra. Chat/embed/HyDE/reflect runtime still routes through the legacy `InferenceRouter` until Wave 2b swaps it.
+
 ## Deploying
 
 Scripts in `ops/scripts/`:
 - `install-ollama-familiar.sh` — one-shot Ollama + systemd setup on familiar. **Legacy** — installs stock Ollama which CPU-fallbacks on Pascal. After 2026-05-15 the production setup uses llama.cpp built from source; the systemd unit names (`ollama-chat.service`, `ollama-embed.service`) are kept for compatibility but `ExecStart` is overridden to `/opt/llama.cpp/build/bin/llama-server`.
 - `install-palace-daemon-katana.sh` — clone + install palace-daemon on katana
 - `swap-katana-mcp.sh` — update katana's Claude Code MCP to bridge
-- `deploy-familiar.sh` — rsync + systemctl restart
+- `deploy-familiar.sh` — rsync + systemctl restart (also installs slot picker scaffolding: slotctl + sudoers + variant units + seeds `/var/lib/familiar/`)
 
 ## Don't
 
