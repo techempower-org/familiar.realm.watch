@@ -77,6 +77,33 @@ if ! "${REPO_ROOT}/ops/scripts/check-web.sh"; then
     exit 1
 fi
 
+# Closes #63 — auto-bump SW cache name to the current git hash so we
+# never ship a stale shell to existing browser clients. Until this
+# landed, every shell-file edit needed a manual `CACHE = "...v$N+1"`
+# bump in web/sw.js, and missing one (or batch-merging multiple PRs
+# without re-bumping) left clients serving the cached old HTML/CSS.
+#
+# The bake is repo-local: we sed web/sw.js in the WORKING TREE before
+# rsync. The git-tracked sw.js keeps its `familiar-shell-vNN` literal
+# (so dev `bun run dev` still works); only the deployed copy is
+# stamped with the per-deploy hash.
+SW_CACHE_NAME="familiar-shell-${HASH:0:12}"
+echo ">>> Stamping SW cache name → ${SW_CACHE_NAME}..."
+sed -i.deploybak "s/^const CACHE = \"familiar-shell-[^\"]*\";/const CACHE = \"${SW_CACHE_NAME}\";/" "${REPO_ROOT}/web/sw.js"
+# Will restore after rsync so the working tree returns to its baseline
+# vNN literal (keeps git status clean after deploys).
+trap 'mv -f "${REPO_ROOT}/web/sw.js.deploybak" "${REPO_ROOT}/web/sw.js" 2>/dev/null || true' EXIT
+echo ">>> SW shell list integrity check..."
+# Verify every <link rel=stylesheet> + <script src=> URL in index.html
+# appears in sw.js's SHELL array. Catches the "added a new web/widgets/*
+# but forgot to extend SHELL" class of bug at deploy time. Tolerant of
+# /v1/* + /api/* URLs (intentionally network-only).
+node "${REPO_ROOT}/ops/scripts/check-sw-shell.js" \
+    "${REPO_ROOT}/web/index.html" "${REPO_ROOT}/web/sw.js" || {
+    echo "✗ SW shell drift detected — aborting deploy"
+    exit 1
+}
+
 echo ">>> Ensuring service user exists on ${DEST_HOST}..."
 ssh "${DEST_HOST}" "id ${DEST_USER} >/dev/null 2>&1 || sudo useradd -r -m -s /bin/bash ${DEST_USER}"
 
