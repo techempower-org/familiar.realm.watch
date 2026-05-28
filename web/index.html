@@ -44,6 +44,7 @@
   <link rel="manifest" href="/manifest.webmanifest">
   <link rel="stylesheet" href="/dark.css">
   <link rel="stylesheet" href="/style.css">
+  <link rel="stylesheet" href="/command-palette.css">
   <link rel="stylesheet" href="/widgets/slot-picker.css">
   <!-- Highlight.js themes load as a pair; one is disabled by JS based on
        the effective theme (explicit user pick > system). Disabling via
@@ -165,7 +166,7 @@
       </div>
       <ul class="memories-list" id="memories-list"></ul>
     </div>
-    <div class="sidebar-shortcuts">ctrl+shift+n new · ctrl+shift+s sidebar</div>
+    <div class="sidebar-shortcuts">ctrl+k commands · ctrl+shift+n new · ctrl+shift+s sidebar</div>
   </aside>
   <button class="sidebar-scrim" id="sidebar-scrim" type="button" aria-label="close sessions"></button>
   <main class="main">
@@ -288,5 +289,6 @@
   <script type="module" src="/widgets/stats-init.js"></script>
   <script type="module" src="/dashboard-init.js"></script>
   <script type="module" src="/app.js"></script>
+  <script type="module" src="/command-palette.js"></script>
 </body>
 </html>

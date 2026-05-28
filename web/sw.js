@@ -17,6 +17,8 @@ const SHELL = [
   "/widgets/slot-picker.css", "/widgets/slot-picker.js",
   // v29 — sound design + magical micro-animations (Ember):
   "/widgets/sound.js",
+  // Ctrl+K command palette (Sage):
+  "/command-palette.css", "/command-palette.js",
 ];
 
 self.addEventListener("install", (e) => {
