@@ -144,11 +144,45 @@ interface Dashboard {
 ## Header controls (`dashboard-init.js`)
 
 - **`+` (add block)** — opens a popover listing every registered block type with
-  its current visibility. Click a row to toggle show/hide. Esc or click-outside
-  dismisses.
+  its current visibility. Click a row to toggle show/hide. **Keyboard nav**
+  (#65, commit `0551e5b`): arrow Up/Down cycles rows; first row auto-focused
+  on open; Esc returns focus to the `+` button.
 - **layout** — opens a popover with named presets (`default`, `compact`,
   `data-dense`) plus a destructive `reset all` row. Selecting a preset rebuilds
   the layout map from `PRESETS[id]` and reloads; reset wipes localStorage.
+
+## Keyboard shortcuts
+
+| Key | Action |
+|---|---|
+| `Ctrl+K` (or `Cmd+K`) | Open the command palette — fuzzy-search every action |
+| `/` | Focus the chat input from anywhere |
+| `Ctrl+L` | Focus the chat input (shell muscle memory) |
+| `Ctrl+Shift+N` | New session |
+| `Ctrl+Shift+S` | Toggle sidebar |
+| `Esc` (in dashboard picker) | Close + return focus to trigger |
+| `Tab` (in settings drawer) | Cycles within the drawer (focus trap) |
+
+## Mobile / touch
+
+Below 768px viewport, the grid collapses to a single-column stack. To
+reorder blocks on a touch device:
+
+1. **Long-press** the block header for 500ms → "edit mode" engages,
+   with reorder chevrons visible
+2. **Tap** the up/down chevrons on each block to move it through the
+   source order; layout persists per-browser
+
+Hit areas auto-bump to 44×44px minimum on coarse-pointer devices.
+
+## Sound + welcome ritual
+
+- **Sound effects** — synthesized via Web Audio API (`web/widgets/sound.js`).
+  OFF by default; enable via the "sound fx" toggle in the sidebar.
+- **Welcome flourish** — first visit per deploy (keyed on git hash):
+  realm word fades in over the dashboard for ~1.5s, plays
+  `sound.flourish()` at peak. Each new deploy gets its own flourish.
+  Respects `prefers-reduced-motion`.
 
 Preset definitions live in `PRESETS` in `dashboard.js` — add a key per
 block-type id (rect map), or `false` to hide a type in that preset.
