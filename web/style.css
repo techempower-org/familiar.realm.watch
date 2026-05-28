@@ -2253,6 +2253,11 @@ main {
 }
 .toast.show { opacity: 1; transform: translateX(0); }
 .toast-info    { border-left: 3px solid var(--accent); }
+/* Actionable toasts get a subtle hover hint so it's clear they DO something. */
+.toast-actionable:hover {
+  border-color: var(--accent);
+  box-shadow: 0 6px 24px color-mix(in srgb, var(--accent) 28%, transparent);
+}
 .toast-success { border-left: 3px solid var(--accent); color: var(--accent); }
 .toast-warn    { border-left: 3px solid var(--color-warn, #d4a050); }
 .toast-error   { border-left: 3px solid var(--color-error, #c25450); }

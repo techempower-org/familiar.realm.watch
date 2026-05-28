@@ -698,12 +698,30 @@ function createSession() {
 function deleteSession(id) {
   const idx = state.list.findIndex((s) => s.id === id);
   if (idx < 0) return;
-  state.list.splice(idx, 1);
+  const [removed] = state.list.splice(idx, 1);
+  const wasActive = state.active === id;
+  let restored = false;
+  // Show undo toast for 6s (#83). Click to restore.
+  if (window.familiarToast?.info) {
+    window.familiarToast.info(
+      `deleted '${removed.label}' · click to undo`,
+      {
+        ttl: 6000,
+        onClick: () => {
+          if (restored) return;
+          restored = true;
+          state.list.splice(idx, 0, removed);
+          if (wasActive) setActiveSession(id);
+          else { saveSessions(); renderSessionsList(); }
+        },
+      },
+    );
+  }
   if (state.list.length === 0) {
     createSession();
     return;
   }
-  if (state.active === id) setActiveSession(state.list[0].id);
+  if (wasActive) setActiveSession(state.list[0].id);
   else { saveSessions(); renderSessionsList(); }
 }
 
@@ -848,7 +866,8 @@ function renderSessionsList() {
     delBtn.textContent = "✕";
     delBtn.addEventListener("click", (e) => {
       e.stopPropagation();
-      if (confirm(`delete session "${sess.label}"? this cannot be undone.`)) deleteSession(sess.id);
+      // No native confirm — the toast offers undo for 6s instead (#83).
+      deleteSession(sess.id);
     });
     li.appendChild(delBtn);
 

@@ -37,7 +37,12 @@ function show(variant, message, opts = {}) {
   t.type = "button";
   t.className = `toast toast-${variant}`;
   t.textContent = message;
-  t.setAttribute("aria-label", `dismiss notification: ${message}`);
+  // The aria-label clarifies whether clicking does something beyond dismiss.
+  t.setAttribute(
+    "aria-label",
+    opts.onClick ? `${message} — click to act` : `dismiss notification: ${message}`,
+  );
+  if (opts.onClick) t.classList.add("toast-actionable");
   h.appendChild(t);
   queue.push(t);
 
@@ -54,6 +59,10 @@ function show(variant, message, opts = {}) {
   const timer = setTimeout(() => dismiss(t), ttl);
   t.addEventListener("click", () => {
     clearTimeout(timer);
+    // Run user handler if provided; either way, dismiss.
+    if (opts.onClick) {
+      try { opts.onClick(); } catch { /* swallow */ }
+    }
     dismiss(t);
   });
 }
