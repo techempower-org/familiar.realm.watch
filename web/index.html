@@ -207,6 +207,13 @@
          their children into block content areas. Don't render here. -->
     <template id="slot-chat">
       <div id="log" class="log" aria-live="polite"></div>
+      <button
+        type="button"
+        id="scroll-to-bottom"
+        class="scroll-to-bottom"
+        title="jump to latest"
+        aria-label="scroll to latest message"
+        hidden>↓</button>
       <div class="typing-indicator" id="typing-indicator" hidden aria-hidden="true">
         <span class="typing-dot"></span>
         <span class="typing-dot"></span>

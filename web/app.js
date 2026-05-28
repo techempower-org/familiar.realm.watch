@@ -2,6 +2,25 @@
 // v0.3.1 — multi-session sidebar, reflect pill, finer status.
 import { sound } from "/widgets/sound.js";
 const log = document.getElementById("log");
+// Scroll-to-bottom button — visible when the user has scrolled up from
+// the latest message. Lives in the chat block (relocated by dashboard.js
+// from the source-order template into the chat block content area).
+function wireScrollToBottom() {
+  const btn = document.getElementById("scroll-to-bottom");
+  if (!btn || !log) return;
+  const update = () => {
+    const atBottom = log.scrollHeight - log.scrollTop - log.clientHeight < 120;
+    btn.hidden = atBottom;
+  };
+  log.addEventListener("scroll", update, { passive: true });
+  btn.addEventListener("click", () => {
+    log.scrollTop = log.scrollHeight;
+    btn.hidden = true;
+  });
+  update();
+}
+// Defer to allow dashboard.js to relocate the template's children.
+requestAnimationFrame(() => requestAnimationFrame(wireScrollToBottom));
 const form = document.getElementById("form");
 const input = document.getElementById("input");
 const submit = form.querySelector('button[type="submit"]');

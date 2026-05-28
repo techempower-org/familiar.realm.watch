@@ -2115,6 +2115,44 @@ main {
   margin: 0.25rem 0.3rem;
 }
 
+/* ===================== Scroll-to-bottom button ===================== */
+/* Appears in the bottom-right of the chat block when the user has
+   scrolled away from the latest message. Click jumps back; CSS
+   `scroll-behavior: smooth` on `.log` makes it glide. */
+.scroll-to-bottom {
+  position: absolute;
+  right: 1rem;
+  bottom: 5rem;
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  border: 1px solid var(--border);
+  background: color-mix(in srgb, var(--assistant-bg) 92%, transparent);
+  backdrop-filter: blur(8px);
+  color: var(--accent);
+  font-size: 18px;
+  line-height: 1;
+  cursor: pointer;
+  box-shadow: 0 4px 12px color-mix(in srgb, var(--bg) 60%, transparent);
+  opacity: 0;
+  transform: translateY(8px);
+  transition: opacity 200ms ease, transform 200ms ease, color 150ms ease, border-color 150ms ease;
+  z-index: 20;
+}
+.scroll-to-bottom:not([hidden]) {
+  opacity: 1;
+  transform: translateY(0);
+}
+.scroll-to-bottom:hover, .scroll-to-bottom:focus-visible {
+  color: var(--bg);
+  background: var(--accent);
+  border-color: var(--accent);
+  outline: none;
+}
+@media (prefers-reduced-motion: reduce) {
+  .scroll-to-bottom { transition: none; }
+}
+
 /* ===================== Welcome flourish ===================== */
 /* First visit OR first visit after a new deploy: realm word fades in over
    the dashboard for ~1.5s, then fades out. Sound.flourish() plays at peak.
