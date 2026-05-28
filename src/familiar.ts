@@ -14,6 +14,9 @@ import { handleEval } from "./routes/eval.ts";
 import { handleGraph } from "./routes/graph.ts";
 import { handleReflect } from "./routes/reflect.ts";
 import { handleMemories, handleMemoryDelete, handleMemoryPatch } from "./routes/memories.ts";
+import { handleSlotsGet, handleSlotPatch } from "./routes/admin-slots.ts";
+import { SlotResolver } from "./slots/resolver.ts";
+import { Slotctl } from "./slots/slotctl.ts";
 import { ReflectWriter } from "./reflect/writer.ts";
 
 const REFLECT_WING = "reflect";
@@ -43,6 +46,16 @@ if (cfg.llamaCpp.url) {
 }
 inferenceProviders.push(ollamaChat);
 const inferenceRouter = new InferenceRouter(inferenceProviders);
+
+// SlotResolver — read-side substrate for the slot picker. v1 wires the
+// admin endpoints (GET + PATCH) but the chat/embed/HyDE/reflect routes
+// still go through `inferenceRouter` until the picker UI ships. Once
+// the dashboard exposes per-slot selection, those routes flip to
+// `await resolver.chat()` / `.embed()` / etc. and inferenceRouter
+// becomes the fallback path inside resolver.providerFor() rather than
+// the primary.
+const slotResolver = new SlotResolver(cfg);
+const slotctl = new Slotctl(cfg);
 
 // HyDE generator — module-scope so both /v1/chat/completions and
 // /api/familiar/eval share the same wiring. Bridges paraphrase
@@ -176,6 +189,19 @@ const server = Bun.serve({
       }
       if (url.pathname === "/api/familiar/memories" && req.method === "GET") {
         return await handleMemories(req, { palace, reflectWing: REFLECT_WING });
+      }
+      // Slot picker — public read at /api/familiar/slots, admin write at
+      // /api/familiar/admin/slots/:slot (PATCH). Caddy gates the admin
+      // path through Authelia (configured in Caddyfile @admin block).
+      if (url.pathname === "/api/familiar/slots" && req.method === "GET") {
+        return await handleSlotsGet(req, { cfg, resolver: slotResolver, slotctl });
+      }
+      if (url.pathname === "/api/familiar/admin/slots" && req.method === "GET") {
+        return await handleSlotsGet(req, { cfg, resolver: slotResolver, slotctl });
+      }
+      const slotPatchMatch = url.pathname.match(/^\/api\/familiar\/admin\/slots\/([a-z]+)$/);
+      if (slotPatchMatch && req.method === "PATCH") {
+        return await handleSlotPatch(req, slotPatchMatch[1], { cfg, resolver: slotResolver, slotctl });
       }
       // /api/familiar/memories/<drawer_id> — DELETE/PATCH a single drawer.
       const memoryMatch = url.pathname.match(/^\/api\/familiar\/memories\/(drawer_[a-z0-9_]+)$/);
