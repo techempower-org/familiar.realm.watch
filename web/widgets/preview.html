@@ -1,0 +1,50 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>familiar · stat widgets preview</title>
+  <script>(function(){try{var s=localStorage.getItem('drw-theme');if(s==='dark'||s==='light')document.documentElement.setAttribute('data-theme',s);}catch(_){}})();</script>
+  <link rel="icon" type="image/svg+xml" href="/favicon.svg">
+  <link rel="stylesheet" href="/style.css">
+  <link rel="stylesheet" href="/widgets/stats.css">
+  <script>
+    // Force the poller to consume the local mock instead of /api/familiar/stats.
+    window.STATS_MOCK_URL = '/widgets/stats-mock.json';
+  </script>
+  <style>
+    body { display: block; padding: 1.5rem; max-width: 1100px; margin: 0 auto; }
+    .preview-head {
+      font-family: var(--serif);
+      font-size: 1.4rem;
+      letter-spacing: 0.05em;
+      color: var(--fg);
+      margin-bottom: 0.35rem;
+    }
+    .preview-sub {
+      font-family: var(--mono);
+      font-size: 0.75rem;
+      color: var(--fg-muted);
+      letter-spacing: 0.04em;
+      margin-bottom: 1rem;
+    }
+  </style>
+</head>
+<body>
+  <div class="preview-head">familiar · stat widgets</div>
+  <div class="preview-sub">preview against local mock — set window.STATS_MOCK_URL to override</div>
+  <div id="stat-widgets-harness"></div>
+
+  <!-- Load order: util + poller before widgets; stub registry after.
+       Each widget script attaches its BlockType to window.familiarStatsBlocks;
+       the stub then mounts all five into #stat-widgets-harness. -->
+  <script src="/widgets/stats-util.js"></script>
+  <script src="/widgets/stats-poller.js"></script>
+  <script src="/widgets/stats-gpu.js"></script>
+  <script src="/widgets/stats-cpu.js"></script>
+  <script src="/widgets/stats-mem.js"></script>
+  <script src="/widgets/stats-disk.js"></script>
+  <script src="/widgets/stats-net.js"></script>
+  <script src="/widgets/block-registry-stub.js"></script>
+</body>
+</html>

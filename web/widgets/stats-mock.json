@@ -1,0 +1,49 @@
+{
+  "timestamp": "2026-05-28T03:14:00Z",
+  "host": "familiar",
+  "gpus": [
+    {
+      "index": 0,
+      "name": "NVIDIA P102-100",
+      "vram_used_mb": 9100,
+      "vram_total_mb": 10240,
+      "utilization_pct": 88,
+      "temperature_c": 72,
+      "power_w": 145
+    },
+    {
+      "index": 1,
+      "name": "NVIDIA GTX 970",
+      "vram_used_mb": 1800,
+      "vram_total_mb": 4096,
+      "utilization_pct": 22,
+      "temperature_c": 58,
+      "power_w": 80
+    }
+  ],
+  "cpu": {
+    "cores": 16,
+    "load_1m": 4.21,
+    "load_5m": 3.85,
+    "load_15m": 3.12,
+    "per_core_pct": [42, 38, 51, 12, 8, 95, 22, 14, 38, 62, 18, 9, 4, 71, 33, 28]
+  },
+  "memory": {
+    "total_mb": 65536,
+    "used_mb": 42100,
+    "free_mb": 7800,
+    "buffers_mb": 5200,
+    "cache_mb": 10436,
+    "swap_total_mb": 8192,
+    "swap_used_mb": 1240
+  },
+  "disks": [
+    { "mount": "/",       "used_mb": 184320, "total_mb": 512000 },
+    { "mount": "/home",   "used_mb": 920000, "total_mb": 2048000 },
+    { "mount": "/var/lib/mempalace-db", "used_mb": 384000, "total_mb": 1024000 }
+  ],
+  "network": [
+    { "iface": "eno1",  "rx_bps": 12800000, "tx_bps":  3200000 },
+    { "iface": "wlp3s0","rx_bps":   480000, "tx_bps":   220000 }
+  ]
+}
