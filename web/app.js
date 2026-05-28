@@ -2532,6 +2532,8 @@ async function patchMemory(drawerId, content) {
 function renderMemories(drawers) {
   if (!memoriesList) return;
   while (memoriesList.firstChild) memoriesList.removeChild(memoriesList.firstChild);
+  const countEl = document.getElementById("memories-count");
+  if (countEl) countEl.textContent = drawers.length === 0 ? "" : `· ${drawers.length}`;
   if (drawers.length === 0) {
     const empty = document.createElement("li");
     empty.className = "sessions-empty";
