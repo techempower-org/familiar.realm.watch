@@ -1612,9 +1612,12 @@ textarea.palace-detail-body.editing {
   background: transparent;
   color: var(--color-warn);
   border: 1px solid var(--color-warn);
+  transition: background 120ms ease, box-shadow 120ms ease;
 }
-.form #abort-btn:hover {
+.form #abort-btn:hover, .form #abort-btn:focus-visible {
   background: color-mix(in srgb, var(--color-warn) 14%, transparent);
+  outline: none;
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--color-warn) 18%, transparent);
 }
 
 /* Aborted assistant turn — visually softened so user sees it was cut short. */
