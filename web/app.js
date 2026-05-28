@@ -1028,6 +1028,12 @@ function makeGlyph(text, cls) {
 function appendMessage(role, initialContent = "") {
   const el = document.createElement("div");
   el.className = `msg ${role}`;
+  // Per-message timestamp (#80) — hover-revealed via CSS ::after.
+  // ISO for tooltip/sort, short local for inline display.
+  const now = new Date();
+  el.dataset.ts = now.toISOString();
+  el.dataset.tsShort = now.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+  el.title = now.toLocaleString();
   el.textContent = initialContent;
   log.appendChild(el);
   log.scrollTop = log.scrollHeight;

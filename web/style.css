@@ -765,6 +765,27 @@ body {
   align-self: flex-end;
   white-space: pre-wrap;
 }
+
+/* Per-message timestamp (#80) — hover-revealed in the corner.
+   Mono micro-text, low contrast, fades in over 150ms. */
+.msg[data-ts-short]::after {
+  content: attr(data-ts-short);
+  position: absolute;
+  bottom: 0.25rem;
+  left: 0.6rem;
+  font-family: var(--mono, ui-monospace, Menlo, monospace);
+  font-size: 0.62rem;
+  color: var(--fg-muted);
+  letter-spacing: 0.06em;
+  opacity: 0;
+  transition: opacity 150ms ease;
+  pointer-events: none;
+}
+.msg.user[data-ts-short]::after { left: auto; right: 0.6rem; }
+.msg:hover::after { opacity: 0.65; }
+@media (prefers-reduced-motion: reduce) {
+  .msg[data-ts-short]::after { transition: none; }
+}
 .msg.assistant {
   background: var(--assistant-bg);
   align-self: flex-start;
