@@ -15,8 +15,13 @@
   <meta name="apple-mobile-web-app-title" content="familiar">
   <meta name="description" content="Your familiar — reads the palace before speaking, writes it after.">
   <!-- Privacy: outbound clicks (e.g., GitHub commit URL from the version
-       button) don't leak the tailnet origin to external sites. -->
-  <meta name="referrer" content="no-referrer-when-downgrade">
+       button) MUST NOT leak the tailnet hostname (familiar.jphe.in) to
+       external destinations. no-referrer-when-downgrade still sends the
+       full URL on cross-origin HTTPS — wrong for our threat model. The
+       strict policy here suppresses Referer entirely on any outbound
+       navigation. Defense-in-depth: individual <a> tags also use
+       rel="noopener noreferrer" where they open new tabs. -->
+  <meta name="referrer" content="no-referrer">
   <title>familiar</title>
   <!-- Dynamic title: stamp the deploy's realm word into the browser tab.
        Each deploy gets a unique poetic name from realm-sigil ("Noble Beacon",

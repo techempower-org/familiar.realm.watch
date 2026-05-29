@@ -38,7 +38,7 @@ if (word) {
       const v = await r.json();
       // Shift-click → open the GitHub commit URL in a new tab.
       if (e.shiftKey && v.commit_url) {
-        window.open(v.commit_url, "_blank", "noopener");
+        window.open(v.commit_url, "_blank", "noopener,noreferrer");
         return;
       }
       const detail = `${v.word} · ${v.hash} · ${v.branch || "?"}${v.dirty ? " (dirty)" : ""} · built ${v.built || "?"}`;
@@ -47,7 +47,7 @@ if (word) {
         t.info(detail, {
           ttl: 8000,
           onClick: v.commit_url
-            ? () => window.open(v.commit_url, "_blank", "noopener")
+            ? () => window.open(v.commit_url, "_blank", "noopener,noreferrer")
             : undefined,
         });
       } else alert(detail);
