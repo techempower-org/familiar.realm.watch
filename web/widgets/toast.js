@@ -22,7 +22,10 @@ const DEFAULT_TTL_MS = 3000;
 
 let politeHost = null;
 let assertiveHost = null;
-const queue = [];
+// Per-channel queues so a flurry of info toasts can't evict an error
+// toast (and vice versa). MAX_VISIBLE applies independently to each.
+const politeQueue = [];
+const assertiveQueue = [];
 
 function ensureHosts() {
   if (politeHost && assertiveHost) return;
@@ -41,7 +44,9 @@ function ensureHosts() {
 
 function show(variant, message, opts = {}) {
   ensureHosts();
-  const h = variant === "error" ? assertiveHost : politeHost;
+  const isError = variant === "error";
+  const h = isError ? assertiveHost : politeHost;
+  const q = isError ? assertiveQueue : politeQueue;
   const t = document.createElement("button");
   t.type = "button";
   t.className = `toast toast-${variant}`;
@@ -53,11 +58,11 @@ function show(variant, message, opts = {}) {
   );
   if (opts.onClick) t.classList.add("toast-actionable");
   h.appendChild(t);
-  queue.push(t);
+  q.push(t);
 
-  // Cap visible count: pop the oldest if we exceed.
-  while (queue.length > MAX_VISIBLE) {
-    const old = queue.shift();
+  // Cap visible count per channel: pop the oldest if we exceed.
+  while (q.length > MAX_VISIBLE) {
+    const old = q.shift();
     old?.remove();
   }
 
@@ -79,8 +84,11 @@ function show(variant, message, opts = {}) {
 function dismiss(t) {
   if (!t || !t.parentNode) return;
   t.classList.remove("show");
-  const idx = queue.indexOf(t);
-  if (idx >= 0) queue.splice(idx, 1);
+  // Try both queues — cheaper than tagging each toast with its channel.
+  for (const q of [politeQueue, assertiveQueue]) {
+    const idx = q.indexOf(t);
+    if (idx >= 0) { q.splice(idx, 1); break; }
+  }
   // Wait for fade-out, then remove. Reduced-motion = instant.
   const dur = window.matchMedia?.("(prefers-reduced-motion: reduce)").matches ? 0 : 200;
   setTimeout(() => t.remove(), dur);
