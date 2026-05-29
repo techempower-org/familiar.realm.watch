@@ -1313,6 +1313,28 @@ document.addEventListener("keydown", (e) => {
     closeSidebar();
     document.getElementById("hdr-menu")?.focus();
   }
+  // Esc unwinds the palace browser one level at a time: detail →
+  // drawers col → rooms col → done. Only when something is actually
+  // open and the user isn't typing in a field. Mirrors the visual
+  // 'back arrow' affordance with a keyboard shortcut.
+  if (e.key === "Escape") {
+    const active = document.activeElement;
+    const inField = active && (active.tagName === "INPUT" || active.tagName === "TEXTAREA" || active.isContentEditable);
+    if (!inField) {
+      if (palaceDetail && !palaceDetail.hidden) {
+        palaceDetailClose?.click();
+        return;
+      }
+      if (palaceDrawersCol && !palaceDrawersCol.hidden) {
+        palaceDrawersBack?.click();
+        return;
+      }
+      if (palaceRoomsCol && !palaceRoomsCol.hidden) {
+        palaceRoomsBack?.click();
+        return;
+      }
+    }
+  }
   // Ctrl+Home / Ctrl+End scrolls the chat log to start/end. Standard
   // browser shortcut behavior except the .log is a nested overflow:auto
   // container — the browser default doesn't reach it without help.
