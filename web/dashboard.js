@@ -149,6 +149,11 @@ function buildBlockEl(type, id, state) {
   el.className = "block";
   el.dataset.blockId = id;
   el.dataset.blockType = type.id;
+  // Stable title id so we can promote <section> to a named landmark
+  // region via aria-labelledby. Without an accessible name, <section>
+  // has no implicit role for AT users.
+  const titleId = `block-title-${id}`;
+  el.setAttribute("aria-labelledby", titleId);
   if (!state.visible) el.classList.add("hidden");
   if (state.settings?.tint && state.settings.tint !== "none") {
     el.dataset.tint = state.settings.tint;
@@ -164,6 +169,7 @@ function buildBlockEl(type, id, state) {
 
   const title = document.createElement("span");
   title.className = "block-title";
+  title.id = titleId;
   title.textContent = type.name;
   head.appendChild(title);
 
