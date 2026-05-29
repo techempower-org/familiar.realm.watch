@@ -752,6 +752,15 @@ function createSession() {
 function deleteSession(id) {
   const idx = state.list.findIndex((s) => s.id === id);
   if (idx < 0) return;
+  // Capture focus successor BEFORE mutating DOM — usually the next
+  // session row, falling back to the previous row, then to the
+  // 'new session' button. Without this, focus lands on <body> and
+  // the user's keyboard navigation drops to the top of the page.
+  const allRows = Array.from(sessionsList.querySelectorAll("li[data-session-id]"));
+  const currentIdx = allRows.findIndex((row) => row.dataset.sessionId === id);
+  const successor =
+    allRows[currentIdx + 1] || allRows[currentIdx - 1] || sessionsNew;
+
   const [removed] = state.list.splice(idx, 1);
   const wasActive = state.active === id;
   let restored = false;
@@ -777,6 +786,23 @@ function deleteSession(id) {
   }
   if (wasActive) setActiveSession(state.list[0].id);
   else { saveSessions(); renderSessionsList(); }
+  // After re-render the original successor li is gone (replaced).
+  // Focus the same-position row in the freshly rendered list, or
+  // fall back to sessionsNew if it doesn't exist anymore.
+  requestAnimationFrame(() => {
+    if (successor && successor === sessionsNew) {
+      sessionsNew.focus?.();
+    } else if (successor) {
+      const newSuccessor = sessionsList.querySelector(
+        `li[data-session-id="${CSS.escape(successor.dataset.sessionId)}"]`,
+      );
+      if (newSuccessor && typeof newSuccessor.focus === "function") {
+        newSuccessor.focus();
+      } else {
+        sessionsNew?.focus?.();
+      }
+    }
+  });
 }
 
 function truncateAtWord(text, maxLen = 40) {
