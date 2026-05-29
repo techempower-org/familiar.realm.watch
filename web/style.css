@@ -747,6 +747,23 @@ body {
 @media (prefers-reduced-motion: reduce) {
   .status.streaming { animation: none; opacity: 1; }
 }
+/* "Resting" — chat models unloaded to save RAM (palace + app still work).
+   A calm, slow breathe in the cool tint so an intentionally-offline
+   familiar reads as at-rest, not errored. */
+.status.resting {
+  color: var(--block-tint-cool-mix, #5a7090);
+  border-color: color-mix(in srgb, var(--block-tint-cool-mix, #5a7090) 55%, var(--border));
+  animation: status-rest-breathe 3.4s ease-in-out infinite;
+}
+@keyframes status-rest-breathe {
+  0%, 100% { opacity: 0.5; }
+  50%      { opacity: 0.85; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .status.resting { animation: none; opacity: 0.7; }
+}
+/* While resting, the placeholder explaining why reads as a quiet aside. */
+body.chat-resting #input::placeholder { font-style: italic; opacity: 0.8; }
 
 .log {
   flex: 1;

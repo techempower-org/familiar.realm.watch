@@ -1272,6 +1272,23 @@ function setStatus(state, text) {
   if (status.textContent !== text) status.textContent = text;
 }
 
+// "Resting" = palace + the app are healthy, but no chat backend is serving
+// (models unloaded to save host RAM, a routine ops state). Surfaced calmly
+// so an intentionally-unloaded familiar reads as at-rest, not broken — the
+// user learns it before sending into a falter instead of after.
+let chatResting = false;
+function setChatResting(resting) {
+  if (resting === chatResting) return;
+  chatResting = resting;
+  document.body.classList.toggle("chat-resting", resting);
+  if (!input) return;
+  // Take over the placeholder while resting; the rotator yields (it checks
+  // chatResting). Restore the base prompt on wake — the rotator resumes.
+  input.placeholder = resting
+    ? "the familiar is resting — chat models unloaded to save memory"
+    : "speak to the familiar… (enter to send · shift+enter for newline)";
+}
+
 async function checkHealth() {
   try {
     const r = await fetch("/api/familiar/health");
@@ -1279,15 +1296,20 @@ async function checkHealth() {
     const d = await r.json();
     const palace = d.dependencies?.palace_daemon;
     const recall = palace?.recall_quality;
+    const chat = d.dependencies?.ollama_chat;
+    const chatDown = !!chat && chat.status !== "ok";
     if (palace?.status !== "ok") {
       setStatus("error", "palace busy");
     } else if (recall === "empty_hnsw") {
       setStatus("warn", "palace rebuilding");
     } else if (recall === "probe_error") {
       setStatus("warn", "palace slow");
+    } else if (chatDown) {
+      setStatus("resting", "resting");
     } else {
       setStatus("connected", "connected");
     }
+    setChatResting(palace?.status === "ok" && chatDown);
     if (d.version?.word && word.textContent !== d.version.word) word.textContent = d.version.word;
     // Surface the realm word in the status pill tooltip too — a quiet
     // reminder of which build the familiar is wearing. Hover the pill
@@ -3124,6 +3146,7 @@ refreshMemories();
   ];
   let i = 0;
   setInterval(() => {
+    if (chatResting) return; // resting placeholder owns the field — don't rotate over it
     if (document.activeElement === input) return;
     if (input.value.length > 0) return;
     i = (i + 1) % prompts.length;
