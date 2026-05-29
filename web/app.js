@@ -2623,7 +2623,7 @@ probeGnomeSpeaks();
 
 async function speakViaGnome(text, btn) {
   cancelSpeech();
-  if (btn) btn.classList.add("speaking");
+  if (btn) { btn.classList.add("speaking"); syncSpeakBtnAria(btn); }
   try {
     const body = { text };
     // Per-utterance voice override — only send when user has picked one.
@@ -2645,12 +2645,12 @@ async function speakViaGnome(text, btn) {
         if (d.state !== "speaking") {
           clearInterval(gnomeSpeaksPoller);
           gnomeSpeaksPoller = null;
-          if (btn) btn.classList.remove("speaking");
+          if (btn) { btn.classList.remove("speaking"); syncSpeakBtnAria(btn); }
         }
       } catch { /* transient; will retry */ }
     }, 500);
   } catch (e) {
-    if (btn) btn.classList.remove("speaking");
+    if (btn) { btn.classList.remove("speaking"); syncSpeakBtnAria(btn); }
     console.warn("[familiar] gnome-speaks /speak failed:", e);
     // Fall back to browser TTS for this one click
     gnomeSpeaksAvailable = false;
@@ -2720,10 +2720,10 @@ function speakText(text, btn) {
   }
   utt.rate = 1.0;
   utt.pitch = 1.0;
-  utt.onstart = () => { if (btn) btn.classList.add("speaking"); };
-  utt.onend = () => { if (btn) btn.classList.remove("speaking"); currentUtterance = null; };
+  utt.onstart = () => { if (btn) { btn.classList.add("speaking"); syncSpeakBtnAria(btn); } };
+  utt.onend = () => { if (btn) { btn.classList.remove("speaking"); syncSpeakBtnAria(btn); } currentUtterance = null; };
   utt.onerror = (e) => {
-    if (btn) btn.classList.remove("speaking");
+    if (btn) { btn.classList.remove("speaking"); syncSpeakBtnAria(btn); }
     currentUtterance = null;
     console.warn("[familiar] speechSynthesis utterance error:", e.error || e);
   };
@@ -2795,6 +2795,7 @@ function buildSpeakButton(getText) {
   btn.className = "speak-btn";
   btn.title = "speak this turn aloud";
   btn.setAttribute("aria-label", "speak");
+  btn.setAttribute("aria-pressed", "false");
   btn.textContent = "♪";
   btn.addEventListener("click", (e) => {
     e.stopPropagation();
@@ -2805,6 +2806,17 @@ function buildSpeakButton(getText) {
     speakText(getText(), btn);
   });
   return btn;
+}
+
+// Mirror the speaking state into aria-label + aria-pressed so AT users
+// hear the right action verb on the toggle. Called from every code
+// path that adds/removes the .speaking class.
+function syncSpeakBtnAria(btn) {
+  if (!btn || !btn.classList.contains("speak-btn")) return;
+  const speaking = btn.classList.contains("speaking");
+  btn.setAttribute("aria-label", speaking ? "stop speaking" : "speak");
+  btn.setAttribute("aria-pressed", speaking ? "true" : "false");
+  btn.title = speaking ? "stop speaking" : "speak this turn aloud";
 }
 
 // ---- Memories: list reflect-written drawers in the sidebar ----
