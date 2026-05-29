@@ -10,7 +10,9 @@
 // Behavior:
 // - Bottom-right floating stack, max 3 visible at once.
 // - 3s auto-dismiss; click to dismiss earlier.
-// - aria-live=polite so assistive tech picks them up.
+// - Two live regions: 'polite' for info/success/warn so AT picks them
+//   up between user actions, and 'assertive' for error so AT interrupts.
+//   Both stack visually in the same bottom-right column via flex order.
 // - Variants tint via existing CSS custom properties: --accent (info /
 //   success), --color-warn, --color-error.
 // - prefers-reduced-motion zeros the slide animation; toasts still fade.
@@ -18,21 +20,28 @@
 const MAX_VISIBLE = 3;
 const DEFAULT_TTL_MS = 3000;
 
-let host = null;
+let politeHost = null;
+let assertiveHost = null;
 const queue = [];
 
-function ensureHost() {
-  if (host) return host;
-  host = document.createElement("div");
-  host.className = "toast-host";
-  host.setAttribute("role", "status");
-  host.setAttribute("aria-live", "polite");
-  document.body.appendChild(host);
-  return host;
+function ensureHosts() {
+  if (politeHost && assertiveHost) return;
+  politeHost = document.createElement("div");
+  politeHost.className = "toast-host toast-host-polite";
+  politeHost.setAttribute("role", "status");
+  politeHost.setAttribute("aria-live", "polite");
+  document.body.appendChild(politeHost);
+
+  assertiveHost = document.createElement("div");
+  assertiveHost.className = "toast-host toast-host-assertive";
+  assertiveHost.setAttribute("role", "alert");
+  assertiveHost.setAttribute("aria-live", "assertive");
+  document.body.appendChild(assertiveHost);
 }
 
 function show(variant, message, opts = {}) {
-  const h = ensureHost();
+  ensureHosts();
+  const h = variant === "error" ? assertiveHost : politeHost;
   const t = document.createElement("button");
   t.type = "button";
   t.className = `toast toast-${variant}`;

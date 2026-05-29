@@ -2354,7 +2354,6 @@ main {
 .toast-host {
   position: fixed;
   right: 1rem;
-  bottom: 1rem;
   z-index: 10000;
   display: flex;
   flex-direction: column;
@@ -2362,6 +2361,11 @@ main {
   align-items: flex-end;
   pointer-events: none;
 }
+/* Polite info/success/warn dock at bottom-right; assertive errors
+   land top-right so an urgent toast isn't visually buried under a
+   stack of info toasts. */
+.toast-host-polite { bottom: 1rem; }
+.toast-host-assertive { top: 1rem; }
 .toast {
   pointer-events: auto;
   max-width: 360px;
