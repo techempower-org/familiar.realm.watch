@@ -5,11 +5,16 @@ const log = document.getElementById("log");
 // Scroll-to-bottom button — visible when the user has scrolled up from
 // the latest message. Lives in the chat block (relocated by dashboard.js
 // from the source-order template into the chat block content area).
+// Shared threshold — same value gates both auto-scroll-following
+// (during stream) and the visibility of this catch-up button so
+// there's no dead zone where stream stops following but no button
+// appears.
+const NEAR_BOTTOM_PX = 80;
 function wireScrollToBottom() {
   const btn = document.getElementById("scroll-to-bottom");
   if (!btn || !log) return;
   const update = () => {
-    const atBottom = log.scrollHeight - log.scrollTop - log.clientHeight < 120;
+    const atBottom = log.scrollHeight - log.scrollTop - log.clientHeight < NEAR_BOTTOM_PX;
     btn.hidden = atBottom;
   };
   log.addEventListener("scroll", update, { passive: true });
@@ -1489,10 +1494,9 @@ form.addEventListener("submit", async (e) => {
       requestAnimationFrame(() => {
         renderScheduled = false;
         // Don't yank the user back to the bottom if they've scrolled up
-        // to read history mid-stream. 'Near bottom' = within ~80px of
-        // the bottom, generous enough that small inertia overshoots
-        // still register as 'following the stream'.
-        const NEAR_BOTTOM_PX = 80;
+        // to read history mid-stream. NEAR_BOTTOM_PX (module-scope) is
+        // shared with the scroll-to-bottom button visibility threshold
+        // so the moment auto-scroll lets go, the catch-up button shows.
         const wasNearBottom =
           log.scrollHeight - (log.scrollTop + log.clientHeight) <= NEAR_BOTTOM_PX;
         streamingMarkdownRender(assistantEl, full);
