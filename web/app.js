@@ -2160,6 +2160,10 @@ async function runPalaceSearch(query) {
   loading.textContent = "searching…";
   palaceSearchResults.appendChild(loading);
   palaceSearchResults.hidden = false;
+  // Suppress the live-region announcement of intermediate 'searching…'
+  // text — only flip back to false after the real results land, so AT
+  // users hear the result count, not the loading word.
+  palaceSearchResults.setAttribute("aria-busy", "true");
 
   try {
     // The /api/familiar/eval route runs the full grounding pipeline
@@ -2238,6 +2242,10 @@ async function runPalaceSearch(query) {
     e.className = "search-results-empty";
     e.textContent = `error: ${err.message}`;
     palaceSearchResults.appendChild(e);
+  } finally {
+    // Flip the live region back to ready — once the results (or empty/
+    // error message) are in the DOM, AT users should hear the count.
+    palaceSearchResults.setAttribute("aria-busy", "false");
   }
 }
 
