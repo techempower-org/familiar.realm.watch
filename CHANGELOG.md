@@ -103,6 +103,17 @@ Five inference slots (chat / embed / extract / hyde / reflect) each independentl
 - familiar #81 — playwright/headless UI tests for the dashboard
 - familiar #82 — cross-tab session sync via BroadcastChannel
 
+### Fourth wave — a11y + theme parity + security
+
+- **Comprehensive focus-ring sweep**: every interactive control (~25 buttons, toggles, links) gained `:focus-visible` styling consistent with the parchment+sigil aesthetic. Includes header tabs (with WAI-ARIA arrow-key nav per tablist pattern), block buttons (gear/X/reorder), session/memory action buttons (`:focus-within` reveals), stat widget settings gear, command palette footer, sidebar pickers + toggles, palace browser controls, hamburger menu, send/abort buttons, inline assistant message links.
+- **Latent bug fixed**: `.message.aborted` CSS selector never matched (JS uses `.msg.aborted`). Now properly styles aborted turns with amber border + "· interrupted" indicator.
+- **Empty assistant response visible**: was an invisible `.msg` div; now shows "(the familiar had nothing to add — try rephrasing)" + warn toast.
+- **Theme parity**: 2 hardcoded `rgba(212, 160, 80, ...)` literals replaced with `color-mix(var(--accent))` so light-mode tints match.
+- **Semantic HTML landmarks**: dashboard becomes `<main role=main aria-label>`, `<aside>` gains aria-label, skip-to-main-content link surfaces on Tab from page load.
+- **Mobile keyboard hints**: `enterkeyhint=send` (chat), `enterkeyhint=search` (palace), explicit spellcheck per intent.
+- **Chat log gains `role="log"` + `aria-relevant=additions`** for proper streaming announcements.
+- **Security**: referrer policy hardened from `no-referrer-when-downgrade` (still leaked tailnet hostname on HTTPS cross-origin) to `no-referrer`. `window.open(commit_url, ...)` gains `noopener,noreferrer`. Caught by automated security review.
+
 ### Misc polish in the late session
 
 - Triple-click sigil easter egg (`sound.flourish()` + scale-glow + toast)
