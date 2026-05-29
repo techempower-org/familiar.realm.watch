@@ -2358,8 +2358,11 @@ if ("serviceWorker" in navigator) {
         if (toastShown) return;
         toastShown = true;
         window.familiarToast?.info?.(
-          "new familiar build available — refresh to load",
-          { ttl: 20000 },
+          "new familiar build available — click to reload",
+          {
+            ttl: 20000,
+            onClick: () => window.location.reload(),
+          },
         );
       });
     })
