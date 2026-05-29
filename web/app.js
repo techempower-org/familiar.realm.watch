@@ -2129,17 +2129,23 @@ async function runPalaceSearch(query) {
     for (const e of entities) {
       const item = document.createElement("li");
       item.className = "search-result-item";
-      const meta = document.createElement("div");
-      meta.className = "search-result-meta";
+      // Keyboard-activatable list row matching the sessions-list pattern.
+      // tabindex=0 + role=button + Enter/Space keydown so screen reader
+      // and keyboard users can land + open results from search.
+      item.setAttribute("role", "button");
+      item.setAttribute("tabindex", "0");
       const wingTxt = (e.wing || "?").replace(/^wing_/, "");
       const roomTxt = e.room || "?";
+      item.setAttribute("aria-label", `palace result: ${wingTxt} · ${roomTxt}`);
+      const meta = document.createElement("div");
+      meta.className = "search-result-meta";
       meta.textContent = `${wingTxt} · ${roomTxt}${e.cosine ? ` · ${e.cosine.toFixed(2)}` : ""}`;
       item.appendChild(meta);
       const snippet = document.createElement("div");
       snippet.className = "search-result-snippet";
       snippet.textContent = e.content_snippet || "";
       item.appendChild(snippet);
-      item.addEventListener("click", () => {
+      const open = () => {
         // Open in palace view: switch tab, drill to wing/room, surface drawer
         setTab("palace");
         if (e.wing) {
@@ -2156,6 +2162,14 @@ async function runPalaceSearch(query) {
               });
             }, 50);
           }
+        }
+      };
+      item.addEventListener("click", open);
+      item.addEventListener("keydown", (ke) => {
+        if (ke.key === "Enter" || ke.key === " ") {
+          if (ke.target !== item) return;
+          ke.preventDefault();
+          open();
         }
       });
       palaceSearchResults.appendChild(item);
