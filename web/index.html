@@ -220,7 +220,7 @@
          chat/palace markup lives inside hidden source slots below and is
          moved into the block content areas at mount time. This keeps every
          existing id intact so app.js continues to find its nodes. -->
-    <main id="dashboard" class="dashboard" role="main" aria-label="familiar dashboard"></main>
+    <div id="dashboard" class="dashboard" role="region" aria-label="familiar dashboard blocks"></div>
     <!-- Source slots: kept hidden in source order; dashboard.js relocates
          their children into block content areas. Don't render here. -->
     <template id="slot-chat">
