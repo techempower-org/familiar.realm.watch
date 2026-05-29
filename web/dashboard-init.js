@@ -189,38 +189,51 @@ if (root) dashboard.mount(root);
 // ---------- Header: "+ add block" picker ----------
 const addBtn = document.getElementById("dashboard-add");
 let pickerEl = null;
+// True only when closePicker should bounce focus back to the trigger.
+// Pointer-outside dismissal sets this false (user already moved focus
+// somewhere intentional by clicking).
+let returnFocusOnClose = true;
 function closePicker() {
   if (pickerEl) {
     pickerEl.remove();
     pickerEl = null;
     document.removeEventListener("pointerdown", onPickerOutside, true);
     document.removeEventListener("keydown", onPickerEscape, true);
+    if (addBtn) {
+      addBtn.setAttribute("aria-expanded", "false");
+      if (returnFocusOnClose) addBtn.focus();
+    }
+    returnFocusOnClose = true; // reset for next open
   }
 }
 function onPickerOutside(e) {
   if (!pickerEl) return;
   if (pickerEl.contains(e.target)) return;
   if (e.target.closest("#dashboard-add")) return;
+  // Don't yank focus back to the trigger — the user clicked somewhere
+  // intentional and that destination should keep focus.
+  returnFocusOnClose = false;
   closePicker();
 }
 function onPickerEscape(e) {
   if (!pickerEl) return;
   if (e.key === "Escape") {
-    closePicker();
-    // Return focus to the trigger so keyboard users keep their place.
-    if (addBtn) addBtn.focus();
+    e.stopPropagation();
+    closePicker(); // focus returns to trigger
     return;
   }
-  // Arrow-key navigation within the picker (#65).
-  if (e.key !== "ArrowUp" && e.key !== "ArrowDown") return;
+  // WAI-ARIA menu pattern: arrow + Home/End navigation between menuitems.
   const rows = Array.from(pickerEl.querySelectorAll(".dashboard-picker-row"));
   if (rows.length === 0) return;
-  e.preventDefault();
   const active = document.activeElement;
   const idx = rows.indexOf(active);
-  let next;
+  let next = -1;
   if (e.key === "ArrowDown") next = idx < 0 ? 0 : (idx + 1) % rows.length;
-  else next = idx <= 0 ? rows.length - 1 : idx - 1;
+  else if (e.key === "ArrowUp") next = idx <= 0 ? rows.length - 1 : idx - 1;
+  else if (e.key === "Home") next = 0;
+  else if (e.key === "End") next = rows.length - 1;
+  else return;
+  e.preventDefault();
   rows[next].focus();
 }
 function openPicker() {
@@ -230,6 +243,12 @@ function openPicker() {
   const pop = document.createElement("div");
   pop.className = "dashboard-picker";
   pop.setAttribute("role", "menu");
+  pop.setAttribute("aria-label", "block visibility");
+  pop.id = "dashboard-picker-menu";
+  if (addBtn) {
+    addBtn.setAttribute("aria-controls", "dashboard-picker-menu");
+    addBtn.setAttribute("aria-expanded", "true");
+  }
 
   const head = document.createElement("div");
   head.className = "dashboard-picker-head";
