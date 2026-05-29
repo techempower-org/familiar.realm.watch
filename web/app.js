@@ -2798,10 +2798,21 @@ async function fetchMemories(limit = 30) {
 
 async function deleteMemory(drawerId, li) {
   if (!confirm("delete this memory? it will be removed from palace.")) return;
+  // Capture focus successor (next or previous memory <li>) before DOM
+  // mutation so keyboard focus survives the delete.
+  const successor = li ? (li.nextElementSibling || li.previousElementSibling) : null;
   try {
     const r = await fetch(`/api/familiar/memories/${encodeURIComponent(drawerId)}`, { method: "DELETE" });
     if (!r.ok) throw new Error(`HTTP ${r.status}`);
     if (li) li.remove();
+    // Move focus to the surviving neighbor; fall back to the memories
+    // list container itself if no neighbors remain.
+    if (successor && typeof successor.focus === "function") {
+      const focusable = successor.querySelector("button, [tabindex]") || successor;
+      focusable.focus?.();
+    } else if (memoriesList && typeof memoriesList.focus === "function") {
+      memoriesList.focus();
+    }
   } catch (err) {
     window.familiarToast?.error?.(`delete failed: ${err.message}`);
   }
