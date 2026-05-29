@@ -237,17 +237,19 @@
         <span class="typing-dot"></span>
         <span class="typing-dot"></span>
       </div>
-      <form id="form" class="form" autocomplete="off">
+      <form id="form" class="form" autocomplete="off" aria-label="chat input">
         <textarea
           id="input"
           name="msg"
           rows="1"
           aria-label="message to the familiar"
+          aria-describedby="input-hint"
           placeholder="speak to the familiar… (enter to send · shift+enter for newline)"
           autofocus
           spellcheck="true"
           enterkeyhint="send"
           required></textarea>
+        <span id="input-hint" class="sr-only">Press Enter to send. Shift plus Enter inserts a newline. Escape aborts a streaming response.</span>
         <button type="submit" id="send-btn" title="send (enter)" aria-label="send">
           <svg viewBox="0 0 16 16" aria-hidden="true" width="16" height="16">
             <path d="M2 8 L14 8 M9 3 L14 8 L9 13" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
