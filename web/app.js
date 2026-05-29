@@ -1370,7 +1370,14 @@ const formEl = document.getElementById("form");
 
 function enterStreamingState() {
   if (formEl) formEl.classList.add("streaming");
-  if (abortBtn) abortBtn.hidden = false;
+  if (abortBtn) {
+    abortBtn.hidden = false;
+    // Reset abort button to its ready state on each new stream so
+    // a previous 'stopping…' aria-disabled doesn't persist into
+    // the next turn.
+    abortBtn.setAttribute("aria-disabled", "false");
+    abortBtn.title = "stop generation (esc)";
+  }
   if (sendBtn) sendBtn.hidden = true;
   // aria-busy tells AT the log is mid-update; some screen readers
   // buffer or delay live-region announcements while busy=true and
@@ -1387,7 +1394,15 @@ function exitStreamingState() {
 
 if (abortBtn) {
   abortBtn.addEventListener("click", () => {
-    if (chatAbort) chatAbort.abort();
+    if (!chatAbort) return;
+    // Mark the button as in-flight so screen readers announce
+    // 'unavailable' and the click is gated against rapid repeat
+    // presses. The abort path itself flips back to hidden via
+    // exitStreamingState() once the stream tears down (~150ms typical),
+    // and 'hidden' overrides aria-disabled at that point.
+    abortBtn.setAttribute("aria-disabled", "true");
+    abortBtn.title = "stopping…";
+    chatAbort.abort();
   });
 }
 // Esc anywhere also aborts — keyboard shortcut that matches the chat
