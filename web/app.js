@@ -1147,6 +1147,17 @@ function makeGlyph(text, cls) {
 // ---------- Chat IO ----------
 
 function appendMessage(role, initialContent = "") {
+  // Visually-hidden speaker heading sits BEFORE the .msg element so
+  // screen readers announce 'user' / 'familiar' as a level-3 heading
+  // before reading the content. This lets AT users navigate by
+  // heading (H key in NVDA/VoiceOver) to jump between turns. Outside
+  // the .msg means el.textContent stays uncontaminated for the
+  // many callers that read or write it.
+  const heading = document.createElement("h3");
+  heading.className = "sr-only";
+  heading.textContent = role === "user" ? "you" : "familiar";
+  log.appendChild(heading);
+
   const el = document.createElement("div");
   el.className = `msg ${role}`;
   // Per-message timestamp (#80) — hover-revealed via CSS ::after.

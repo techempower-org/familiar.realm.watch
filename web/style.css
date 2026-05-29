@@ -67,6 +67,22 @@
 * { box-sizing: border-box; }
 html, body { margin: 0; padding: 0; height: 100%; }
 
+/* Visually-hidden helper — content is announced by AT but invisible
+   in the viewport. Standard pattern: 1×1px clip, no transforms that
+   would reveal it. Used for speaker-attribution prefixes on chat
+   messages, etc. */
+.sr-only {
+  position: absolute !important;
+  width: 1px !important;
+  height: 1px !important;
+  padding: 0 !important;
+  margin: -1px !important;
+  overflow: hidden !important;
+  clip: rect(0, 0, 0, 0) !important;
+  white-space: nowrap !important;
+  border: 0 !important;
+}
+
 /* Skip link — visible only when keyboard-focused (Tab from page load),
    lets screen-reader + keyboard users jump past the sidebar. */
 .skip-to-main {
