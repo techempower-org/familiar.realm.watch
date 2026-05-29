@@ -348,6 +348,12 @@ body {
   color: var(--accent);
   background: color-mix(in srgb, var(--accent) 8%, transparent);
 }
+/* Keyboard focus on the row (tabindex=0 + role=button) — accent ring
+   matches the rest of the focus vocabulary. */
+.sessions-list li:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 40%, transparent);
+}
 .sessions-list .session-marker {
   font-family: var(--mono);
   font-size: 0.7em;

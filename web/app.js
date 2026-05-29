@@ -874,6 +874,14 @@ function renderSessionsList() {
     const li = document.createElement("li");
     li.dataset.sessionId = sess.id;
     if (sess.id === state.active) li.classList.add("active");
+    // Keyboard-activatable list row. role=button + tabindex=0 + Enter/Space
+    // keydown handler give keyboard users the same selection affordance
+    // mouse users have. Couldn't wrap in <button> because the inline-rename
+    // contentEditable mechanism doesn't reliably work inside buttons.
+    li.setAttribute("role", "button");
+    li.setAttribute("tabindex", "0");
+    li.setAttribute("aria-label", `session ${sess.label}`);
+    li.setAttribute("aria-current", sess.id === state.active ? "page" : "false");
 
     const marker = document.createElement("span");
     marker.className = "session-marker";
@@ -912,9 +920,26 @@ function renderSessionsList() {
     });
     li.appendChild(delBtn);
 
-    li.addEventListener("click", () => {
+    li.addEventListener("click", (e) => {
+      // Ignore clicks bubbling from the rename/delete sub-buttons or
+      // from inside contentEditable mid-rename.
       if (li.dataset.editing) return;
-      setActiveSession(sess.id); closeSidebar();
+      if (e.target.closest(".session-rename, .session-delete")) return;
+      setActiveSession(sess.id);
+      closeSidebar();
+    });
+    // Enter / Space activates selection for keyboard users (matching
+    // native <button> behavior). Don't intercept if focus is in the
+    // contentEditable label mid-rename — its own handler captures Enter.
+    li.addEventListener("keydown", (e) => {
+      if (li.dataset.editing) return;
+      if (e.key !== "Enter" && e.key !== " ") return;
+      // Skip if focus is on a child button (rename/delete handle their
+      // own activation natively).
+      if (e.target !== li) return;
+      e.preventDefault();
+      setActiveSession(sess.id);
+      closeSidebar();
     });
     sessionsList.appendChild(li);
   }
