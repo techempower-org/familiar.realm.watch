@@ -1206,7 +1206,7 @@ function buildTurnFooter(traceData, reflectData) {
       const hint = document.createElement("p");
       hint.className = "reflect-hint";
       if (skipped === "too_short") hint.textContent = `reflect runs only on assistant turns of 80+ characters; this one was shorter.`;
-      else if (skipped === "timeout") hint.textContent = `reflect didn't return within the chat budget. drawers may still be writing in the background.`;
+      else if (skipped === "timeout") hint.textContent = `reflect didn't return within the chat budget; it's still writing in the background. the memories list will refresh in a few seconds if anything lands.`;
       else if (skipped === "error") hint.textContent = `the extractor or palace failed; nothing written this turn.`;
       else hint.textContent = `reflect is disabled on this server.`;
       detail.appendChild(hint);
@@ -1679,7 +1679,17 @@ form.addEventListener("submit", async (e) => {
     // grounded, reflect outcome) even when reflect was skipped/timed-out.
     assistantEl.appendChild(buildTurnFooter(tracePayload, reflectPayload));
     // Refresh memories sidebar if reflect wrote anything this turn.
-    if (reflectPayload?.summary?.written > 0) refreshMemories();
+    if (reflectPayload?.summary?.written > 0) {
+      refreshMemories();
+    } else if (reflectPayload?.skipped === "timeout") {
+      // Reflect overran the stream budget and kept running in the
+      // background — the footer pill says "still working…" but the SSE
+      // stream is closed, so it never gets a result event. Poll the
+      // memories sidebar once after a beat so any drawers it writes in
+      // the background actually surface, instead of the user having to
+      // manually refresh. ~9s covers a typical extract+dedup+write tail.
+      setTimeout(() => { refreshMemories(); }, 9000);
+    }
     // Auto-speak when the voice toggle is on.
     if (voiceState.enabled && speechSupported()) speakText(full, speakBtn);
   } catch (err) {
