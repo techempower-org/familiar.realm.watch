@@ -1235,6 +1235,12 @@ document.addEventListener("keydown", (e) => {
   if (e.key === "Escape" && chatAbort) {
     chatAbort.abort();
   }
+  // Esc also closes the mobile sidebar drawer when open. Harmless on
+  // desktop because sidebar-open has no effect above 720px.
+  if (e.key === "Escape" && document.body.classList.contains("sidebar-open")) {
+    closeSidebar();
+    document.getElementById("hdr-menu")?.focus();
+  }
   // Ctrl+Home / Ctrl+End scrolls the chat log to start/end. Standard
   // browser shortcut behavior except the .log is a nested overflow:auto
   // container — the browser default doesn't reach it without help.
