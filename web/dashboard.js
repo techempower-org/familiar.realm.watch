@@ -950,6 +950,16 @@ function hideBlock(blockId) {
   el.addEventListener("animationend", finish, { once: true });
   setTimeout(finish, 250);
   saveLayout();
+  // Undo-able toast — clicking restores the block. Matches the
+  // session-delete undo pattern. Block-type display name comes from
+  // the registered type metadata.
+  const typeName = blockTypes.get(state.typeId)?.name || "block";
+  if (typeof window !== "undefined" && window.familiarToast?.info) {
+    window.familiarToast.info(`${typeName} hidden · click to restore`, {
+      ttl: 5000,
+      onClick: () => showBlock(blockId),
+    });
+  }
 }
 
 /** All registered types with their current visibility. */
