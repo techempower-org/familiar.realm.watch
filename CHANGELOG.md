@@ -114,6 +114,86 @@ Five inference slots (chat / embed / extract / hyde / reflect) each independentl
 - **Chat log gains `role="log"` + `aria-relevant=additions`** for proper streaming announcements.
 - **Security**: referrer policy hardened from `no-referrer-when-downgrade` (still leaked tailnet hostname on HTTPS cross-origin) to `no-referrer`. `window.open(commit_url, ...)` gains `noopener,noreferrer`. Caught by automated security review.
 
+### Fifth wave — a11y deep dive (24 deploys, post-evening)
+
+A single autonomous-iteration loop driven by `/goal: continue iterating
+on the website making it better and more usable and magical and
+beautiful`. Every commit is a deploy + verify cycle. Realm word
+chronology in the next section.
+
+- **Sidebar disclosure**: sigil + hamburger toggle buttons expose
+  `aria-controls="sidebar"` + `aria-expanded` mirrored to
+  `body.sidebar-open`. Esc closes the mobile drawer and restores
+  focus to the hamburger.
+- **Citation popovers**: `aria-haspopup="dialog"` + `aria-expanded`
+  + `aria-controls` triple, with random-suffix popover ids to
+  prevent collisions when one drawer is cited twice in a turn.
+  Single-popover invariant: opening one closes any other. Esc
+  closes from the trigger.
+- **Block settings drawer**: `role="dialog"` + `aria-modal="true"` +
+  `aria-labelledby="block-settings-title"`. Focus trap from #65
+  unchanged; the semantic layer caught up to the visual layer.
+- **Sessions list**: each row gets `role="button"` + `tabindex="0"`
+  + Enter/Space activation + `aria-current="page"` on the active
+  session. Avoided wrapping in `<button>` because contentEditable
+  rename doesn't reliably work inside buttons (browsers apply
+  `user-select: none` by default).
+- **Status pill**: `role="status"` + `aria-live="polite"` +
+  `aria-atomic="true"` so connection state changes (connected,
+  thinking, offline, palace-slow, etc.) are announced. `setStatus`
+  guards against re-writing identical text on idempotent health-check
+  ticks.
+- **Toast split**: separate polite + assertive live regions with
+  per-channel queues. Errors land top-right (interrupts AT, stays
+  visible above info stack), info/success/warn dock bottom-right.
+  Migrated four `alert()` call sites (drawer save/delete, memory
+  save/delete) to `toast.error()`.
+- **Offline submit gating**: `navigator.onLine === false` disables
+  the send button + sets `aria-disabled="true"` (keeping it
+  Tab-discoverable) + dynamic title attribute ("offline — reconnect
+  to send" / "type a message to send" / "send (enter)"). Three-channel
+  signal: visual disable, AT announcement, toast.
+- **Dashboard popovers (`+` block picker, `layout` presets)**:
+  identical disclosure contracts — `aria-haspopup="menu"` +
+  `aria-expanded` + `aria-controls`, arrow/Home/End keyboard nav,
+  first-row auto-focus on open, focus return on Esc + row activation
+  (but NOT on pointer-outside — that yanks focus inappropriately).
+- **Palace search results**: keyboard-activatable `<li role="button">`
+  rows with focus rings, live region with `aria-busy` gating so the
+  "searching…" intermediate text isn't announced.
+- **Palace nav back/close**: each handler captures the leaving wing/
+  room/drawer ID before clearing state, then focuses the
+  corresponding tile in the previous column. `CSS.escape()` guards
+  selector injection from user-controllable palace names.
+- **Esc unwinds palace**: one Esc press peels back one level (detail
+  → drawers col → rooms col → wings). Reuses the back-button click
+  handlers so focus restoration fires for free.
+- **Chat log `aria-busy`**: flips to `true` while streaming so screen
+  readers coalesce announcements; flips to `false` on exit so the
+  flush plays the response as one block (instead of per-token).
+- **Speaker headings**: each chat turn gets a visually-hidden
+  `<h3 class="sr-only">you</h3>` / `<h3 class="sr-only">familiar</h3>`
+  before the `.msg` so AT users can navigate by heading and hear
+  speaker attribution. Outside `.msg` so `el.textContent` stays
+  uncontaminated for the many callers that read/write it.
+- **`.sr-only` utility class**: standard 1×1px-clip visually-hidden
+  pattern for AT-only text. First use is speaker headings.
+- **Chat textarea**: `aria-label="message to the familiar"` (placeholder
+  is not a label per WCAG 3.3.2).
+- **Outer `<main>` gets aria-label**: "familiar main" so screen
+  readers list it in the Landmarks menu with a name. Inner
+  `#dashboard` demoted to `<div role="region">` after an earlier
+  commit accidentally created two `<main>` elements.
+- **Sidebar drawer + scrim**: hardcoded `rgba(0,0,0,...)` literals
+  replaced with `color-mix(in srgb, var(--bg/--fg) X%, transparent)`
+  so light-mode renders parchment-tinted instead of pitch-black.
+- **Theme parity sweep**: every remaining `rgba(N,N,N,...)` literal
+  in the stylesheet (4 total: dragging block shadow, settings drawer
+  shadow, citation popover, light-mode override) gone. Zero
+  hardcoded color literals outside code comments.
+- **Dead CSS**: 63 lines of `.wing-card` rules removed (leftover
+  from an earlier palace view replaced by `.browser-item`).
+
 ### Misc polish in the late session
 
 - Triple-click sigil easter egg (`sound.flourish()` + scale-glow + toast)
