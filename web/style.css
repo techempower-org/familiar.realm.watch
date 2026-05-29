@@ -1696,9 +1696,20 @@ textarea.palace-detail-body.editing {
 }
 
 /* Aborted assistant turn — visually softened so user sees it was cut short. */
-.message.aborted {
+/* Aborted assistant turn — visually softened so user sees it was cut short.
+   (Selector previously read .message.aborted but JS attaches to .msg —
+   no styling applied for who knows how long. Fixed 2026-05-28.) */
+.msg.aborted {
   opacity: 0.7;
   font-style: italic;
+  border-left: 3px solid color-mix(in srgb, var(--color-warn) 60%, var(--border));
+}
+.msg.aborted::after {
+  content: " · interrupted";
+  font-style: normal;
+  font-size: 0.75em;
+  color: var(--color-warn);
+  letter-spacing: 0.04em;
 }
 
 /* ===================== Send-button gold ripple =====================
