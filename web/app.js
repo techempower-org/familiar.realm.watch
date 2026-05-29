@@ -1163,7 +1163,11 @@ function appendMessage(role, initialContent = "") {
 
 function setStatus(state, text) {
   status.className = `status ${state}`;
-  status.textContent = text;
+  // Idempotency guard — health checks re-call setStatus("connected",
+  // "connected") every ~30s, and aria-live="polite" announces every
+  // textContent write in some screen readers. Only mutate the node if
+  // the visible text actually changed.
+  if (status.textContent !== text) status.textContent = text;
 }
 
 async function checkHealth() {
