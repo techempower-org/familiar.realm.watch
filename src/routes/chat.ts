@@ -259,6 +259,17 @@ function streamResponse(opts: GenOpts): Response {
           }
         });
       } catch (err) {
+        // Never fall back silently — a swallowed error here is exactly what
+        // made the #86 outage opaque (chat returned the falters string with
+        // no log of why). Leave a structured breadcrumb so the next failure
+        // is one journalctl grep away.
+        console.error(JSON.stringify({
+          event: "chat.falters",
+          path: "stream",
+          model,
+          breaker: deps.breakers.ollama.state?.(),
+          err: (err as Error)?.message,
+        }));
         const errChunk = {
           id: completionId,
           object: "chat.completion.chunk",
@@ -299,7 +310,14 @@ async function bufferResponse(opts: GenOpts): Promise<Response> {
         if (delta) accumulated += delta;
       }
     });
-  } catch {
+  } catch (err) {
+    console.error(JSON.stringify({
+      event: "chat.falters",
+      path: "buffer",
+      model,
+      breaker: deps.breakers.ollama.state?.(),
+      err: (err as Error)?.message,
+    }));
     accumulated = voice.chatFalters;
   }
   logTrace(opts, accumulated);

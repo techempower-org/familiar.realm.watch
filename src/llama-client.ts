@@ -56,7 +56,16 @@ export class LlamaCppClient implements InferenceChatProvider {
       headers: { "content-type": "application/json" },
       body: JSON.stringify(body),
     });
-    if (!res.ok) throw new Error(`llama-cpp chat: ${res.status} ${res.statusText}`);
+    if (!res.ok) {
+      // Surface the upstream error body, not just the status. llama-server
+      // returns actionable JSON detail (e.g. exceed_context_size_error with
+      // n_prompt_tokens vs n_ctx) — without it the failure is an opaque
+      // "400 Bad Request" that cost hours to diagnose (familiar #86, when a
+      // grounded prompt overflowed a too-small per-slot context window).
+      let detail = "";
+      try { detail = (await res.text()).slice(0, 300).replace(/\s+/g, " ").trim(); } catch { /* body unreadable */ }
+      throw new Error(`llama-cpp chat: ${res.status} ${res.statusText}${detail ? ` — ${detail}` : ""}`);
+    }
     if (!res.body) throw new Error("llama-cpp chat: no response body");
 
     const reader = res.body.getReader();
