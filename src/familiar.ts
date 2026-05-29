@@ -182,6 +182,7 @@ const server = Bun.serve({
           chatModel: cfg.ollamaChat.model,
           embedModel: cfg.ollamaEmbed.model,
           inference: inferenceRouter,
+          resolver: slotResolver,
           ollamaEmbed,
           breakers: { palace: breakers.palace, ollamaChat: breakers.ollamaChat, ollamaEmbed: breakers.ollamaEmbed },
           sigil,

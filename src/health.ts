@@ -3,6 +3,7 @@ import type { CircuitBreaker } from "./circuit-breaker.ts";
 import type { SigilInfo } from "./sigil.ts";
 import type { InferenceChatProvider } from "./types.ts";
 import type { OllamaClient } from "./ollama-client.ts";
+import type { SlotResolver } from "./slots/resolver.ts";
 import { voice } from "./lang/familiar-voice.ts";
 
 export interface HealthDeps {
@@ -24,6 +25,15 @@ export interface HealthDeps {
    * returned the "voice falters" fallback). Without this dep, only the
    * /v1/models dial-tone check runs. */
   inference?: InferenceChatProvider;
+  /** Slot resolver. When present, the chat probe targets the
+   * resolver-bound chat provider (the one real requests use via
+   * pickChatProvider), reading the model name from the bound variant.
+   * The `inference` router is the fallback, used only when no chat slot
+   * binding exists. Without this, the probe tests the legacy router even
+   * when chat is resolver-routed — so /health could report ollama_chat
+   * "degraded" (legacy URL dead) while resolver-routed chat works fine
+   * (#86: localhost-vs-127.0.0.1 incident exposed exactly this gap). */
+  resolver?: SlotResolver;
   /** Embed client. When provided, the embed probe makes a real
    * embedding call and asserts a non-empty vector. */
   ollamaEmbed?: OllamaClient;
@@ -270,8 +280,28 @@ export async function getHealth(deps: HealthDeps): Promise<HealthReport> {
   // "service unreachable", the functional probes catch "service reachable
   // but configured model not serving". Both run in parallel to keep p99
   // latency under the timeout cap.
-  const chatFunctional = deps.inference && deps.chatModel
-    ? probeChatCompletion(deps.inference, deps.chatModel)
+  // Resolve the chat probe target the same way real chat requests do:
+  // the slot resolver wins, the legacy InferenceRouter is the fallback.
+  // Probing only the legacy router (when a slot binding exists) tests a
+  // path no real request takes — that's how /health reported ollama_chat
+  // "degraded" (legacy :11434 dead) while resolver-routed chat to the
+  // phi-4-mini variant worked (#86).
+  let chatProbeProvider: InferenceChatProvider | undefined = deps.inference;
+  let chatProbeModel: string | undefined = deps.chatModel;
+  if (deps.resolver) {
+    try {
+      const resolved = await deps.resolver.chat();
+      if (resolved.provider && resolved.variant) {
+        chatProbeProvider = resolved.provider;
+        chatProbeModel = resolved.variant.model;
+      }
+    } catch {
+      // Resolver read failed (missing/corrupt slots.json) — fall back to
+      // the legacy probe target rather than crashing the health endpoint.
+    }
+  }
+  const chatFunctional = chatProbeProvider && chatProbeModel
+    ? probeChatCompletion(chatProbeProvider, chatProbeModel)
     : Promise.resolve({ chat_quality: undefined as undefined } as never);
   const embedFunctional = deps.ollamaEmbed && deps.embedModel
     ? probeEmbedCompletion(deps.ollamaEmbed, deps.embedModel)

@@ -262,3 +262,74 @@ describe("getHealth — functional probes (#186)", () => {
     expect(r.dependencies.ollama_chat.status).toBe("ok");
   });
 });
+
+// ── Resolver-aware chat probe (#86) ───────────────────────────────────
+// The probe must target the SAME provider real requests use (resolver
+// first, legacy InferenceRouter fallback). Probing only the legacy
+// router when a slot binding exists reports the chat dep degraded while
+// resolver-routed chat works — the misleading state the localhost/IPv6
+// incident exposed.
+
+function makeResolver(opts: {
+  provider: InferenceChatProvider | null;
+  model?: string;
+}): { chat: () => Promise<{ provider: InferenceChatProvider | null; variant: { model: string } | null }> } {
+  return {
+    chat: async () => ({
+      provider: opts.provider,
+      variant: opts.provider ? { model: opts.model ?? "phi-4-mini" } : null,
+    }),
+  };
+}
+
+describe("getHealth — resolver-aware chat probe (#86)", () => {
+  test("probes the resolver-bound provider, not the legacy inference router", async () => {
+    // Legacy inference would return the falters string (dead backend);
+    // the resolver-bound provider returns real tokens. Health must
+    // reflect the resolver path → ok, not the legacy path → degraded.
+    const d: HealthDeps = {
+      ...deps(mockPalace({})),
+      chatModel: "legacy-model",
+      inference: makeInference([voice.chatFalters]),
+      resolver: makeResolver({ provider: makeInference(["pong"]), model: "phi-4-mini" }) as never,
+    };
+    const r = await getHealth(d);
+    expect(r.dependencies.ollama_chat.chat_quality).toBe("ok");
+    expect(r.dependencies.ollama_chat.status).toBe("ok");
+  });
+
+  test("falls back to legacy inference when resolver has no chat binding", async () => {
+    // Resolver returns null provider (no slots.json binding) → probe
+    // uses deps.inference + deps.chatModel, preserving prior behavior.
+    const d: HealthDeps = {
+      ...deps(mockPalace({})),
+      chatModel: "phi-4",
+      inference: makeInference(["Hello"]),
+      resolver: makeResolver({ provider: null }) as never,
+    };
+    const r = await getHealth(d);
+    expect(r.dependencies.ollama_chat.chat_quality).toBe("ok");
+  });
+
+  test("resolver-bound provider failure surfaces as degraded", async () => {
+    // Even with a healthy legacy router, if the resolver-bound provider
+    // (the real path) fails, health must report degraded — otherwise a
+    // broken chat slot hides behind a healthy legacy fallback probe.
+    const failing: InferenceChatProvider = {
+      isHealthy: async () => false,
+      chatStream: async function* () {
+        throw new Error("variant backend refused connection");
+        yield {} as never;
+      },
+    };
+    const d: HealthDeps = {
+      ...deps(mockPalace({})),
+      chatModel: "phi-4",
+      inference: makeInference(["Hello"]),
+      resolver: makeResolver({ provider: failing, model: "phi-4-mini" }) as never,
+    };
+    const r = await getHealth(d);
+    expect(r.dependencies.ollama_chat.chat_quality).toBe("probe_error");
+    expect(r.dependencies.ollama_chat.status).toBe("degraded");
+  });
+});
