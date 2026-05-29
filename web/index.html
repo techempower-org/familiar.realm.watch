@@ -102,10 +102,41 @@
 <body data-viz-base-url="">
   <a class="skip-to-main" href="#dashboard">skip to main content</a>
   <noscript>
-    <div style="padding:2rem;max-width:42rem;margin:3rem auto;font-family:Georgia,serif;text-align:center;color:#d8d4c8;background:#14181f;border:1px solid #242a33;border-radius:8px;line-height:1.6">
-      <h1 style="font-size:1.6rem;color:#d4a050;margin:0 0 0.6rem">familiar.realm.watch</h1>
+    <style>
+      /* Scoped noscript styles — only render when JS is disabled.
+         light-dark() respects the document-level color-scheme meta so
+         the fallback panel matches the user's system theme instead of
+         pinning to dark. */
+      .noscript-fallback {
+        padding: 2rem;
+        max-width: 42rem;
+        margin: 3rem auto;
+        font-family: Georgia, serif;
+        text-align: center;
+        line-height: 1.6;
+        color: light-dark(#1d1f24, #d8d4c8);
+        background: light-dark(#f5f1e8, #14181f);
+        border: 1px solid light-dark(#d2cab8, #242a33);
+        border-radius: 8px;
+      }
+      .noscript-fallback h1 {
+        font-size: 1.6rem;
+        margin: 0 0 0.6rem;
+        color: light-dark(#a67838, #d4a050);
+      }
+      .noscript-fallback .source {
+        font-size: 0.85rem;
+        opacity: 0.7;
+        margin-top: 1.2rem;
+      }
+      .noscript-fallback a {
+        color: light-dark(#a67838, #d4a050);
+      }
+    </style>
+    <div class="noscript-fallback">
+      <h1>familiar.realm.watch</h1>
       <p>This is a JavaScript-powered PWA — please enable JS to use the dashboard.</p>
-      <p style="font-size:0.85rem;opacity:0.7;margin-top:1.2rem">Source: <a href="https://github.com/techempower-org/familiar.realm.watch" style="color:#d4a050">github.com/techempower-org/familiar.realm.watch</a></p>
+      <p class="source">Source: <a href="https://github.com/techempower-org/familiar.realm.watch" rel="noopener">github.com/techempower-org/familiar.realm.watch</a></p>
     </div>
   </noscript>
   <aside class="sidebar" id="sidebar" aria-label="sessions, voice, and palace search">
