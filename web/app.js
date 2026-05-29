@@ -1211,11 +1211,24 @@ input.addEventListener("input", autoResize);
 // affordance — the submit handler already no-ops on empty, but greying
 // the send arrow when there's nothing to send is the expected UX. Only
 // applies in the idle state; while streaming the existing disabled flag
-// from the submit handler wins.
+// from the submit handler wins. Also disables while offline so the user
+// learns the network is down before composing+sending into a failure.
 function syncSubmitEnabled() {
   if (!submit) return;
   if (submit.dataset.streaming === "1") return; // streaming wins
-  submit.disabled = input.value.trim().length === 0;
+  const offline = typeof navigator !== "undefined" && navigator.onLine === false;
+  const empty = input.value.trim().length === 0;
+  submit.disabled = empty || offline;
+  // aria-disabled on top of disabled — disabled buttons are removed from
+  // the focus order entirely on some browsers, which is hostile to keyboard
+  // users trying to discover why they can't send. aria-disabled keeps the
+  // button focusable and lets screen readers announce 'unavailable'.
+  submit.setAttribute("aria-disabled", submit.disabled ? "true" : "false");
+  submit.title = offline
+    ? "offline — reconnect to send"
+    : empty
+    ? "type a message to send"
+    : "send (enter)";
 }
 input.addEventListener("input", syncSubmitEnabled);
 syncSubmitEnabled();
@@ -2794,10 +2807,12 @@ setInterval(checkHealth, 60_000);
 window.addEventListener("offline", () => {
   setStatus("error", "offline");
   window.familiarToast?.warn?.("offline — assistant unreachable");
+  syncSubmitEnabled();
 });
 window.addEventListener("online", () => {
   window.familiarToast?.success?.("back online");
   checkHealth();
+  syncSubmitEnabled();
 });
 refreshMemories();
 
