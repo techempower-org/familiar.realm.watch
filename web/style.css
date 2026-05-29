@@ -1169,10 +1169,12 @@ body {
   transition: background 120ms ease, border-color 120ms ease, color 120ms ease;
   animation: citation-appear 360ms ease-out backwards;
 }
-.src-chip:hover {
+.src-chip:hover, .src-chip:focus-visible {
   border-color: var(--accent);
   color: var(--fg);
   background: color-mix(in srgb, var(--accent) 12%, transparent);
+  outline: none;
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 18%, transparent);
 }
 .src-chip-glyph {
   color: var(--accent);
