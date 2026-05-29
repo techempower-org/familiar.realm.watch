@@ -309,22 +309,47 @@ if (addBtn) addBtn.addEventListener("click", openPicker);
 // ---------- Header: reset/preset menu ----------
 const resetBtn = document.getElementById("dashboard-reset");
 let presetEl = null;
+let presetReturnFocus = true;
 function closePresets() {
   if (presetEl) {
     presetEl.remove();
     presetEl = null;
     document.removeEventListener("pointerdown", onPresetOutside, true);
     document.removeEventListener("keydown", onPresetEscape, true);
+    if (resetBtn) {
+      resetBtn.setAttribute("aria-expanded", "false");
+      if (presetReturnFocus) resetBtn.focus();
+    }
+    presetReturnFocus = true;
   }
 }
 function onPresetOutside(e) {
   if (!presetEl) return;
   if (presetEl.contains(e.target)) return;
   if (e.target.closest("#dashboard-reset")) return;
+  presetReturnFocus = false;
   closePresets();
 }
 function onPresetEscape(e) {
-  if (e.key === "Escape") closePresets();
+  if (!presetEl) return;
+  if (e.key === "Escape") {
+    e.stopPropagation();
+    closePresets();
+    return;
+  }
+  // Arrow + Home/End nav across menuitems (matches the block picker).
+  const rows = Array.from(presetEl.querySelectorAll(".dashboard-picker-row"));
+  if (rows.length === 0) return;
+  const active = document.activeElement;
+  const idx = rows.indexOf(active);
+  let next = -1;
+  if (e.key === "ArrowDown") next = idx < 0 ? 0 : (idx + 1) % rows.length;
+  else if (e.key === "ArrowUp") next = idx <= 0 ? rows.length - 1 : idx - 1;
+  else if (e.key === "Home") next = 0;
+  else if (e.key === "End") next = rows.length - 1;
+  else return;
+  e.preventDefault();
+  rows[next].focus();
 }
 function openPresets() {
   if (presetEl) { closePresets(); return; }
@@ -332,6 +357,12 @@ function openPresets() {
   const pop = document.createElement("div");
   pop.className = "dashboard-picker";
   pop.setAttribute("role", "menu");
+  pop.setAttribute("aria-label", "layout presets");
+  pop.id = "dashboard-presets-menu";
+  if (resetBtn) {
+    resetBtn.setAttribute("aria-controls", "dashboard-presets-menu");
+    resetBtn.setAttribute("aria-expanded", "true");
+  }
 
   const head = document.createElement("div");
   head.className = "dashboard-picker-head";
@@ -395,6 +426,9 @@ function openPresets() {
   requestAnimationFrame(() => {
     document.addEventListener("pointerdown", onPresetOutside, true);
     document.addEventListener("keydown", onPresetEscape, true);
+    // Focus first row so keyboard users land somewhere actionable.
+    const firstRow = pop.querySelector(".dashboard-picker-row");
+    if (firstRow) firstRow.focus();
   });
 }
 if (resetBtn) resetBtn.addEventListener("click", openPresets);
