@@ -208,11 +208,15 @@ function buildBlockEl(type, id, state) {
   content.className = "block-content";
   el.appendChild(content);
 
-  // Resize handle bottom-right.
+  // Resize handle bottom-right. Pointer-only gesture; not focusable +
+  // not announced to AT (no aria-label) because there's no keyboard
+  // equivalent and an unreachable labeled control just adds noise.
+  // Width/height can be adjusted via the settings drawer, which IS
+  // keyboard-accessible.
   const handle = document.createElement("div");
   handle.className = "block-resize-handle";
   handle.dataset.role = "resize-handle";
-  handle.setAttribute("aria-label", "resize block");
+  handle.setAttribute("aria-hidden", "true");
   el.appendChild(handle);
 
   // Wire pointer interactions (no-ops on mobile).

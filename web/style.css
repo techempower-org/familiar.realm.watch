@@ -2140,7 +2140,12 @@ main {
   gap: 0.15rem;
   align-items: center;
 }
-.block.touch-editing .block-reorder {
+.block.touch-editing .block-reorder,
+/* Keyboard path: when any control inside the block has focus, surface
+   the reorder chevrons so keyboard users can shift block order without
+   needing drag (mouse) or long-press (touch). Hides again when focus
+   leaves the block. */
+.block:focus-within .block-reorder {
   display: inline-flex;
 }
 .block-reorder .block-btn[disabled] {
