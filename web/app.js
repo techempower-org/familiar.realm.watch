@@ -505,9 +505,22 @@ function buildLink(label, href) {
     return span;
   }
   a.href = href;
-  a.target = "_blank";
-  a.rel = "noopener noreferrer";
+  // Hash-only links (#dashboard, #section) stay in the same tab — they're
+  // intra-page navigation, not external. Only external/protocol-prefixed
+  // links open in a new tab.
+  const isExternal = /^(https?:|mailto:)/.test(href);
+  if (isExternal) {
+    a.target = "_blank";
+    a.rel = "noopener noreferrer";
+  }
   a.textContent = label;
+  if (isExternal) {
+    // WCAG 3.2.5 — visually-hidden hint announcing new-tab behavior to AT.
+    const hint = document.createElement("span");
+    hint.className = "sr-only";
+    hint.textContent = " (opens in new tab)";
+    a.appendChild(hint);
+  }
   return a;
 }
 
