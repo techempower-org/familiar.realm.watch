@@ -168,6 +168,8 @@ function buildCitationSpan(rawId, meta) {
   btn.type = "button";
   btn.className = "citation-trigger";
   btn.setAttribute("aria-label", `Palace source: ${drawerId}`);
+  btn.setAttribute("aria-haspopup", "dialog");
+  btn.setAttribute("aria-expanded", "false");
   // Prefer a semantic label — palace navigation makes "[architecture]" or
   // "[sessions]" far more readable than a 6-char id slice like "[storyv]".
   // Truncate at 24 chars to keep chips inline-friendly. Falls back to the
@@ -179,12 +181,37 @@ function buildCitationSpan(rawId, meta) {
   btn.textContent = `[${label}]`;
 
   const popover = buildPopover(drawerId, meta);
+  // Stable id so aria-controls can point at it. drawerId is unique-per-turn.
+  const popoverId = `popover-${drawerId}-${Math.random().toString(36).slice(2, 8)}`;
+  popover.id = popoverId;
+  popover.setAttribute("role", "region");
+  popover.setAttribute("aria-label", `Palace source ${drawerId}`);
+  btn.setAttribute("aria-controls", popoverId);
+
   wrapper.appendChild(btn);
   wrapper.appendChild(popover);
 
   btn.addEventListener("click", (e) => {
     e.stopPropagation();
+    const wasOpen = wrapper.classList.contains("citation--open");
+    // Close any other open popovers before opening this one — single-popover
+    // invariant matches the click-outside-closes-all behavior above.
+    if (!wasOpen) {
+      document.querySelectorAll(".citation--open").forEach((el) => {
+        el.classList.remove("citation--open");
+        el.querySelector(".citation-trigger")?.setAttribute("aria-expanded", "false");
+      });
+    }
     wrapper.classList.toggle("citation--open");
+    btn.setAttribute("aria-expanded", wasOpen ? "false" : "true");
+  });
+
+  // Esc closes the popover when focus is on the trigger.
+  btn.addEventListener("keydown", (e) => {
+    if (e.key === "Escape" && wrapper.classList.contains("citation--open")) {
+      wrapper.classList.remove("citation--open");
+      btn.setAttribute("aria-expanded", "false");
+    }
   });
 
   return wrapper;
@@ -631,7 +658,10 @@ function streamingMarkdownRender(container, text) {
 
 // Close any open popover when clicking outside.
 document.addEventListener("click", () => {
-  document.querySelectorAll(".citation--open").forEach((el) => el.classList.remove("citation--open"));
+  document.querySelectorAll(".citation--open").forEach((el) => {
+    el.classList.remove("citation--open");
+    el.querySelector(".citation-trigger")?.setAttribute("aria-expanded", "false");
+  });
 });
 
 // Per-session map of drawer_id → entity metadata, populated from the trace
