@@ -243,9 +243,12 @@ body {
   align-items: baseline;
   font-family: var(--serif);
   font-size: 1.4rem;
-  color: var(--text-gold, var(--accent));
+  color: var(--accent);
   letter-spacing: 0.05em;
   line-height: 1.1;
+  /* Subtle text-shadow gives the clock a barely-there sigil-gold halo —
+     warmer feeling without changing the foreground color. */
+  text-shadow: 0 0 4px color-mix(in srgb, var(--accent) 22%, transparent);
 }
 .clock-time .clock-seconds {
   font-size: 0.7em;
