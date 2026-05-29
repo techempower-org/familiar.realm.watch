@@ -129,7 +129,14 @@
         var btn = this.shadowRoot.querySelector('button');
         if (!btn) return;
         btn.textContent = theme === 'system' ? '◐' : eff === 'dark' ? '☾' : '☀';
-        btn.title = 'Theme: ' + theme + (theme === 'system' ? ' (effective: ' + eff + ')' : '');
+        var tip = 'Theme: ' + theme + (theme === 'system' ? ' (effective: ' + eff + ')' : '');
+        btn.title = tip;
+        // Dynamic aria-label so AT announces the current state on focus
+        // and after each click. The icon variant cycles through three
+        // states (light/dark/system) — aria-pressed (binary) doesn't
+        // map cleanly; the label-with-state is the WAI-ARIA recommended
+        // pattern for tri-state cycle buttons.
+        btn.setAttribute('aria-label', tip + ' — click to cycle');
       }
     }
   }
