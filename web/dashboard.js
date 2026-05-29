@@ -411,8 +411,20 @@ function refreshReorderState(id) {
   const idx = visibleSiblings.indexOf(el);
   const up = el.querySelector(".block-btn-reorder-up");
   const down = el.querySelector(".block-btn-reorder-down");
-  if (up) up.toggleAttribute("disabled", idx <= 0);
-  if (down) down.toggleAttribute("disabled", idx < 0 || idx >= visibleSiblings.length - 1);
+  const upDisabled = idx <= 0;
+  const downDisabled = idx < 0 || idx >= visibleSiblings.length - 1;
+  if (up) {
+    up.toggleAttribute("disabled", upDisabled);
+    // aria-disabled in lockstep with the HTML disabled attribute so AT
+    // hears 'unavailable' immediately (the [disabled] attribute alone
+    // is read inconsistently across screen readers — explicit
+    // aria-disabled is the WAI-ARIA-recommended pairing).
+    up.setAttribute("aria-disabled", upDisabled ? "true" : "false");
+  }
+  if (down) {
+    down.toggleAttribute("disabled", downDisabled);
+    down.setAttribute("aria-disabled", downDisabled ? "true" : "false");
+  }
 }
 
 /** Swap a block with its neighbor in source order (by flex order index).
