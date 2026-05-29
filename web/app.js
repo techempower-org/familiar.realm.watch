@@ -1488,8 +1488,15 @@ form.addEventListener("submit", async (e) => {
       renderScheduled = true;
       requestAnimationFrame(() => {
         renderScheduled = false;
+        // Don't yank the user back to the bottom if they've scrolled up
+        // to read history mid-stream. 'Near bottom' = within ~80px of
+        // the bottom, generous enough that small inertia overshoots
+        // still register as 'following the stream'.
+        const NEAR_BOTTOM_PX = 80;
+        const wasNearBottom =
+          log.scrollHeight - (log.scrollTop + log.clientHeight) <= NEAR_BOTTOM_PX;
         streamingMarkdownRender(assistantEl, full);
-        log.scrollTop = log.scrollHeight;
+        if (wasNearBottom) log.scrollTop = log.scrollHeight;
       });
     };
     while (true) {
