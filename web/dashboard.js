@@ -555,12 +555,20 @@ function ensureDrawer() {
   drawer = document.createElement("aside");
   drawer.className = "block-settings-drawer";
   drawer.hidden = true;
+  // Modal dialog semantics. role + aria-modal + aria-labelledby make
+  // screen readers announce "settings dialog, <block-name> settings"
+  // when focus enters, matching the visual modal affordance (scrim,
+  // focus trap, Esc-close).
+  drawer.setAttribute("role", "dialog");
+  drawer.setAttribute("aria-modal", "true");
 
   const head = document.createElement("header");
   head.className = "block-settings-head";
   drawerTitle = document.createElement("span");
   drawerTitle.className = "block-settings-title";
+  drawerTitle.id = "block-settings-title";
   drawerTitle.textContent = "settings";
+  drawer.setAttribute("aria-labelledby", drawerTitle.id);
   head.appendChild(drawerTitle);
 
   const closeBtn = document.createElement("button");
