@@ -1091,6 +1091,14 @@ function buildTurnFooter(traceData, reflectData) {
 
     const detail = document.createElement("div");
     detail.className = "ctx-detail";
+    // Disclosure semantics — the pill expands/collapses this panel.
+    const ctxDetailId = `ctx-detail-${Math.random().toString(36).slice(2, 8)}`;
+    detail.id = ctxDetailId;
+    detail.setAttribute("role", "region");
+    detail.setAttribute("aria-label", "grounded palace drawers");
+    pill.setAttribute("aria-haspopup", "true");
+    pill.setAttribute("aria-controls", ctxDetailId);
+    pill.setAttribute("aria-expanded", "false");
     if (retrieved.length > 0) {
       for (const e of retrieved) {
         const item = document.createElement("div");
@@ -1127,7 +1135,9 @@ function buildTurnFooter(traceData, reflectData) {
       }
     }
     pill.addEventListener("click", () => {
-      detail.dataset.open = detail.dataset.open === "true" ? "false" : "true";
+      const open = detail.dataset.open === "true" ? "false" : "true";
+      detail.dataset.open = open;
+      pill.setAttribute("aria-expanded", open);
     });
     wrap.appendChild(detail);
     footer.appendChild(wrap);
@@ -1170,6 +1180,13 @@ function buildTurnFooter(traceData, reflectData) {
 
     const detail = document.createElement("div");
     detail.className = "reflect-detail";
+    const reflectDetailId = `reflect-detail-${Math.random().toString(36).slice(2, 8)}`;
+    detail.id = reflectDetailId;
+    detail.setAttribute("role", "region");
+    detail.setAttribute("aria-label", "reflect decisions");
+    pill.setAttribute("aria-haspopup", "true");
+    pill.setAttribute("aria-controls", reflectDetailId);
+    pill.setAttribute("aria-expanded", "false");
     if (decisions.length > 0) {
       const list = document.createElement("ul");
       for (const d of decisions) {
@@ -1200,7 +1217,9 @@ function buildTurnFooter(traceData, reflectData) {
       detail.appendChild(hint);
     }
     pill.addEventListener("click", () => {
-      detail.dataset.open = detail.dataset.open === "true" ? "false" : "true";
+      const open = detail.dataset.open === "true" ? "false" : "true";
+      detail.dataset.open = open;
+      pill.setAttribute("aria-expanded", open);
     });
     wrap.appendChild(detail);
     footer.appendChild(wrap);

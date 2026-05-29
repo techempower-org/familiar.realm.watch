@@ -1277,7 +1277,16 @@ body {
   white-space: normal;
   background: color-mix(in srgb, var(--accent) 3%, transparent);
 }
-.ctx-detail[data-open="true"], .reflect-detail[data-open="true"] { display: block; }
+.ctx-detail[data-open="true"], .reflect-detail[data-open="true"] {
+  display: block;
+  /* Cap the expanded panel so a many-drawer turn (grounding can pull 9+,
+     each with a snippet) scrolls inside the footer instead of unrolling a
+     wall of text that shoves the conversation off-screen. */
+  max-height: 22rem;
+  overflow-y: auto;
+  scrollbar-width: thin;
+  scrollbar-color: color-mix(in srgb, var(--accent) 35%, transparent) transparent;
+}
 
 .ctx-detail .ctx-item {
   padding: 0.35rem 0;
