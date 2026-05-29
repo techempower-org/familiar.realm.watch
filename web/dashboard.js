@@ -190,6 +190,12 @@ function buildBlockEl(type, id, state) {
   ctrls.className = "block-ctrls";
 
   const gearBtn = mkIconBtn("gear", "settings", svgGear());
+  // Disclosure semantics — the gear opens a dialog (the settings
+  // drawer). aria-haspopup tells AT what kind of UI the click reveals;
+  // aria-expanded toggles in openSettings/closeSettings.
+  gearBtn.setAttribute("aria-haspopup", "dialog");
+  gearBtn.setAttribute("aria-expanded", "false");
+  gearBtn.dataset.blockId = id;
   gearBtn.addEventListener("click", (e) => { e.stopPropagation(); openSettings(id); });
   ctrls.appendChild(gearBtn);
 
@@ -657,6 +663,10 @@ function openSettings(blockId) {
   drawer.hidden = false;
   // Remember which element to return focus to on close (#65).
   drawer._returnFocus = document.activeElement;
+  // Mark the originating gear button as expanded so AT users hear
+  // the disclosure state. closeSettings flips this back.
+  const gear = blockEls.get(blockId)?.querySelector('.block-btn-gear');
+  if (gear) gear.setAttribute("aria-expanded", "true");
   requestAnimationFrame(() => {
     drawer.classList.add("open");
     // Move keyboard focus into the drawer — close button is the
@@ -692,6 +702,14 @@ function trapDrawerFocus(e) {
 function closeSettings() {
   if (!drawer) return;
   drawer.classList.remove("open");
+  // Flip the originating gear's aria-expanded back to false in lockstep
+  // with the close. The gear is identified by its dataset.blockId so we
+  // find the right one even if multiple blocks have gears focused
+  // (only one drawer is ever open at a time per activeSettingsBlockId).
+  if (activeSettingsBlockId) {
+    const gear = blockEls.get(activeSettingsBlockId)?.querySelector('.block-btn-gear');
+    if (gear) gear.setAttribute("aria-expanded", "false");
+  }
   // Return focus to the gear that opened us, so keyboard users keep their place.
   const returnTo = drawer._returnFocus;
   drawer._returnFocus = null;
