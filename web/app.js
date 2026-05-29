@@ -3053,7 +3053,22 @@ function renderMemories(drawers) {
   }
 }
 
+let pendingMemRefresh = false;
 async function refreshMemories() {
+  // Don't clobber an in-progress inline edit. renderMemories rebuilds the
+  // whole list, discarding any open contentEditable + the user's unsaved
+  // text. Several paths trigger a refresh that can land mid-edit — a
+  // reflect-write, the deferred reflect-timeout refresh, the manual button.
+  // If an edit is open, defer once and retry after a beat (coalesced so
+  // overlapping triggers don't stack); when the edit closes, the retry
+  // succeeds.
+  if (memoriesList?.querySelector('[contenteditable="true"]')) {
+    if (!pendingMemRefresh) {
+      pendingMemRefresh = true;
+      setTimeout(() => { pendingMemRefresh = false; refreshMemories(); }, 4000);
+    }
+    return;
+  }
   const drawers = await fetchMemories(30);
   renderMemories(drawers);
 }
