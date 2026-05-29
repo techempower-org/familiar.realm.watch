@@ -1300,11 +1300,17 @@ function enterStreamingState() {
   if (formEl) formEl.classList.add("streaming");
   if (abortBtn) abortBtn.hidden = false;
   if (sendBtn) sendBtn.hidden = true;
+  // aria-busy tells AT the log is mid-update; some screen readers
+  // buffer or delay live-region announcements while busy=true and
+  // flush them once busy flips back to false, reducing the choppy
+  // 'word… word… word…' token-by-token announcement during streams.
+  if (log) log.setAttribute("aria-busy", "true");
 }
 function exitStreamingState() {
   if (formEl) formEl.classList.remove("streaming");
   if (abortBtn) abortBtn.hidden = true;
   if (sendBtn) sendBtn.hidden = false;
+  if (log) log.setAttribute("aria-busy", "false");
 }
 
 if (abortBtn) {
