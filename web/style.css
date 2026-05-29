@@ -67,6 +67,16 @@
 * { box-sizing: border-box; }
 html, body { margin: 0; padding: 0; height: 100%; }
 
+/* The browser's user-agent stylesheet provides [hidden] { display: none },
+   but author selectors like .browser-col { display: flex } have higher
+   cascade priority and silently override it. Several elements in this
+   app receive .hidden = true / false via JS expecting the attribute to
+   actually hide them (palace columns, palace detail, search results).
+   This rule restores the intent. !important is the WHATWG-recommended
+   pattern when authors use display: on elements that may receive
+   the hidden attribute. */
+[hidden] { display: none !important; }
+
 /* Visually-hidden helper — content is announced by AT but invisible
    in the viewport. Standard pattern: 1×1px clip, no transforms that
    would reveal it. Used for speaker-attribution prefixes on chat
