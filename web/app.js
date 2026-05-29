@@ -2064,27 +2064,45 @@ async function deleteDrawerFromDetail(drawer) {
 
 if (palaceRoomsBack) {
   palaceRoomsBack.addEventListener("click", () => {
+    // Capture the wing we're leaving BEFORE clearing state so we can
+    // restore focus to its tile.
+    const fromWing = browserState.wing;
     if (palaceRoomsCol) palaceRoomsCol.hidden = true;
     if (palaceDrawersCol) palaceDrawersCol.hidden = true;
     if (palaceDetail) palaceDetail.hidden = true;
     browserState = { wing: null, room: null, drawer: null };
     palaceTreemap.querySelectorAll(".browser-item.active").forEach((el) => el.classList.remove("active"));
+    // Restore focus to the previously selected wing tile in the treemap.
+    if (fromWing) {
+      const target = palaceTreemap.querySelector(`[data-wing="${CSS.escape(fromWing)}"]`);
+      if (target && typeof target.focus === "function") target.focus();
+    }
   });
 }
 if (palaceDrawersBack) {
   palaceDrawersBack.addEventListener("click", () => {
+    const fromRoom = browserState.room;
     if (palaceDrawersCol) palaceDrawersCol.hidden = true;
     if (palaceDetail) palaceDetail.hidden = true;
     browserState.room = null;
     browserState.drawer = null;
     palaceRooms.querySelectorAll(".browser-item.active").forEach((el) => el.classList.remove("active"));
+    if (fromRoom) {
+      const target = palaceRooms.querySelector(`[data-room="${CSS.escape(fromRoom)}"]`);
+      if (target && typeof target.focus === "function") target.focus();
+    }
   });
 }
 if (palaceDetailClose) {
   palaceDetailClose.addEventListener("click", () => {
+    const fromDrawer = browserState.drawer;
     if (palaceDetail) palaceDetail.hidden = true;
     palaceDrawersEl.querySelectorAll(".browser-item.active").forEach((el) => el.classList.remove("active"));
     browserState.drawer = null;
+    if (fromDrawer) {
+      const target = palaceDrawersEl.querySelector(`[data-drawer-id="${CSS.escape(fromDrawer)}"]`);
+      if (target && typeof target.focus === "function") target.focus();
+    }
   });
 }
 
