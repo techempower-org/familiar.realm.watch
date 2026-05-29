@@ -151,6 +151,55 @@ Unrelated to the slot picker — that's the palace daemon API key. The slot
 picker has no Vault dependencies; check the runbook for palace-daemon
 specifically.
 
+### chat returns "My voice falters — the resonance is unsettled"
+
+The themed inference-failure fallback (`voice.chatFalters`). The chat
+route catches *any* error in the inference call and emits this, so it
+covers several distinct causes. As of the 2026-05-29 incident, the
+fallback is no longer silent — **`journalctl -u familiar-api | grep
+chat.falters`** logs the cause (model, breaker state, error message),
+and `LlamaCppClient` includes the upstream error body. Start there, then
+walk this chain (top = most common):
+
+1. **Chat models unloaded to save RAM?** Routine. `systemctl is-active
+   llama-server-chat-gemma3-4b-gpu1` (or whichever variant chat is bound
+   to). If inactive, that's "resting" — the web UI shows a calm resting
+   state, not an error. `systemctl start` it; the 60s health poll clears
+   resting on its own. Confirm: `nvidia-smi` shows the model's VRAM back.
+
+2. **palace-daemon down?** Grounding runs before the chat model; if
+   palace is unreachable the turn still proceeds *ungrounded* (breaker
+   open path) — but if palace went down hard it can cascade. Check
+   `curl -s localhost:8085/health`. If down: `systemctl start
+   palace-daemon` (it has `Restart=always` + `RestartSec=10`; a clean
+   `stop` stays stopped, a crash self-heals).
+
+3. **`slots.json` missing or chat unbound?** `cat /var/lib/familiar/slots.json`
+   — `slots.chat.variant_id` must name a chat-capable variant. If the
+   file is absent, the resolver returns null and chat falls through to
+   the legacy `OLLAMA_CHAT_URL` (`:11434`), which is **dead** (Ollama was
+   replaced by llama.cpp). Bind it: write `slots.json` with chat → a
+   variant whose `capabilities` include `"chat"`, or PATCH via the admin
+   endpoint. (Deploy does not seed `slots.json` — see familiar #86.)
+
+4. **Per-slot context too small for the grounded prompt?** ⚠️ The subtle
+   one — this was the 2026-05-29 root cause. `grep chat.falters` shows a
+   400; the llama-cpp error body says `exceed_context_size_error`,
+   `n_prompt_tokens` vs `n_ctx`. The familiar's grounded prompt is
+   **~3000 tokens** (persona + up to ~9 palace drawers + the turn).
+   llama-server splits `--ctx-size` across `--parallel` slots, so the
+   *per-slot* window is `ctx-size / parallel`. The extractor (`4096 / 4 =
+   1024`) and a naive chat unit (`8192 / 4 = 2048`) both 400 on a real
+   grounded turn while a tiny "pong" test passes. Fix: give the chat unit
+   `--parallel 1` (full window per slot) or raise `--ctx-size`. The
+   single-user familiar doesn't need concurrent chat slots.
+
+5. **Not an IPv6 / `localhost` problem.** A red herring from the incident:
+   the variant URLs were switched `localhost`→`127.0.0.1` on a hunch, but
+   the 400s proved the connection worked (Bun resolves `localhost` fine
+   here). Don't chase DNS — if you got an HTTP status back, the transport
+   is fine; read the error body.
+
 ## File interaction diagram
 
 ```
