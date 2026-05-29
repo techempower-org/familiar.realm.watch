@@ -128,6 +128,14 @@ function buildPopover(drawerId, meta) {
   link.target = "_blank";
   link.rel = "noopener noreferrer";
   link.textContent = base ? "view in palace ↗" : "view in palace →";
+  // WCAG 3.2.5 — links that open in a new tab/window need explicit
+  // warning. The ↗/→ arrow is the convention for sighted users; AT
+  // users get a visually-hidden suffix that gets concatenated into
+  // the accessible name. 'opens in new tab' is the standard phrasing.
+  const newTabHint = document.createElement("span");
+  newTabHint.className = "sr-only";
+  newTabHint.textContent = " (opens in new tab)";
+  link.appendChild(newTabHint);
   popover.appendChild(link);
 
   return popover;
