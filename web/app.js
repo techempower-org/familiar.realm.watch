@@ -2491,6 +2491,7 @@ function loadBrowserVoices() {
 // en-* locales sort to the top.
 async function loadGnomeVoices() {
   if (!voicePicker) return;
+  voicePicker.setAttribute("aria-busy", "true");
   try {
     const r = await fetch(`${GNOME_SPEAKS_URL}/voices`, {
       signal: AbortSignal.timeout ? AbortSignal.timeout(2500) : undefined,
@@ -2552,6 +2553,8 @@ async function loadGnomeVoices() {
   } catch (e) {
     console.warn("[familiar] gnome-speaks /voices failed; falling back to browser picker:", e);
     // Leave whatever loadBrowserVoices populated in place.
+  } finally {
+    voicePicker.setAttribute("aria-busy", "false");
   }
 }
 
