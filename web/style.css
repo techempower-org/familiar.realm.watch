@@ -1719,6 +1719,39 @@ textarea.palace-detail-body.editing {
   letter-spacing: 0.04em;
 }
 
+/* Recoverable inference fault — the themed "voice falters" fallback.
+   Distinct from .aborted (user-initiated) and from a real reply: a soft
+   error-tinted left edge signals "the familiar couldn't reach its
+   thoughts" without breaking the parchment aesthetic. The ↺ retry button
+   re-sends the last message. */
+.msg.faltered {
+  border-left: 3px solid color-mix(in srgb, var(--color-error) 55%, var(--border));
+}
+.msg-retry {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  margin-top: 0.5rem;
+  padding: 0.2rem 0.7rem;
+  background: transparent;
+  border: 1px solid color-mix(in srgb, var(--accent) 45%, var(--border));
+  border-radius: 999px;
+  color: var(--accent);
+  font-family: var(--mono);
+  font-size: 0.72rem;
+  letter-spacing: 0.04em;
+  cursor: pointer;
+  transition: background 120ms ease, border-color 120ms ease, transform 120ms ease;
+}
+.msg-retry:hover {
+  background: color-mix(in srgb, var(--accent) 12%, transparent);
+  transform: translateY(-1px);
+}
+.msg-retry:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 35%, transparent);
+}
+
 /* ===================== Send-button gold ripple =====================
  * A single accent-coloured ring emanates from the send button on submit.
  * The .send-ripple span is created in JS (app.js → triggerSendRipple)

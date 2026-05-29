@@ -1636,6 +1636,29 @@ form.addEventListener("submit", async (e) => {
     // Copy button — same hover-reveal pattern, sits left of speak (#78).
     const copyBtn = buildCopyButton(() => full);
     assistantEl.appendChild(copyBtn);
+    // Recoverable-fault affordance. When inference fails, the backend
+    // streams the themed fallback (src/lang/familiar-voice.ts chatFalters)
+    // as normal content — indistinguishable from a real reply. Detect it
+    // so the user knows it's a connection hiccup, not the familiar's words,
+    // and offer one-click retry of the same message instead of retyping.
+    // Match on a stable prefix; keep in sync with the backend string.
+    if (full.includes("My voice falters")) {
+      assistantEl.classList.add("faltered");
+      const retry = document.createElement("button");
+      retry.type = "button";
+      retry.className = "msg-retry";
+      retry.textContent = "↺ try again";
+      retry.setAttribute("aria-label", "retry — resend your last message");
+      const resend = () => {
+        if (submit.dataset.streaming === "1") return;
+        input.value = text;
+        syncSubmitEnabled();
+        form.requestSubmit();
+      };
+      retry.addEventListener("click", resend);
+      assistantEl.appendChild(retry);
+      window.familiarToast?.warn?.("the familiar couldn't reach its thoughts — try again", { onClick: resend });
+    }
     // Always render the footer so the user can see the pipeline (memories
     // grounded, reflect outcome) even when reflect was skipped/timed-out.
     assistantEl.appendChild(buildTurnFooter(tracePayload, reflectPayload));
