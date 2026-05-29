@@ -899,8 +899,15 @@ function relTime(ts) {
 }
 
 // Sidebar drawer toggle (mobile only — desktop has sidebar always visible).
-function toggleSidebar() { document.body.classList.toggle("sidebar-open"); }
-function closeSidebar() { document.body.classList.remove("sidebar-open"); }
+// aria-expanded mirrors body.sidebar-open so screen readers announce the
+// disclosure state correctly on both toggle buttons.
+function syncSidebarAria() {
+  const v = document.body.classList.contains("sidebar-open") ? "true" : "false";
+  document.getElementById("sigil")?.setAttribute("aria-expanded", v);
+  hdrMenu?.setAttribute("aria-expanded", v);
+}
+function toggleSidebar() { document.body.classList.toggle("sidebar-open"); syncSidebarAria(); }
+function closeSidebar() { document.body.classList.remove("sidebar-open"); syncSidebarAria(); }
 
 sigilBtn.addEventListener("click", (e) => { e.stopPropagation(); toggleSidebar(); });
 // Triple-click the sigil → magical flourish. Tiny easter egg.
