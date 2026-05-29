@@ -2053,7 +2053,7 @@ function enterEditMode(drawer) {
     } catch (err) {
       saveBtn.disabled = false;
       saveBtn.textContent = "save";
-      alert(`save failed: ${err.message}`);
+      window.familiarToast?.error?.(`save failed: ${err.message}`);
     }
   });
   actions.appendChild(saveBtn);
@@ -2080,7 +2080,7 @@ async function deleteDrawerFromDetail(drawer) {
     });
     refreshMemories();
   } catch (err) {
-    alert(`delete failed: ${err.message}`);
+    window.familiarToast?.error?.(`delete failed: ${err.message}`);
   }
 }
 
@@ -2733,7 +2733,7 @@ async function deleteMemory(drawerId, li) {
     if (!r.ok) throw new Error(`HTTP ${r.status}`);
     if (li) li.remove();
   } catch (err) {
-    alert(`delete failed: ${err.message}`);
+    window.familiarToast?.error?.(`delete failed: ${err.message}`);
   }
 }
 
@@ -2799,7 +2799,7 @@ function renderMemories(drawers) {
           const newText = fact.textContent || "";
           if (newText !== d.text && newText.trim().length > 0) {
             patchMemory(d.id, newText).then(() => { d.text = newText; }).catch((err) => {
-              alert(`save failed: ${err.message}`);
+              window.familiarToast?.error?.(`save failed: ${err.message}`);
               fact.textContent = d.text || "";
             });
           }
