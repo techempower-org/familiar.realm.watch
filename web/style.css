@@ -545,7 +545,16 @@ body {
 .speak-btn.speaking { opacity: 1; color: var(--accent); border-color: var(--accent); }
 .copy-btn-done { opacity: 1; color: var(--accent); border-color: var(--accent); }
 @media (max-width: 720px) {
-  .speak-btn { opacity: 0.6; }
+  /* No-hover devices need both buttons partially visible by default,
+     otherwise they're unreachable: opacity:0 + no hover = invisible. */
+  .speak-btn,
+  .copy-btn { opacity: 0.6; }
+}
+/* Same idea for pointer:coarse — covers desktop touchscreens not
+   matched by the width breakpoint. */
+@media (hover: none) and (pointer: coarse) {
+  .speak-btn,
+  .copy-btn { opacity: 0.6; }
 }
 
 /* Memories section: drawers reflect has written. */
