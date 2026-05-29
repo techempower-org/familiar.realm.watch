@@ -1522,7 +1522,7 @@ body {
 }
 .browser-item.active {
   border-color: var(--accent);
-  background: rgba(212, 160, 80, 0.08);
+  background: color-mix(in srgb, var(--accent) 8%, transparent);
 }
 .browser-item-label {
   flex: 1;
