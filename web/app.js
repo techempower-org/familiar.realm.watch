@@ -3126,6 +3126,7 @@ function makeOption(value, text, title) {
 async function loadModels() {
   if (!modelEl) return;
   modelEl.disabled = true;
+  modelEl.setAttribute("aria-busy", "true");
   clearChildren(modelEl);
   modelEl.appendChild(makeOption("", "loading…"));
   try {
@@ -3159,6 +3160,8 @@ async function loadModels() {
     clearChildren(modelEl);
     modelEl.appendChild(makeOption("", "(unavailable)"));
     modelEl.disabled = true;
+  } finally {
+    modelEl.setAttribute("aria-busy", "false");
   }
 }
 
