@@ -311,6 +311,29 @@ describe("getHealth — resolver-aware chat probe (#86)", () => {
     expect(r.dependencies.ollama_chat.chat_quality).toBe("ok");
   });
 
+  test("legacy dial-tone dead but resolver chat works → status ok (the #86 scenario)", async () => {
+    // OLLAMA_CHAT_URL (:11434) is dead → /v1/models dial-tone fails →
+    // chat dep degraded. But chat is resolver-routed to a healthy gemma
+    // backend. The functional probe is authoritative: status must be ok,
+    // with the dial-tone failure demoted to a non-fatal warning.
+    const deadDialTone: typeof fetch = ((url: string) =>
+      String(url).includes("/v1/models")
+        ? Promise.resolve(new Response("", { status: 503 }))
+        : Promise.resolve(new Response("{}", { status: 200 }))) as never;
+    const d: HealthDeps = {
+      ...deps(mockPalace({})),
+      fetch: deadDialTone,
+      chatModel: "phi-4",
+      inference: makeInference([voice.chatFalters]), // legacy fallback dead
+      resolver: makeResolver({ provider: makeInference(["pong"]), model: "gemma3-4b" }) as never,
+    };
+    const r = await getHealth(d);
+    expect(r.dependencies.ollama_chat.chat_quality).toBe("ok");
+    expect(r.dependencies.ollama_chat.status).toBe("ok");
+    expect(r.dependencies.ollama_chat.error).toBeUndefined();
+    expect(r.dependencies.ollama_chat.chat_warning).toMatch(/legacy dial-tone/i);
+  });
+
   test("resolver-bound provider failure surfaces as degraded", async () => {
     // Even with a healthy legacy router, if the resolver-bound provider
     // (the real path) fails, health must report degraded — otherwise a

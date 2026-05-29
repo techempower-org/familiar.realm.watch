@@ -328,15 +328,29 @@ export async function getHealth(deps: HealthDeps): Promise<HealthReport> {
     embedFunctional,
   ]);
 
-  // Merge functional chat probe into the ollama_chat dep. Both fallback
-  // and probe_error flip top-level status to "degraded" so status.realm.
-  // watch + the existing 503-on-degraded logic raise the alarm.
+  // The functional chat probe tests an actual completion through the SAME
+  // provider real requests use (resolver-bound when present, legacy
+  // otherwise). When it ran, it is AUTHORITATIVE for chat status: a
+  // passing completion is stronger evidence than the /v1/models dial-tone
+  // on OLLAMA_CHAT_URL, which may point at a dead legacy fallback URL even
+  // while resolver-routed chat works fine (#86 — health reported chat
+  // "degraded" off the dead legacy :11434 dial-tone while the familiar
+  // answered normally through the resolver-bound gemma backend).
   if (chatFn && (chatFn as { chat_quality?: string }).chat_quality) {
     const cf = chatFn as { chat_quality: "ok" | "fallback" | "probe_error"; chat_warning?: string; chat_latency_ms?: number };
     chat.chat_quality = cf.chat_quality;
     if (cf.chat_warning) chat.chat_warning = cf.chat_warning;
     if (cf.chat_latency_ms !== undefined) chat.chat_latency_ms = cf.chat_latency_ms;
-    if (chat.status === "ok" && cf.chat_quality !== "ok") {
+    if (cf.chat_quality === "ok") {
+      // Real chat path works. If the legacy dial-tone degraded the dep,
+      // demote that to a non-fatal note rather than failing status —
+      // the legacy URL's reachability doesn't gate a working chat path.
+      if (chat.status === "degraded" && chat.error) {
+        chat.chat_warning = `chat completion ok; legacy dial-tone (${deps.ollamaChatUrl}) unreachable: ${chat.error}`;
+        delete chat.error;
+      }
+      chat.status = "ok";
+    } else {
       chat.status = "degraded";
       chat.error = cf.chat_quality === "fallback"
         ? `chat returned chatFalters fallback — model not serving: ${cf.chat_warning}`
