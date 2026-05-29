@@ -1402,6 +1402,13 @@ form.addEventListener("submit", async (e) => {
         } catch { /* skip malformed */ }
       }
     }
+    // Empty response — the model returned no content. Surface that
+    // explicitly rather than leaving an invisible .msg in the log.
+    if (!full.trim()) {
+      assistantEl.textContent = "(the familiar had nothing to add — try rephrasing)";
+      assistantEl.classList.add("aborted");
+      window.familiarToast?.warn?.("empty response — try /abort then retry");
+    }
     appendTurnToSession("assistant", full);
     // Final pass: full markdown + citation chips + code highlighting.
     // The streaming render skipped overlays for stability; now apply them.
