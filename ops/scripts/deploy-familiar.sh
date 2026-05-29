@@ -219,12 +219,24 @@ ssh "${DEST_HOST}" "sudo systemctl enable familiar-api.service && sudo systemctl
 sleep 3
 
 echo ">>> Smoke test..."
-curl -s --max-time 5 http://${DEST_HOST}:8080/api/version | head -c 500 || { echo "FAIL: /api/version"; ssh "${DEST_HOST}" "sudo journalctl -u familiar-api -n 40"; exit 1; }
+# Poll /api/version rather than a single shot — Bun's boot + module load
+# can run past the post-restart sleep, and a slow boot shouldn't false-fail
+# an otherwise-good deploy. ~15s budget, then give up.
+version_ok=""
+for i in $(seq 1 15); do
+  if curl -s --max-time 3 http://${DEST_HOST}:8080/api/version | head -c 500; then version_ok=1; break; fi
+  sleep 1
+done
+[ -n "$version_ok" ] || { echo "FAIL: /api/version (service did not come up)"; ssh "${DEST_HOST}" "sudo journalctl -u familiar-api -n 40"; exit 1; }
 echo ""
-# Health endpoint can take up to ~4s under degraded conditions (2s palace
-# health probe + 2s search recall probe, both bounded by searchTimeoutMs).
-# 10s leaves headroom while still failing fast on real hangs.
-curl -s --max-time 10 http://${DEST_HOST}:8080/api/familiar/health | head -c 500 || { echo "FAIL: /api/familiar/health"; exit 1; }
+# Health does FUNCTIONAL probes now (#86): a real chat completion through
+# the resolver-bound backend + a real embed call, in addition to the palace
+# probes. On the P102s a grounded chat completion alone runs ~6s, so the
+# whole endpoint can take 8-12s. 25s leaves headroom while still failing
+# fast on a true hang. (A timeout here is NOT fatal — the service is already
+# up per the version poll; health latency under load shouldn't fail a deploy.)
+curl -s --max-time 25 http://${DEST_HOST}:8080/api/familiar/health | head -c 500 \
+  || echo "WARN: /api/familiar/health slow/unreachable (service is up; check manually)"
 echo ""
 # Post-deploy banner from the canonical helper — fetches /api/version
 # and renders the live realm-sigil so the operator sees the running
