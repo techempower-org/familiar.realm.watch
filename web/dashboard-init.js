@@ -390,6 +390,10 @@ function openPresets() {
     row.addEventListener("click", () => {
       if (confirm(`Apply "${presetId}" layout? Block positions will be replaced.`)) {
         dashboard.applyPreset(presetId);
+        // Confirm the visible change so screen-reader users hear the
+        // outcome (the visual layout shift can be hard to interpret
+        // without sighted feedback). Polite channel — non-urgent.
+        window.familiarToast?.success?.(`layout: ${presetId}`);
       }
       closePresets();
     });
@@ -416,6 +420,7 @@ function openPresets() {
   resetRow.addEventListener("click", () => {
     if (confirm("Reset block layout to defaults? Your changes will be lost.")) {
       dashboard.resetLayout();
+      window.familiarToast?.success?.("layout reset to defaults");
     }
     closePresets();
   });
