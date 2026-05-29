@@ -1239,7 +1239,7 @@ body {
   font-size: 0.85em;
   line-height: 1.4;
   z-index: 50;
-  box-shadow: 0 4px 16px rgba(0,0,0,0.35);
+  box-shadow: 0 4px 16px color-mix(in srgb, var(--fg) 30%, transparent);
   flex-direction: column;
   gap: 0.35rem;
 }
@@ -1249,9 +1249,6 @@ body {
 .citation-popover .citation-snippet { margin: 0.2rem 0; color: var(--fg); }
 .citation-popover .citation-link { color: var(--accent); text-decoration: none; margin-top: 0.25rem; }
 .citation-popover .citation-link:hover { text-decoration: underline; }
-@media (prefers-color-scheme: light) {
-  .citation-popover { box-shadow: 0 4px 16px rgba(0,0,0,0.12); }
-}
 
 /* ===================== Per-turn footer ===================== */
 .turn-footer {
@@ -1882,7 +1879,7 @@ main {
 .block.dragging,
 .block.resizing {
   opacity: 0.5;
-  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
+  box-shadow: 0 8px 32px color-mix(in srgb, var(--fg) 36%, transparent);
 }
 .block.hidden { display: none; }
 
@@ -2060,7 +2057,7 @@ main {
   z-index: 100;
   transform: translateX(100%);
   transition: transform 220ms ease;
-  box-shadow: -4px 0 20px rgba(0, 0, 0, 0.3);
+  box-shadow: -4px 0 20px color-mix(in srgb, var(--fg) 28%, transparent);
 }
 .block-settings-drawer.open { transform: translateX(0); }
 .block-settings-head {
