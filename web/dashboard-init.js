@@ -235,6 +235,10 @@ function onPickerEscape(e) {
   else return;
   e.preventDefault();
   rows[next].focus();
+  // Scroll the freshly focused row into view inside the popover —
+  // the picker now has max-height + overflow-y so Home/End/wrap
+  // navigation can land on a row that's outside the visible band.
+  rows[next].scrollIntoView({ block: "nearest", inline: "nearest" });
 }
 function openPicker() {
   if (pickerEl) { closePicker(); return; }
@@ -350,6 +354,7 @@ function onPresetEscape(e) {
   else return;
   e.preventDefault();
   rows[next].focus();
+  rows[next].scrollIntoView({ block: "nearest", inline: "nearest" });
 }
 function openPresets() {
   if (presetEl) { closePresets(); return; }

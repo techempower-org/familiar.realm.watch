@@ -2234,6 +2234,12 @@ main {
   z-index: 110;
   min-width: 200px;
   max-width: 280px;
+  /* Cap the popover height so a long list of block types or layout
+     presets scrolls inside the popover instead of overflowing off the
+     bottom of the viewport. 60vh leaves room for the trigger button
+     and other chrome. */
+  max-height: 60vh;
+  overflow-y: auto;
   background: var(--sidebar-bg);
   border: 1px solid var(--border);
   border-radius: 6px;
@@ -2245,6 +2251,10 @@ main {
   font-family: var(--mono);
   font-size: 0.78rem;
   animation: dashboardPickerIn 140ms ease-out;
+  /* Custom scrollbar so the picker doesn't render a stark default bar
+     in light mode. Matches the existing themed scrollbar treatment. */
+  scrollbar-width: thin;
+  scrollbar-color: color-mix(in srgb, var(--accent) 35%, transparent) transparent;
 }
 @keyframes dashboardPickerIn {
   from { opacity: 0; transform: translateY(-4px); }
