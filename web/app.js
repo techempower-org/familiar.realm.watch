@@ -996,12 +996,32 @@ function relTime(ts) {
 // aria-expanded mirrors body.sidebar-open so screen readers announce the
 // disclosure state correctly on both toggle buttons.
 function syncSidebarAria() {
-  const v = document.body.classList.contains("sidebar-open") ? "true" : "false";
+  const open = document.body.classList.contains("sidebar-open");
+  const v = open ? "true" : "false";
   document.getElementById("sigil")?.setAttribute("aria-expanded", v);
   hdrMenu?.setAttribute("aria-expanded", v);
+  // On mobile, the closed sidebar is translateX(-100%) off-screen but
+  // descendants stay in the Tab order — keyboard users could land on
+  // invisible buttons. Setting [inert] removes the subtree from focus
+  // + AT + pointer interaction. Only applies under the mobile breakpoint
+  // (matchMedia('(max-width: 720px)')) since desktop has the sidebar
+  // always visible.
+  const sidebar = document.getElementById("sidebar");
+  if (sidebar) {
+    const isMobile = window.matchMedia?.("(max-width: 720px)").matches;
+    if (isMobile && !open) sidebar.setAttribute("inert", "");
+    else sidebar.removeAttribute("inert");
+  }
 }
 function toggleSidebar() { document.body.classList.toggle("sidebar-open"); syncSidebarAria(); }
 function closeSidebar() { document.body.classList.remove("sidebar-open"); syncSidebarAria(); }
+// Apply initial state + re-apply on viewport transitions across the
+// 720px breakpoint (user rotates device, resizes window, or hits
+// devtools responsive-mode). Without this, an initial mobile load
+// leaves the sidebar focusable until the first toggle, and a desktop→
+// mobile resize traps focus in the now-hidden panel.
+syncSidebarAria();
+window.matchMedia?.("(max-width: 720px)").addEventListener("change", syncSidebarAria);
 
 sigilBtn.addEventListener("click", (e) => { e.stopPropagation(); toggleSidebar(); });
 // Triple-click the sigil → magical flourish. Tiny easter egg.
