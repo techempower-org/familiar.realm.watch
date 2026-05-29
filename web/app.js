@@ -1619,45 +1619,42 @@ form.addEventListener("submit", async (e) => {
         } catch { /* skip malformed */ }
       }
     }
-    // Empty response — the model returned no content. Surface that
-    // explicitly rather than leaving an invisible .msg in the log.
-    if (!full.trim()) {
+    appendTurnToSession("assistant", full);
+    // Empty response — the model returned no content. renderWithCitations
+    // would just wipe the container to empty (it rebuilds from `full`), so
+    // set an explicit notice instead of leaving an invisible .msg.
+    const isEmpty = !full.trim();
+    if (isEmpty) {
       assistantEl.textContent = "(the familiar had nothing to add — try rephrasing)";
       assistantEl.classList.add("aborted");
-      window.familiarToast?.warn?.("empty response — try /abort then retry");
+      window.familiarToast?.warn?.("empty response — try again or rephrase");
+    } else {
+      // Final pass: full markdown + citation chips + code highlighting.
+      // The streaming render skipped overlays for stability; now apply them.
+      renderWithCitations(assistantEl, full);
     }
-    appendTurnToSession("assistant", full);
-    // Final pass: full markdown + citation chips + code highlighting.
-    // The streaming render skipped overlays for stability; now apply them.
-    renderWithCitations(assistantEl, full);
     // Speak button — always added; visible on hover or on touch.
     const speakBtn = buildSpeakButton(() => full);
     assistantEl.appendChild(speakBtn);
     // Copy button — same hover-reveal pattern, sits left of speak (#78).
     const copyBtn = buildCopyButton(() => full);
     assistantEl.appendChild(copyBtn);
-    // Recoverable-fault affordance. When inference fails, the backend
-    // streams the themed fallback (src/lang/familiar-voice.ts chatFalters)
-    // as normal content — indistinguishable from a real reply. Detect it
-    // so the user knows it's a connection hiccup, not the familiar's words,
-    // and offer one-click retry of the same message instead of retyping.
-    // Match on a stable prefix; keep in sync with the backend string.
-    if (full.includes("My voice falters")) {
+    // Recoverable-dead-end retry. The backend streams the themed fallback
+    // (src/lang/familiar-voice.ts chatFalters) as normal content when
+    // inference fails — indistinguishable from a real reply — and an empty
+    // turn is likewise a dead end. Both get a one-click retry (re-sends the
+    // same message) so the user isn't stuck retyping. Appended AFTER
+    // renderWithCitations so the rebuild doesn't wipe it. Match the falters
+    // string on a stable prefix; keep in sync with the backend constant.
+    const faltered = full.includes("My voice falters");
+    if (faltered) {
       assistantEl.classList.add("faltered");
-      const retry = document.createElement("button");
-      retry.type = "button";
-      retry.className = "msg-retry";
-      retry.textContent = "↺ try again";
-      retry.setAttribute("aria-label", "retry — resend your last message");
-      const resend = () => {
-        if (submit.dataset.streaming === "1") return;
-        input.value = text;
-        syncSubmitEnabled();
-        form.requestSubmit();
-      };
-      retry.addEventListener("click", resend);
-      assistantEl.appendChild(retry);
-      window.familiarToast?.warn?.("the familiar couldn't reach its thoughts — try again", { onClick: resend });
+      window.familiarToast?.warn?.("the familiar couldn't reach its thoughts — try again", {
+        onClick: () => { input.value = text; syncSubmitEnabled(); form.requestSubmit(); },
+      });
+    }
+    if (faltered || isEmpty) {
+      assistantEl.appendChild(buildRetryButton(text));
     }
     // Always render the footer so the user can see the pipeline (memories
     // grounded, reflect outcome) even when reflect was skipped/timed-out.
@@ -1680,6 +1677,8 @@ form.addEventListener("submit", async (e) => {
       setStatus("connected", "aborted");
     } else {
       assistantEl.textContent = `(the familiar did not respond: ${err.message})`;
+      assistantEl.classList.add("faltered");
+      assistantEl.appendChild(buildRetryButton(text));
       setStatus("error", "error");
     }
   } finally {
@@ -2818,6 +2817,24 @@ function handleSlashCommand(text) {
     default:
       return false;
   }
+}
+
+// Themed one-click retry for any recoverable dead-end turn (inference
+// fault, empty response, network error). Re-sends `text` — one tap
+// instead of retyping. No-op while a stream is already in flight.
+function buildRetryButton(text) {
+  const btn = document.createElement("button");
+  btn.type = "button";
+  btn.className = "msg-retry";
+  btn.textContent = "↺ try again";
+  btn.setAttribute("aria-label", "retry — resend your last message");
+  btn.addEventListener("click", () => {
+    if (submit.dataset.streaming === "1") return;
+    input.value = text;
+    syncSubmitEnabled();
+    form.requestSubmit();
+  });
+  return btn;
 }
 
 function buildCopyButton(getText) {
