@@ -33,6 +33,9 @@ function mockPalace(drawers: PalaceDrawer[]): PalaceClient {
   return {
     search: async () => result,
     searchHybrid: async () => result,
+    // familiar_reflect routes through retrieveAndGround, which defaults to
+    // the age-fused channel (#88).
+    searchAgeFused: async () => result,
   } as unknown as PalaceClient;
 }
 
@@ -178,17 +181,17 @@ describe("createFamiliarMcp", () => {
 
     test("respects optional wing parameter (passed through to retrieval)", async () => {
       let observedWing: string | undefined;
+      // retrieveAndGround defaults to the age-fused channel (#88); capture
+      // wing from every channel so the assertion holds regardless of which
+      // one runs (and survives the fallback chain).
+      const captureWing = (opts: { wing?: string }) => {
+        observedWing = opts.wing;
+        return { query: "x", available_in_scope: 0, warnings: [], results: [] };
+      };
       const palace = {
-        search: async (opts: { wing?: string }) => {
-          observedWing = opts.wing;
-          return { query: "x", available_in_scope: 0, warnings: [], results: [] };
-        },
-        // Phase 5: retrieveAndGround defaults to hybrid; capture wing here too
-        // so the assertion works regardless of which channel ran first.
-        searchHybrid: async (opts: { wing?: string }) => {
-          observedWing = opts.wing;
-          return { query: "x", available_in_scope: 0, warnings: [], results: [] };
-        },
+        search: async (opts: { wing?: string }) => captureWing(opts),
+        searchHybrid: async (opts: { wing?: string }) => captureWing(opts),
+        searchAgeFused: async (opts: { wing?: string }) => captureWing(opts),
       } as unknown as PalaceClient;
       const server = createFamiliarMcp({
         cfg: baseCfg,

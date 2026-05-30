@@ -155,16 +155,47 @@ export async function retrieveAndGround(opts: RetrieveAndGroundOpts): Promise<Re
   const query = expandTemporalQuery(opts.userMessage.slice(0, 250));
   timings.temporal_expand_ms = Math.round(performance.now() - tTemporal);
 
-  // Phase 5 of the hybrid-search-taxonomy initiative (familiar.realm.watch
-  // spec §3.8): default retrieval to hybrid when available. Hybrid fuses
-  // vector + BM25 + graph candidates server-side, addressing the
-  // vector-only failure modes (rare tokens, file paths, exact strings).
-  // PALACE_SEARCH_MODE=vector forces the legacy path; "hybrid" (default)
-  // tries hybrid first and falls back to vector on 503 (chroma backends).
-  const mode = (Bun.env.PALACE_SEARCH_MODE ?? "hybrid").toLowerCase();
+  // Retrieval channel selection (familiar#88, hybrid-search-taxonomy spec §3.8).
+  //
+  // PALACE_SEARCH_MODE picks which daemon endpoint to drive:
+  //   "age-fused" (default) — POST /search/age-fused: vector ⊕ Apache-AGE
+  //       knowledge-graph walk via RRF. This is the ONLY path that lets the
+  //       populated KG (~1.9M triples on familiar) influence retrieval; both
+  //       "hybrid" and "vector" bypass the graph entirely (familiar#88).
+  //       ~+8.3pp R@5 over vector-only on the candidate-strategy ablation.
+  //   "hybrid"    — POST /search/hybrid: vector + BM25 + graph candidate
+  //       fusion server-side. No AGE graph walk.
+  //   "vector"    — GET /search: legacy vector-only path.
+  //
+  // age-fused and hybrid both fall back to the legacy /search vector path on
+  // 404/503 (older daemon or chroma backend) so users still get results,
+  // just without the graph/BM25 boost. A flag is set so eval/Trace can see
+  // the degradation.
+  let retrievedViaPrimary = false;
+  const mode = (Bun.env.PALACE_SEARCH_MODE ?? "age-fused").toLowerCase();
   const tSearch = performance.now();
   try {
-    if (mode === "hybrid") {
+    if (mode === "age-fused") {
+      try {
+        const search = await opts.palace.searchAgeFused({
+          query,
+          limit: opts.retrievalLimit,
+          wing: opts.wingScope ?? undefined,
+          hydeGenerate: opts.hydeGenerate,
+        });
+        drawers = search.results ?? [];
+        availableInScope = search.available_in_scope;
+        palaceWarnings = search.warnings ?? [];
+        retrievedViaPrimary = true;
+      } catch (afErr) {
+        const msg = afErr instanceof Error ? afErr.message : String(afErr);
+        if (msg.includes("503") || msg.includes("404")) {
+          warnings.push("age_fused_fallback_vector");
+        } else {
+          throw afErr;
+        }
+      }
+    } else if (mode === "hybrid") {
       try {
         const search = await opts.palace.searchHybrid({
           query,
@@ -175,6 +206,7 @@ export async function retrieveAndGround(opts: RetrieveAndGroundOpts): Promise<Re
         drawers = search.results ?? [];
         availableInScope = search.available_in_scope;
         palaceWarnings = search.warnings ?? [];
+        retrievedViaPrimary = true;
       } catch (hybridErr) {
         // Hybrid endpoint not available (older daemon or chroma backend).
         // Fall back to vector path silently — the user gets results, just
@@ -187,8 +219,9 @@ export async function retrieveAndGround(opts: RetrieveAndGroundOpts): Promise<Re
         }
       }
     }
-    if (drawers.length === 0 && availableInScope === undefined) {
-      // Either mode=vector, or hybrid was unavailable. Use legacy /search.
+    if (!retrievedViaPrimary) {
+      // mode=vector, or the primary (age-fused/hybrid) channel was
+      // unavailable. Use legacy /search.
       const search = await opts.palace.search({
         query,
         limit: opts.retrievalLimit,

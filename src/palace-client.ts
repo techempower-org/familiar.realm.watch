@@ -45,6 +45,33 @@ export interface HybridSearchOpts {
   hydeGenerate?: (query: string) => Promise<string>;
 }
 
+export interface AgeFusedSearchOpts {
+  query: string;
+  limit: number;
+  wing?: string;
+  room?: string;
+  /** Attach per-source trace (matched_via counts) to the response. */
+  includeTrace?: boolean;
+  /**
+   * How many AGE-graph-walk candidates to fold into the RRF fusion
+   * (daemon default 50). Higher = more graph reach, slightly slower.
+   */
+  graphTopK?: number;
+  /** RRF constant for the vector⊕graph fusion (daemon default 60). */
+  fusionK?: number;
+  /**
+   * Override the daemon's rerank decision for this call. Leave undefined
+   * to honor the daemon's env-configured default (ENABLE_RERANK).
+   */
+  rerank?: boolean;
+  /**
+   * HyDE generator — same contract as {@link HybridSearchOpts.hydeGenerate}.
+   * Applied client-side as a query concat before the request, since
+   * /search/age-fused has no server-side HyDE step.
+   */
+  hydeGenerate?: (query: string) => Promise<string>;
+}
+
 export interface WriteMemoryOpts {
   content: string;
   wing: string;
@@ -123,6 +150,59 @@ export class PalaceClient {
   }
 
   /**
+   * Apply the client-side HyDE concat. Generates a hypothetical answer
+   * with a small LLM and concatenates it with the (punctuation-normalized)
+   * query. The hypothesis bridges vocabulary gaps for paraphrase queries;
+   * the original query keeps entity-specific tokens anchored. Failure is
+   * non-fatal — on error/timeout the literal query stands.
+   */
+  private async applyHyde(query: string, hydeGenerate?: (q: string) => Promise<string>): Promise<string> {
+    let effectiveQuery = query.replace(/[?!.,;:]+\s*$/, "").trim();
+    if (hydeGenerate) {
+      try {
+        const hypothesis = await hydeGenerate(effectiveQuery);
+        if (hypothesis && hypothesis.trim()) {
+          effectiveQuery = `${effectiveQuery}\n\n${hypothesis.trim().slice(0, 500)}`;
+        }
+      } catch {
+        // HyDE failure should not block search; original query stands.
+      }
+    }
+    return effectiveQuery;
+  }
+
+  /**
+   * POST a search body to one of the daemon's POST search endpoints,
+   * bounded by `searchTimeoutMs` and aborted on timeout. `label` is used
+   * only in error messages. Returns the normalized result set.
+   */
+  private async postSearch(path: string, label: string, body: Record<string, unknown>): Promise<PalaceSearchResult> {
+    const ctl = new AbortController();
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const timeoutPromise = new Promise<never>((_, reject) => {
+      timer = setTimeout(() => {
+        ctl.abort();
+        reject(new Error(`palace-daemon ${label}: timeout after ${this.searchTimeoutMs}ms`));
+      }, this.searchTimeoutMs);
+    });
+    try {
+      const res = await Promise.race([
+        this.fetchFn(`${this.baseUrl}${path}`, {
+          method: "POST",
+          headers: this.headers(),
+          body: JSON.stringify(body),
+          signal: ctl.signal,
+        }),
+        timeoutPromise,
+      ]);
+      if (!res.ok) throw new Error(`palace-daemon ${label}: ${res.status} ${res.statusText}`);
+      return normalizeResults((await res.json()) as PalaceSearchResult);
+    } finally {
+      if (timer) clearTimeout(timer);
+    }
+  }
+
+  /**
    * Hybrid search: fuses vector + BM25 + graph retrieval in a single
    * ranked result set. Calls palace-daemon's /search/hybrid endpoint
    * which routes through mempalace's `candidate_strategy="hybrid"`
@@ -135,23 +215,7 @@ export class PalaceClient {
    * in that case).
    */
   async searchHybrid(opts: HybridSearchOpts): Promise<PalaceSearchResult> {
-    let effectiveQuery = opts.query.replace(/[?!.,;:]+\s*$/, "").trim();
-
-    // HyDE step — generate a hypothetical answer with a small LLM and
-    // concat it with the original query. The hypothesis bridges
-    // vocabulary gaps for paraphrase queries; the original query keeps
-    // entity-specific tokens anchored. Failure is non-fatal; if HyDE
-    // errors or times out we proceed with the literal query.
-    if (opts.hydeGenerate) {
-      try {
-        const hypothesis = await opts.hydeGenerate(effectiveQuery);
-        if (hypothesis && hypothesis.trim()) {
-          effectiveQuery = `${effectiveQuery}\n\n${hypothesis.trim().slice(0, 500)}`;
-        }
-      } catch {
-        // HyDE failure should not block search; original query stands.
-      }
-    }
+    const effectiveQuery = await this.applyHyde(opts.query, opts.hydeGenerate);
 
     const body: Record<string, unknown> = {
       query: effectiveQuery,
@@ -161,29 +225,39 @@ export class PalaceClient {
     if (opts.room) body.room = opts.room;
     if (opts.includeTrace) body.include_trace = true;
 
-    const ctl = new AbortController();
-    let timer: ReturnType<typeof setTimeout> | undefined;
-    const timeoutPromise = new Promise<never>((_, reject) => {
-      timer = setTimeout(() => {
-        ctl.abort();
-        reject(new Error(`palace-daemon hybrid search: timeout after ${this.searchTimeoutMs}ms`));
-      }, this.searchTimeoutMs);
-    });
-    try {
-      const res = await Promise.race([
-        this.fetchFn(`${this.baseUrl}/search/hybrid`, {
-          method: "POST",
-          headers: this.headers(),
-          body: JSON.stringify(body),
-          signal: ctl.signal,
-        }),
-        timeoutPromise,
-      ]);
-      if (!res.ok) throw new Error(`palace-daemon hybrid search: ${res.status} ${res.statusText}`);
-      return normalizeResults((await res.json()) as PalaceSearchResult);
-    } finally {
-      if (timer) clearTimeout(timer);
-    }
+    return this.postSearch("/search/hybrid", "hybrid search", body);
+  }
+
+  /**
+   * AGE-fused search: fuses vector retrieval with an Apache-AGE
+   * knowledge-graph walk via reciprocal-rank fusion. Calls palace-daemon's
+   * POST /search/age-fused (palace-daemon#25). This is the ONLY search
+   * path that lets the populated KG (~1.9M triples on familiar) influence
+   * what's retrieved — `/search` and `/search/hybrid` never walk AGE.
+   *
+   * Measured ~+8.3pp R@5 over vector-only on the candidate-strategy
+   * ablation. Requires postgres + a populated AGE graph; an older daemon
+   * (no endpoint) returns 404 and callers should fall back to `search()`.
+   *
+   * The response envelope is leaner than hybrid's — no top-level
+   * `available_in_scope` / `warnings` — so those normalize to undefined/[]
+   * downstream, which is benign for the grounding layer.
+   */
+  async searchAgeFused(opts: AgeFusedSearchOpts): Promise<PalaceSearchResult> {
+    const effectiveQuery = await this.applyHyde(opts.query, opts.hydeGenerate);
+
+    const body: Record<string, unknown> = {
+      query: effectiveQuery,
+      limit: opts.limit,
+    };
+    if (opts.wing) body.wing = opts.wing;
+    if (opts.room) body.room = opts.room;
+    if (opts.graphTopK !== undefined) body.graph_top_k = opts.graphTopK;
+    if (opts.fusionK !== undefined) body.fusion_k = opts.fusionK;
+    if (opts.includeTrace) body.include_trace = true;
+    if (opts.rerank !== undefined) body.rerank = opts.rerank;
+
+    return this.postSearch("/search/age-fused", "age-fused search", body);
   }
 
   /**
