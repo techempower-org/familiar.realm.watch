@@ -1,0 +1,29 @@
+[Unit]
+Description=Dump mempalace postgres to backup share
+Documentation=https://github.com/techempower-org/familiar.realm.watch/issues/87
+Requires=docker.service
+After=docker.service
+
+[Service]
+Type=oneshot
+# Path is the deployed install location; ops/scripts/install-mempalace-backup.sh
+# installs the script to /usr/local/bin/mempalace-backup.sh.
+ExecStart=/usr/local/bin/mempalace-backup.sh
+
+# --- Resource hygiene (defense-in-depth for #87) ---
+# The PRIMARY OOM fix is in the script: it stops llama-server-extractor for the
+# dump window, freeing ~3.1G so earlyoom doesn't SIGTERM the dump. These controls
+# are a second layer.
+#
+# NOTE on what these do and don't cover: earlyoom SIGTERMs the postgres BACKEND
+# running the COPY (inside the mempalace-db container), not the host-side
+# pg_dump/gzip pipeline started by this unit. OOMScoreAdjust here lowers the
+# kernel-OOM badness of the *client* pipeline only — it cannot protect the
+# in-container postgres backend from earlyoom (different process tree, separate
+# oom_score). So it reduces the chance the dump pipeline itself is picked, but
+# the llama-stop in the script remains the real guard. Nice/ionice keep the
+# nightly dump from starving interactive work on the shared host.
+Nice=10
+IOSchedulingClass=best-effort
+IOSchedulingPriority=7
+OOMScoreAdjust=-500
