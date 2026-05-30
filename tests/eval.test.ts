@@ -13,6 +13,8 @@ function mockPalace(drawers: PalaceDrawer[], availableInScope = drawers.length):
   return {
     search: async () => result,
     searchHybrid: async () => result,
+    // eval routes through retrieveAndGround, which defaults to age-fused (#88).
+    searchAgeFused: async () => result,
   } as unknown as PalaceClient;
 }
 
@@ -115,6 +117,9 @@ describe("/api/familiar/eval — SME adapter contract", () => {
       searchHybrid: async () => {
         throw new Error("ECONNREFUSED");
       },
+      searchAgeFused: async () => {
+        throw new Error("ECONNREFUSED");
+      },
     } as unknown as PalaceClient;
     const res = await handleEval(
       makeRequest({ query: "test" }),
@@ -172,18 +177,19 @@ describe("/api/familiar/eval — SME adapter contract", () => {
 
   // Issue #45 — wing-scope: when the request includes `wing`, the eval
   // route must thread it through `retrieveAndGround` to the palace search
-  // call so the daemon scopes the query to that single wing.
-  test("wing in request body is forwarded to palace.searchHybrid", async () => {
+  // call so the daemon scopes the query to that single wing. The default
+  // retrieval channel is age-fused (#88); capture from every channel so the
+  // assertion holds regardless of which one runs.
+  test("wing in request body is forwarded to the palace search call", async () => {
     let captured: { wing?: string; query?: string } | null = null;
+    const capture = (opts: { wing?: string; query?: string }) => {
+      captured = { wing: opts.wing, query: opts.query };
+      return { query: "", results: [], warnings: [], available_in_scope: 0 };
+    };
     const palace = {
-      search: async (opts: { wing?: string; query?: string }) => {
-        captured = { wing: opts.wing, query: opts.query };
-        return { query: "", results: [], warnings: [], available_in_scope: 0 };
-      },
-      searchHybrid: async (opts: { wing?: string; query?: string }) => {
-        captured = { wing: opts.wing, query: opts.query };
-        return { query: "", results: [], warnings: [], available_in_scope: 0 };
-      },
+      search: async (opts: { wing?: string; query?: string }) => capture(opts),
+      searchHybrid: async (opts: { wing?: string; query?: string }) => capture(opts),
+      searchAgeFused: async (opts: { wing?: string; query?: string }) => capture(opts),
     } as unknown as PalaceClient;
     const res = await handleEval(
       makeRequest({ query: "what is the design", wing: "familiar_realm_watch", mock: true }),
@@ -196,15 +202,14 @@ describe("/api/familiar/eval — SME adapter contract", () => {
 
   test("omitted wing leaves palace search wing undefined (palace-wide query)", async () => {
     let captured: { wing?: string } | null = null;
+    const capture = (opts: { wing?: string }) => {
+      captured = { wing: opts.wing };
+      return { query: "", results: [], warnings: [], available_in_scope: 0 };
+    };
     const palace = {
-      search: async (opts: { wing?: string }) => {
-        captured = { wing: opts.wing };
-        return { query: "", results: [], warnings: [], available_in_scope: 0 };
-      },
-      searchHybrid: async (opts: { wing?: string }) => {
-        captured = { wing: opts.wing };
-        return { query: "", results: [], warnings: [], available_in_scope: 0 };
-      },
+      search: async (opts: { wing?: string }) => capture(opts),
+      searchHybrid: async (opts: { wing?: string }) => capture(opts),
+      searchAgeFused: async (opts: { wing?: string }) => capture(opts),
     } as unknown as PalaceClient;
     const res = await handleEval(
       makeRequest({ query: "anything", mock: true }),
@@ -215,18 +220,19 @@ describe("/api/familiar/eval — SME adapter contract", () => {
     expect(captured!.wing).toBeUndefined();
   });
 
-  test("wing scope is independent of vector vs hybrid fallback (vector path also gets it)", async () => {
-    // Force the vector path by having hybrid 503 → silent fallback to /search.
-    let hybridCaptured: { wing?: string } | null = null;
+  test("wing scope survives the age-fused → vector fallback (both channels get it)", async () => {
+    // Force the vector fallback by having age-fused 404 → silent fallback to
+    // /search. The wing must thread through both the primary and the fallback.
+    let ageFusedCaptured: { wing?: string } | null = null;
     let vectorCaptured: { wing?: string } | null = null;
     const palace = {
       search: async (opts: { wing?: string }) => {
         vectorCaptured = { wing: opts.wing };
         return { query: "", results: [], warnings: [], available_in_scope: 0 };
       },
-      searchHybrid: async (opts: { wing?: string }) => {
-        hybridCaptured = { wing: opts.wing };
-        throw new Error("503 Service Unavailable");
+      searchAgeFused: async (opts: { wing?: string }) => {
+        ageFusedCaptured = { wing: opts.wing };
+        throw new Error("404 Not Found");
       },
     } as unknown as PalaceClient;
     const res = await handleEval(
@@ -234,7 +240,7 @@ describe("/api/familiar/eval — SME adapter contract", () => {
       deps(palace, "")
     );
     expect(res.status).toBe(200);
-    expect(hybridCaptured!.wing).toBe("realmwatch");
+    expect(ageFusedCaptured!.wing).toBe("realmwatch");
     expect(vectorCaptured!.wing).toBe("realmwatch");
   });
 });

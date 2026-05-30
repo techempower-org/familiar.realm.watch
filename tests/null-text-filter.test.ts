@@ -16,6 +16,8 @@ test("retrieveAndGround filters drawers with null text + tags warning", async ()
   const palace = {
     search: async () => fakeResult,
     searchHybrid: async () => fakeResult,
+    // retrieveAndGround defaults to the age-fused channel (#88).
+    searchAgeFused: async () => fakeResult,
   } as unknown as PalaceClient;
   const out = await retrieveAndGround({
     palace,

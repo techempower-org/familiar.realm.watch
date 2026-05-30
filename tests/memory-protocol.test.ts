@@ -1,13 +1,15 @@
-import { test, expect, describe } from "bun:test";
+import { test, expect, describe, beforeAll, afterAll } from "bun:test";
 import { retrieveAndGround, expandTemporalQuery } from "../src/memory-protocol.ts";
 import type { PalaceSearchResult } from "../src/types.ts";
 
 function fakePalace(result: PalaceSearchResult) {
   return {
     search: async () => result,
-    // Phase 5: retrieveAndGround defaults to hybrid; the fake returns the
-    // same result so tests don't have to assert on which channel ran.
+    // retrieveAndGround defaults to age-fused (#88); the fake returns the
+    // same result from every channel so tests that don't care which channel
+    // ran stay channel-agnostic.
     searchHybrid: async () => result,
+    searchAgeFused: async () => result,
     writeMemory: async () => ({ id: "", warnings: [], errors: [] }),
     health: async () => ({ status: "ok" }),
   };
@@ -62,6 +64,7 @@ describe("retrieveAndGround", () => {
     const palace = {
       search: async () => { throw new Error("aborted"); },
       searchHybrid: async () => { throw new Error("aborted"); },
+      searchAgeFused: async () => { throw new Error("aborted"); },
       writeMemory: async () => ({ id: "", warnings: [], errors: [] }),
       health: async () => ({ status: "ok" }),
     };
@@ -130,6 +133,16 @@ describe("retrieveAndGround", () => {
 });
 
 describe("hybrid → vector fallback", () => {
+  // These exercise the explicit PALACE_SEARCH_MODE=hybrid channel. The
+  // default mode is age-fused (#88); pin hybrid here so the fakes' single
+  // searchHybrid surface is the one driven.
+  const prevMode = Bun.env.PALACE_SEARCH_MODE;
+  beforeAll(() => { Bun.env.PALACE_SEARCH_MODE = "hybrid"; });
+  afterAll(() => {
+    if (prevMode === undefined) delete Bun.env.PALACE_SEARCH_MODE;
+    else Bun.env.PALACE_SEARCH_MODE = prevMode;
+  });
+
   const baseOpts = (palace: unknown) => ({
     palace: palace as unknown as import("../src/palace-client.ts").PalaceClient,
     userMessage: "test query",
@@ -181,7 +194,144 @@ describe("hybrid → vector fallback", () => {
   });
 });
 
+describe("age-fused default channel (#88)", () => {
+  // No PALACE_SEARCH_MODE override — exercises the default (age-fused) so the
+  // populated AGE knowledge graph reaches grounding.
+  const baseOpts = (palace: unknown) => ({
+    palace: palace as unknown as import("../src/palace-client.ts").PalaceClient,
+    userMessage: "what does JP work on",
+    wingScope: null,
+    retrievalLimit: 5,
+    contextBudgetTokens: 4000,
+    recentCitations: [] as string[],
+  });
+
+  test("default mode drives searchAgeFused, not hybrid or vector", async () => {
+    let calledAgeFused = false;
+    const palace = {
+      searchAgeFused: async () => {
+        calledAgeFused = true;
+        return {
+          query: "what does JP work on",
+          warnings: [],
+          results: [
+            { id: "af1", text: "JP works on familiar.realm.watch", wing: "familiar", room: "discoveries", similarity: 0.8, matched_via: "vector" },
+          ],
+        } as PalaceSearchResult;
+      },
+      searchHybrid: async () => { throw new Error("hybrid should not run in age-fused mode"); },
+      search: async () => { throw new Error("vector should not run when age-fused succeeds"); },
+      writeMemory: async () => ({ id: "", warnings: [], errors: [] }),
+      health: async () => ({ status: "ok" }),
+    };
+
+    const result = await retrieveAndGround(baseOpts(palace));
+    expect(calledAgeFused).toBe(true);
+    expect(result.drawerIds).toContain("af1");
+  });
+
+  test("age-fused empty result does NOT trigger a redundant vector re-query", async () => {
+    // Regression for the old `drawers.length === 0 && availableInScope ===
+    // undefined` fallback gate: age-fused's envelope has no
+    // available_in_scope, so an empty-but-valid scope used to double-query.
+    let vectorCalls = 0;
+    const palace = {
+      searchAgeFused: async () => ({ query: "x", warnings: [], results: [] }) as PalaceSearchResult,
+      searchHybrid: async () => { throw new Error("unexpected"); },
+      search: async () => { vectorCalls++; return { query: "x", warnings: [], results: [] } as PalaceSearchResult; },
+      writeMemory: async () => ({ id: "", warnings: [], errors: [] }),
+      health: async () => ({ status: "ok" }),
+    };
+    await retrieveAndGround(baseOpts(palace));
+    expect(vectorCalls).toBe(0);
+  });
+
+  test("hydeGenerate is forwarded to searchAgeFused", async () => {
+    let capturedOpts: Record<string, unknown> | undefined;
+    const hydeGenerate = async (q: string) => "hypothesis for " + q;
+    const palace = {
+      searchAgeFused: async (opts: Record<string, unknown>) => {
+        capturedOpts = opts;
+        return {
+          query: "what does JP work on",
+          warnings: [],
+          results: [
+            { id: "af1", text: "hyde result", wing: "w", room: "r", similarity: 0.9, matched_via: "vector" },
+          ],
+        } as PalaceSearchResult;
+      },
+      searchHybrid: async () => ({ query: "", warnings: [], results: [] }) as PalaceSearchResult,
+      search: async () => ({ query: "", warnings: [], results: [] }) as PalaceSearchResult,
+      writeMemory: async () => ({ id: "", warnings: [], errors: [] }),
+      health: async () => ({ status: "ok" }),
+    };
+
+    await retrieveAndGround({ ...baseOpts(palace), hydeGenerate });
+    expect(capturedOpts).toBeDefined();
+    expect(capturedOpts!.hydeGenerate).toBe(hydeGenerate);
+  });
+
+  test("age-fused 404 (older daemon) falls back to vector with warning", async () => {
+    const palace = {
+      searchAgeFused: async () => { throw new Error("404 Not Found"); },
+      searchHybrid: async () => { throw new Error("hybrid should not run"); },
+      search: async () => ({
+        query: "what does JP work on",
+        available_in_scope: 100,
+        warnings: [],
+        results: [
+          { id: "v1", text: "vector fallback result", wing: "w", room: "r", similarity: 0.8, matched_via: "drawer" },
+        ],
+      }) as PalaceSearchResult,
+      writeMemory: async () => ({ id: "", warnings: [], errors: [] }),
+      health: async () => ({ status: "ok" }),
+    };
+
+    const result = await retrieveAndGround(baseOpts(palace));
+    expect(result.warnings).toContain("age_fused_fallback_vector");
+    expect(result.drawerIds).toContain("v1");
+  });
+
+  test("age-fused 503 (chroma backend) falls back to vector with warning", async () => {
+    const palace = {
+      searchAgeFused: async () => { throw new Error("503 Service Unavailable"); },
+      search: async () => ({
+        query: "x", available_in_scope: 50, warnings: [],
+        results: [{ id: "v1", text: "vector fallback", wing: "w", room: "r", similarity: 0.7, matched_via: "drawer" }],
+      }) as PalaceSearchResult,
+      writeMemory: async () => ({ id: "", warnings: [], errors: [] }),
+      health: async () => ({ status: "ok" }),
+    };
+    const result = await retrieveAndGround(baseOpts(palace));
+    expect(result.warnings).toContain("age_fused_fallback_vector");
+    expect(result.drawerIds).toContain("v1");
+  });
+
+  test("age-fused non-404/503 error surfaces as palace_unreachable (no silent vector swap)", async () => {
+    const palace = {
+      searchAgeFused: async () => { throw new Error("ECONNREFUSED"); },
+      search: async () => ({
+        query: "x", available_in_scope: 50, warnings: [],
+        results: [{ id: "v1", text: "should not appear", wing: "w", room: "r", similarity: 0.7, matched_via: "drawer" }],
+      }) as PalaceSearchResult,
+      writeMemory: async () => ({ id: "", warnings: [], errors: [] }),
+      health: async () => ({ status: "ok" }),
+    };
+    const result = await retrieveAndGround(baseOpts(palace));
+    expect(result.warnings).toContain("palace_unreachable");
+    expect(result.drawerIds).toEqual([]);
+  });
+});
+
 describe("HyDE integration", () => {
+  // Pinned to hybrid mode — this asserts forwarding into the hybrid channel.
+  const prevMode = Bun.env.PALACE_SEARCH_MODE;
+  beforeAll(() => { Bun.env.PALACE_SEARCH_MODE = "hybrid"; });
+  afterAll(() => {
+    if (prevMode === undefined) delete Bun.env.PALACE_SEARCH_MODE;
+    else Bun.env.PALACE_SEARCH_MODE = prevMode;
+  });
+
   test("hydeGenerate is forwarded to searchHybrid", async () => {
     let capturedOpts: Record<string, unknown> | undefined;
     const hydeGenerate = async (q: string) => "hypothesis for " + q;
