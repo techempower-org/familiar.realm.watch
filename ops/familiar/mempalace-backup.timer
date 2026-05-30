@@ -1,0 +1,10 @@
+[Unit]
+Description=Nightly mempalace pg_dump
+Documentation=https://github.com/techempower-org/familiar.realm.watch/issues/87
+
+[Timer]
+OnCalendar=*-*-* 02:15
+Persistent=true
+
+[Install]
+WantedBy=timers.target
