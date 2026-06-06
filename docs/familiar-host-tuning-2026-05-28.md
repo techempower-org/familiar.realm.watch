@@ -159,3 +159,80 @@ If llama-server OOM-restarts after the change, the `--parallel 4 × ctx 4096` co
 - [palace-daemon#117](https://github.com/techempower-org/palace-daemon/pull/117) — mempalace-db cgroup raised to 6 GiB
 - [palace-daemon#99](https://github.com/techempower-org/palace-daemon/issues/99) — memory canary
 - `familiar-loadguard.service` — existing watchdog, currently only `load1`-aware (memory thresholds would catch this earlier)
+
+---
+
+## 2026-06-05 follow-up — chat slot variant + prompt-cache refinement
+
+The #58 fix was applied to `llama-server-extractor` but the **chat slot-picker
+variant (`llama-server-chat-gemma3-4b-gpu1`) was its unpatched twin** — added
+after #58 and never given the same hygiene. It re-created the exact symptom:
+host swap at 100 % (7.8 GiB zram), ~1 GiB available, with the chat
+`llama-server` holding **5.8 GiB of swap** under `MemoryMax=3G` +
+`MemorySwapMax=infinity`.
+
+### Refined root cause (new vs. #58)
+
+The dominant growth driver is **llama.cpp's host-RAM prompt cache**, not KV/decode
+buffers. The load log states it plainly:
+
+```
+srv load_model: prompt cache is enabled, size limit: 8192 MiB
+srv load_model: use `--cache-ram 0` to disable the prompt cache
+```
+
+Over days of chat the prompt cache grows toward its **8192 MiB default**, presses
+against the 3 GiB cgroup cap, and the kernel spills it into zram. Because GGUF
+pages are dense, zram compresses them only ~1.16× (7.8 GiB → 6.7 GiB), so the
+"swap" ties up ~5 GiB of *physical* RAM anyway. The cap relocated memory into a
+worse place rather than limiting it.
+
+### Fix applied (Flavor A — lean, no `--mlock`)
+
+Drop-in `…/llama-server-chat-gemma3-4b-gpu1.service.d/z-mem.conf`
+(tracked at `ops/systemd/familiar/llama-server-chat-gemma3-4b-gpu1.service.d/z-mem.conf`):
+
+```ini
+[Service]
+MemoryMax=4G
+MemorySwapMax=0
+ExecStart=
+ExecStart=/opt/llama.cpp/build/bin/llama-server \
+  --model /var/cache/llama/models/gemma-4-E4B-it-Q4_K_M.gguf \
+  --port 11438 --host 0.0.0.0 \
+  --n-gpu-layers 999 --ctx-size 8192 --parallel 1 --threads 8 \
+  --cont-batching --alias gemma3-4b --cache-ram 1024
+```
+
+`--cache-ram 1024` bounds the actual growth driver; `MemorySwapMax=0` forbids the
+pump; `MemoryMax=4G` fits the working set. **No `--mlock`** — with
+`--n-gpu-layers 999` the weights live in VRAM, so the 4.7 GiB host mmap is *clean,
+reclaimable file cache*. Verified: process `VmHWM` touched 4.97 GiB during load
+(mmap upload) yet cgroup `MemoryCurrent` settled to 3.08 GiB < 4 G cap with
+**zero OOM kills** — the cap just drops file pages, no swap, no restart loop.
+
+### Result
+
+| metric | before | after |
+|---|---|---|
+| chat prompt-cache limit | 8192 MiB | 1024 MiB |
+| chat `MemorySwapCurrent` | 5.8 GiB | 0 |
+| host swap used | 7.8 GiB (100 %) | 1.2 GiB |
+| host available RAM | 1.0 GiB | 8.4 GiB |
+
+### Remaining landmines (not yet patched — none currently running)
+
+The other slot variants share the pre-fix shape (no `MemorySwapMax`, no
+`--cache-ram`, tight `MemoryMax`). They're harmless while their slots are null,
+but will reintroduce the swap pump the moment the slot picker starts them:
+
+| unit | `MemoryMax` | needs |
+|---|---|---|
+| `llama-server-hyde-gemma3-4b-gpu1` | 2G | raise to ~4G, `MemorySwapMax=0`, `--cache-ram 512` |
+| `llama-server-reflect-qwen-3b-gpu1` | 2G | raise to ~3G, `MemorySwapMax=0`, `--cache-ram 512` |
+| `llama-server-chat-gemma3-4b-cpu` | 8G | `MemorySwapMax=0`, `--cache-ram 1024` (CPU mode keeps the model in RAM, so keep 8G) |
+
+Recommended: bake the same hygiene into these variant units (or per-variant
+drop-ins) so future slot swaps inherit it. A slot-picker-level default
+(`MemorySwapMax=0` + a `--cache-ram` floor for every llama variant) would prevent
+this class of regression entirely.
