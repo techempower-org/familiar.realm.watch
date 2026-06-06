@@ -1,6 +1,9 @@
 [Unit]
 Description=llama.cpp Reflect — Qwen 2.5 Coder 3B on GPU1 (slot picker variant)
 After=network.target
+# Gated to familiar-api lifecycle (see [Install] WantedBy); models load only
+# while the companion is up. 2026-06-05.
+PartOf=familiar-api.service
 
 [Service]
 Type=simple
@@ -21,4 +24,4 @@ MemoryMax=2G
 OOMScoreAdjust=-500
 
 [Install]
-WantedBy=multi-user.target
+WantedBy=familiar-api.service

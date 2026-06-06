@@ -1,6 +1,10 @@
 [Unit]
 Description=llama.cpp chat — Gemma 3 4B on GPU1 (slot picker variant)
 After=network.target
+# Gated to familiar-api lifecycle (2026-06-05): PartOf -> stop/restart follows
+# familiar-api; WantedBy=familiar-api (see [Install]) -> starts with it. Companion
+# models load only while the companion is up; nothing auto-starts at boot.
+PartOf=familiar-api.service
 
 [Service]
 Type=simple
@@ -21,4 +25,4 @@ MemoryMax=3G
 OOMScoreAdjust=-500
 
 [Install]
-WantedBy=multi-user.target
+WantedBy=familiar-api.service

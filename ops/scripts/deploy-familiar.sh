@@ -215,7 +215,13 @@ ssh "${DEST_HOST}" "
 "
 
 echo ">>> (Re)starting familiar-api..."
-ssh "${DEST_HOST}" "sudo systemctl enable familiar-api.service && sudo systemctl restart familiar-api.service"
+# familiar-api is intentionally NOT boot-enabled (2026-06-05): the companion is
+# started on demand, and the slot-variant model units are gated to its lifecycle
+# (PartOf= + WantedBy=familiar-api.service), so nothing model-related auto-starts
+# at boot. `disable` here keeps that property from being silently re-armed on
+# every deploy. We still `restart` so the deploy can smoke-test the running API;
+# the restart pulls up the slot models enabled into familiar-api.wants.
+ssh "${DEST_HOST}" "sudo systemctl disable familiar-api.service && sudo systemctl restart familiar-api.service"
 sleep 3
 
 echo ">>> Smoke test..."
