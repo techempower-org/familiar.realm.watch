@@ -19,3 +19,6 @@ llama-server-chat-gemma3-4b-gpu1.service
 llama-server-chat-gemma3-4b-cpu.service
 llama-server-hyde-gemma3-4b-gpu1.service
 llama-server-reflect-qwen-3b-gpu1.service
+
+# Local Claude Code backend (both GPUs — Conflicts= with all GPU slot units)
+qwen3-coder.service
