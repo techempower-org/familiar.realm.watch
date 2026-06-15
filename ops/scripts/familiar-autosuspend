@@ -1,0 +1,54 @@
+#!/usr/bin/env bash
+# familiar-autosuspend — operator control for familiar's idle-autosuspend.
+# Runs from katana; drives familiar over ssh (jp has passwordless sudo there).
+# Pairs with familiar-sleep / familiar-wake. Spec:
+#   docs/superpowers/specs/2026-06-15-familiar-autosuspend-design.md
+set -euo pipefail
+
+HOST=familiar
+STATE_DIR=/var/lib/familiar-autosuspend
+TIMER=familiar-autosuspend.timer
+CHECK=/usr/local/sbin/familiar-autosuspend-check.sh
+
+to_secs() { # "30m" "2h" "45" "45s" "1d" -> seconds
+  local v="$1"
+  case "$v" in
+    *d) echo $(( ${v%d} * 86400 )) ;;
+    *h) echo $(( ${v%h} * 3600 )) ;;
+    *m) echo $(( ${v%m} * 60 )) ;;
+    *s) echo "${v%s}" ;;
+    *)  echo "$v" ;;
+  esac
+}
+
+cmd="${1:-status}"
+case "$cmd" in
+  on)
+    ssh "$HOST" "touch $STATE_DIR/enabled && sudo systemctl enable --now $TIMER"
+    echo "autosuspend ARMED (15-min idle → S3). Disable with: familiar-autosuspend off"
+    ;;
+  off)
+    ssh "$HOST" "sudo systemctl disable --now $TIMER; rm -f $STATE_DIR/enabled"
+    echo "autosuspend DISABLED — familiar will stay up."
+    ;;
+  hold)
+    secs="$(to_secs "${2:-30m}")"
+    ssh "$HOST" "echo \$(( \$(date +%s) + $secs )) > $STATE_DIR/hold-until"
+    echo "holding familiar awake for ${2:-30m}."
+    ;;
+  now)
+    exec familiar-sleep
+    ;;
+  status)
+    ssh "$HOST" "
+      en=no; [ -f $STATE_DIR/enabled ] && en=yes
+      echo \"armed:   \$en (sentinel) / timer \$(systemctl is-enabled $TIMER 2>/dev/null),\$(systemctl is-active $TIMER 2>/dev/null)\"
+      if [ -f $STATE_DIR/hold-until ]; then rem=\$(( \$(cat $STATE_DIR/hold-until) - \$(date +%s) )); if [ \$rem -gt 0 ]; then echo \"hold:    \${rem}s remaining\"; else echo \"hold:    none\"; fi; else echo \"hold:    none\"; fi
+      echo \"verdict: \$($CHECK --explain 2>/dev/null || echo '(check unavailable)')\"
+    "
+    ;;
+  *)
+    echo "usage: familiar-autosuspend {on|off|status|hold [DUR]|now}" >&2
+    exit 2
+    ;;
+esac
