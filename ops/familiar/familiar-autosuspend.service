@@ -1,0 +1,15 @@
+[Unit]
+Description=familiar autosuspend — idle-detect + S3 suspend (companion/coder/CI aware)
+Documentation=https://github.com/techempower-org/familiar.realm.watch/blob/main/docs/superpowers/specs/2026-06-15-familiar-autosuspend-design.md
+After=network.target
+
+[Service]
+Type=oneshot
+User=jp
+Group=jp
+RuntimeDirectory=familiar-autosuspend
+RuntimeDirectoryPreserve=yes
+ExecStart=/usr/local/sbin/familiar-autosuspend-check.sh
+StandardOutput=journal
+StandardError=journal
+TimeoutStopSec=10
