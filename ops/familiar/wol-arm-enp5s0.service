@@ -1,0 +1,18 @@
+[Unit]
+Description=Arm Wake-on-LAN (magic packet) on enp5s0
+Documentation=https://github.com/techempower-org/familiar.realm.watch/blob/main/docs/superpowers/specs/2026-06-15-familiar-autosuspend-design.md
+# The Realtek r8169 drops its WoL setting on every power cycle, and the
+# NetworkManager->systemd-networkd migration left no durable arming (netplan has
+# no `wakeonlan`, /etc/systemd/network is empty). This oneshot re-applies the
+# known-good runtime command at each boot so WoL survives a reboot, not just S3.
+# S3 resume already retains WoL (RAM stays powered) — this targets the reboot gap.
+Requires=sys-subsystem-net-devices-enp5s0.device
+After=sys-subsystem-net-devices-enp5s0.device
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/usr/sbin/ethtool -s enp5s0 wol g
+
+[Install]
+WantedBy=multi-user.target
