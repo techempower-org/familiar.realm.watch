@@ -2,9 +2,12 @@
 Description=llama.cpp coder — Qwen3.6-35B-A3B MoE on both GPUs (local Claude Code backend)
 After=network.target mnt-ollama\x2dmodels.mount
 Requires=mnt-ollama\x2dmodels.mount
-# Owns BOTH P102s (19 GB resident) — cannot coexist with any GPU slot unit.
-# Starting this stops the companion stack, and vice versa.
-Conflicts=ollama-chat.service ollama-embed.service llama-server-extractor.service llama-server-extractor-gpu1.service llama-server-chat-gemma3-4b-gpu1.service llama-server-hyde-gemma3-4b-gpu1.service llama-server-reflect-qwen-3b-gpu1.service
+# Owns BOTH P102s (~19 GB resident) — cannot coexist with the chat/extract
+# slot units. Exception (2026-07-25): ollama-embed is allowed to coexist —
+# Qwen3.6's small hybrid KV leaves ~860 MiB free on GPU1 and nomic-embed
+# needs only ~321 MiB, so palace search stays up while the coder lane runs.
+# The companion's chat routes to this server too (OLLAMA_CHAT_URL=:8091).
+Conflicts=ollama-chat.service llama-server-extractor.service llama-server-extractor-gpu1.service llama-server-chat-gemma3-4b-gpu1.service llama-server-hyde-gemma3-4b-gpu1.service llama-server-reflect-qwen-3b-gpu1.service
 
 [Service]
 Type=simple
