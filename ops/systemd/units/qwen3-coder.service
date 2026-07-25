@@ -1,5 +1,5 @@
 [Unit]
-Description=llama.cpp coder — Qwen3-Coder-30B-A3B MoE on both GPUs (local Claude Code backend)
+Description=llama.cpp coder — Qwen3.6-35B-A3B MoE on both GPUs (local Claude Code backend)
 After=network.target mnt-ollama\x2dmodels.mount
 Requires=mnt-ollama\x2dmodels.mount
 # Owns BOTH P102s (19 GB resident) — cannot coexist with any GPU slot unit.
@@ -11,16 +11,19 @@ Type=simple
 User=jp
 Environment=CUDA_DEVICE_ORDER=PCI_BUS_ID
 Environment=CUDA_VISIBLE_DEVICES=0,1
-# Validated 2026-06-09: UD-Q3_K_XL is the largest quant that leaves room for
-# the 128K context Claude Code needs (Q4_K_M only fits 16K — CC's opening
-# request alone is ~43K tokens). q4_0 KV + flash-attn buy the window.
+# 2026-07-24: swapped to Qwen3.6-35B-A3B (Apr 2026, 73.4% SWE-bench V). Same
+# 3B-active MoE speed class as the old Qwen3-Coder-30B, but hybrid
+# Gated-DeltaNet arch → only a fraction of layers carry full-attention KV, so
+# the 128K window costs ~1-2GB instead of ~5GB. That headroom pays for the
+# bigger weights (16.8G vs 12.9G) and lets KV run q8_0 instead of q4_0.
+# CC's opening request alone is ~43K tokens — never serve this below 64K ctx.
 ExecStart=/opt/llama.cpp/build/bin/llama-server \
-  --model /mnt/ollama-models/llama/models/Qwen3-Coder-30B-A3B-Instruct-UD-Q3_K_XL.gguf \
-  --alias qwen3-coder \
-  --port 8080 --host 0.0.0.0 \
+  --model /mnt/ollama-models/llama/models/Qwen3.6-35B-A3B-UD-Q3_K_XL.gguf \
+  --alias qwen36-coder \
+  --port 8091 --host 0.0.0.0 \
   --jinja \
   -fa on \
-  --cache-type-k q4_0 --cache-type-v q4_0 \
+  --cache-type-k q8_0 --cache-type-v q8_0 \
   --ctx-size 131072 \
   --parallel 1 \
   --n-gpu-layers 999 \
