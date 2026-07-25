@@ -45,6 +45,19 @@ export interface HybridSearchOpts {
   hydeGenerate?: (query: string) => Promise<string>;
 }
 
+export interface AgeFusedSearchOpts {
+  query: string;
+  limit: number;
+  wing?: string;
+  room?: string;
+  /** Graph candidates to fetch before fusion (daemon default 50). */
+  graphTopK?: number;
+  /** RRF k constant (daemon default 60). */
+  fusionK?: number;
+  /** Attach per-source counts ({n_vector, n_graph, n_after_fusion}) to the response. */
+  includeTrace?: boolean;
+}
+
 export interface WriteMemoryOpts {
   content: string;
   wing: string;
@@ -180,6 +193,52 @@ export class PalaceClient {
         timeoutPromise,
       ]);
       if (!res.ok) throw new Error(`palace-daemon hybrid search: ${res.status} ${res.statusText}`);
+      return normalizeResults((await res.json()) as PalaceSearchResult);
+    } finally {
+      if (timer) clearTimeout(timer);
+    }
+  }
+
+  /**
+   * AGE-fused search: vector retrieval merged with an AGE knowledge-graph
+   * entity-overlap walk via RRF, server-side. Calls palace-daemon's
+   * `POST /search/age-fused`. This is the only retrieval path that lets the
+   * populated AGE graph reach end users (familiar.realm.watch#88).
+   *
+   * Requires the daemon's postgres backend (AGE lives in postgres); on a
+   * chroma backend the daemon returns 503, and on an older daemon 404 — in
+   * both cases this throws so the caller can fall back to hybrid/vector.
+   * An empty graph (or zero extracted entities) is NOT an error: the daemon
+   * falls through to vector-only and returns 200 with `trace.n_graph = 0`.
+   */
+  async searchAgeFused(opts: AgeFusedSearchOpts): Promise<PalaceSearchResult> {
+    const normalizedQ = opts.query.replace(/[?!.,;:]+\s*$/, "").trim();
+    const body: Record<string, unknown> = { query: normalizedQ, limit: opts.limit };
+    if (opts.wing) body.wing = opts.wing;
+    if (opts.room) body.room = opts.room;
+    if (opts.graphTopK !== undefined) body.graph_top_k = opts.graphTopK;
+    if (opts.fusionK !== undefined) body.fusion_k = opts.fusionK;
+    if (opts.includeTrace) body.include_trace = true;
+
+    const ctl = new AbortController();
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const timeoutPromise = new Promise<never>((_, reject) => {
+      timer = setTimeout(() => {
+        ctl.abort();
+        reject(new Error(`palace-daemon age-fused search: timeout after ${this.searchTimeoutMs}ms`));
+      }, this.searchTimeoutMs);
+    });
+    try {
+      const res = await Promise.race([
+        this.fetchFn(`${this.baseUrl}/search/age-fused`, {
+          method: "POST",
+          headers: this.headers(),
+          body: JSON.stringify(body),
+          signal: ctl.signal,
+        }),
+        timeoutPromise,
+      ]);
+      if (!res.ok) throw new Error(`palace-daemon age-fused search: ${res.status} ${res.statusText}`);
       return normalizeResults((await res.json()) as PalaceSearchResult);
     } finally {
       if (timer) clearTimeout(timer);

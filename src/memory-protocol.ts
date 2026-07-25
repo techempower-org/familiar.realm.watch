@@ -1,5 +1,6 @@
 import type { PalaceClient } from "./palace-client.ts";
-import type { PalaceDrawer, RetrievalTimings, SmeEntity } from "./types.ts";
+import type { PalaceDrawer, PalaceSearchResult, RetrievalInfo, RetrievalTimings, SearchMode, SmeEntity } from "./types.ts";
+import { SEARCH_MODES } from "./types.ts";
 import { buildSystemPrompt } from "./grounding.ts";
 import { allocateContext } from "./budget.ts";
 import { domainRerank } from "./retrieval/rerank.ts";
@@ -103,6 +104,13 @@ export interface RetrieveAndGroundOpts {
    * by default while we measure paraphrase quality improvement.
    */
   hydeGenerate?: (query: string) => Promise<string>;
+  /**
+   * Per-request retrieval strategy override. When omitted, falls back to the
+   * PALACE_SEARCH_MODE env var (default "hybrid"). "age-fused" routes through
+   * the daemon's AGE knowledge-graph walk (familiar.realm.watch#88), degrading
+   * to hybrid then vector if the daemon can't serve it (503/404).
+   */
+  searchMode?: SearchMode;
 }
 
 export interface RetrieveAndGroundResult {
@@ -112,6 +120,8 @@ export interface RetrieveAndGroundResult {
   entities: SmeEntity[];
   /** Daemon-reported total drawers in the search scope (pre-limit), useful for confidence gating. */
   availableInScope?: number;
+  /** Which retrieval strategy ran + its per-source counts (#88). Undefined if palace was unreachable. */
+  retrieval?: RetrievalInfo;
   warnings: string[];
   /** Per-stage latencies in milliseconds. Zero-overhead instrumentation via performance.now(). */
   timings: RetrievalTimings;
@@ -155,50 +165,70 @@ export async function retrieveAndGround(opts: RetrieveAndGroundOpts): Promise<Re
   const query = expandTemporalQuery(opts.userMessage.slice(0, 250));
   timings.temporal_expand_ms = Math.round(performance.now() - tTemporal);
 
-  // Phase 5 of the hybrid-search-taxonomy initiative (familiar.realm.watch
-  // spec §3.8): default retrieval to hybrid when available. Hybrid fuses
-  // vector + BM25 + graph candidates server-side, addressing the
-  // vector-only failure modes (rare tokens, file paths, exact strings).
-  // PALACE_SEARCH_MODE=vector forces the legacy path; "hybrid" (default)
-  // tries hybrid first and falls back to vector on 503 (chroma backends).
-  const mode = (Bun.env.PALACE_SEARCH_MODE ?? "hybrid").toLowerCase();
+  // Retrieval strategy (familiar.realm.watch#88). Per-request `searchMode`
+  // wins; otherwise PALACE_SEARCH_MODE env (default "hybrid").
+  //   vector    → GET /search             (embedding similarity only)
+  //   hybrid    → POST /search/hybrid      (vector + BM25 + graph rerank)
+  //   age-fused → POST /search/age-fused   (vector + AGE knowledge-graph walk)
+  //
+  // Each mode degrades through lower tiers when the daemon can't serve it —
+  // a 503 (wrong backend, e.g. chroma) or 404 (older daemon) skips that tier
+  // with a `<from>_fallback_<to>` warning. Any OTHER error (ECONNREFUSED,
+  // timeout) means the daemon is down: we do NOT silently substitute a
+  // weaker result, we surface `palace_unreachable`.
+  const requested = (opts.searchMode ?? Bun.env.PALACE_SEARCH_MODE ?? "hybrid").toLowerCase();
+  // Unknown values (typo'd env, stale client) degrade to the safe default
+  // rather than silently collapsing to vector-only — see contract #88.
+  const mode: SearchMode = (SEARCH_MODES as readonly string[]).includes(requested)
+    ? (requested as SearchMode)
+    : "hybrid";
+  let retrieval: RetrievalInfo | undefined;
+
+  type Tier = { mode: SearchMode; run: () => Promise<PalaceSearchResult> };
+  const tiers: Tier[] = [];
+  if (mode === "age-fused") {
+    tiers.push({ mode: "age-fused", run: () => opts.palace.searchAgeFused({
+      query, limit: opts.retrievalLimit, wing: opts.wingScope ?? undefined, includeTrace: true,
+    }) });
+  }
+  if (mode === "age-fused" || mode === "hybrid") {
+    tiers.push({ mode: "hybrid", run: () => opts.palace.searchHybrid({
+      query, limit: opts.retrievalLimit, wing: opts.wingScope ?? undefined, hydeGenerate: opts.hydeGenerate,
+    }) });
+  }
+  tiers.push({ mode: "vector", run: () => opts.palace.search({
+    query, limit: opts.retrievalLimit, wing: opts.wingScope ?? undefined,
+  }) });
+
   const tSearch = performance.now();
   try {
-    if (mode === "hybrid") {
+    for (let i = 0; i < tiers.length; i++) {
+      const tier = tiers[i];
       try {
-        const search = await opts.palace.searchHybrid({
-          query,
-          limit: opts.retrievalLimit,
-          wing: opts.wingScope ?? undefined,
-          hydeGenerate: opts.hydeGenerate,
-        });
+        const search = await tier.run();
         drawers = search.results ?? [];
         availableInScope = search.available_in_scope;
         palaceWarnings = search.warnings ?? [];
-      } catch (hybridErr) {
-        // Hybrid endpoint not available (older daemon or chroma backend).
-        // Fall back to vector path silently — the user gets results, just
-        // without the BM25/graph boost.
-        const msg = hybridErr instanceof Error ? hybridErr.message : String(hybridErr);
-        if (msg.includes("503") || msg.includes("404")) {
-          warnings.push("hybrid_fallback_vector");
-        } else {
-          throw hybridErr;
+        retrieval = {
+          mode: tier.mode,
+          n_vector: search.trace?.n_vector,
+          n_graph: search.trace?.n_graph,
+          n_after_fusion: search.trace?.n_after_fusion,
+          ...(tier.mode !== mode ? { fell_back_to: tier.mode } : {}),
+        };
+        break;
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        const fallbackable = msg.includes("503") || msg.includes("404");
+        const next = tiers[i + 1];
+        if (fallbackable && next) {
+          warnings.push(`${tier.mode.replace(/-/g, "_")}_fallback_${next.mode.replace(/-/g, "_")}`);
+          continue;
         }
+        throw err; // daemon down, or last tier failed → palace_unreachable
       }
     }
-    if (drawers.length === 0 && availableInScope === undefined) {
-      // Either mode=vector, or hybrid was unavailable. Use legacy /search.
-      const search = await opts.palace.search({
-        query,
-        limit: opts.retrievalLimit,
-        wing: opts.wingScope ?? undefined,
-      });
-      drawers = search.results ?? [];
-      availableInScope = search.available_in_scope;
-      palaceWarnings = search.warnings ?? [];
-    }
-  } catch (err) {
+  } catch {
     warnings.push("palace_unreachable");
   }
   timings.palace_search_ms = Math.round(performance.now() - tSearch);
@@ -318,5 +348,5 @@ export async function retrieveAndGround(opts: RetrieveAndGroundOpts): Promise<Re
   const drawerIds = alloc.kept.map((d) => d.id).filter((id): id is string => Boolean(id));
   const entities = alloc.kept.map(drawerToEntity);
   timings.total_ms = Math.round(performance.now() - tTotal);
-  return { systemPrompt, drawerIds, entities, availableInScope, warnings, timings };
+  return { systemPrompt, drawerIds, entities, availableInScope, retrieval, warnings, timings };
 }

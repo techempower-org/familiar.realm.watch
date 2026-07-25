@@ -695,7 +695,14 @@ document.addEventListener("click", () => {
 const traceLookup = new Map();
 
 function ingestTrace(trace) {
-  if (!trace || !Array.isArray(trace.retrieved)) return;
+  if (!trace) return;
+  // Forward the retrieval readout (mode / n_vector / n_graph / n_after_fusion
+  // / fell_back_to) to the search-mode block so it can show the live graph
+  // contribution per turn (#88). Independent of the `retrieved` array below.
+  if (trace.retrieval && typeof trace.retrieval === "object") {
+    window.familiarSearchMode?._ingestRetrieval?.(trace.retrieval);
+  }
+  if (!Array.isArray(trace.retrieved)) return;
   for (const e of trace.retrieved) {
     if (!e || !e.id) continue;
     traceLookup.set(e.id, {
@@ -1584,6 +1591,13 @@ form.addEventListener("submit", async (e) => {
     };
     const modelOverride = window.familiarSelectedModel?.();
     if (modelOverride) chatBody.model = modelOverride;
+    // Search-mode picker (#88): if the user pinned a retrieval strategy
+    // (vector | hybrid | age-fused) via the search-mode block, send it so
+    // the daemon routes through the matching /search endpoint. null = use the
+    // server default (PALACE_SEARCH_MODE). Unknown values are ignored by the
+    // backend, so this is harmless even before the route is wired.
+    const searchMode = window.familiarSearchMode?.get?.();
+    if (searchMode) chatBody.search_mode = searchMode;
     const res = await fetch("/v1/chat/completions?trace=1", {
       method: "POST",
       headers: { "content-type": "application/json" },

@@ -23,6 +23,7 @@ import type {
   SmeQueryResponse,
 } from "../types.ts";
 import { retrieveAndGround } from "../memory-protocol.ts";
+import { SEARCH_MODES, type SearchMode } from "../types.ts";
 
 export interface EvalRouteDeps {
   cfg: Config;
@@ -73,12 +74,22 @@ export async function handleEval(req: Request, deps: EvalRouteDeps): Promise<Res
   else if (hydeParam === "false") hydeFn = undefined;
   else hydeFn = deps.hydeGenerate;
 
+  // Per-request retrieval-mode override for A/B sweeps (#88), mirroring ?hyde=.
+  // `?search_mode=age-fused` lets the paraphrase-probe runner measure the AGE
+  // graph's end-to-end lift through the real grounding path in one server
+  // process. Unknown values are ignored → env default (PALACE_SEARCH_MODE).
+  const modeParam = new URL(req.url).searchParams.get("search_mode")?.toLowerCase();
+  const searchMode = (SEARCH_MODES as readonly string[]).includes(modeParam ?? "")
+    ? (modeParam as SearchMode)
+    : undefined;
+
   const limit = body.limit ?? deps.cfg.retrievalLimit;
   const warnings: string[] = [];
   let contextString = "";
   let entities: SmeQueryResponse["retrieved_entities"] = [];
   let availableInScope: number | undefined;
   let timings: RetrievalTimings | undefined;
+  let retrieval: SmeQueryResponse["retrieval"];
 
   try {
     const grounded = await retrieveAndGround({
@@ -89,11 +100,13 @@ export async function handleEval(req: Request, deps: EvalRouteDeps): Promise<Res
       contextBudgetTokens: deps.cfg.tokenBudget.context,
       recentCitations: [],
       hydeGenerate: hydeFn,
+      searchMode,
     });
     contextString = grounded.systemPrompt;
     entities = grounded.entities;
     availableInScope = grounded.availableInScope;
     timings = grounded.timings;
+    retrieval = grounded.retrieval;
     warnings.push(...grounded.warnings);
   } catch {
     warnings.push("palace_unreachable");
@@ -128,6 +141,7 @@ export async function handleEval(req: Request, deps: EvalRouteDeps): Promise<Res
     warnings,
     ...(availableInScope !== undefined ? { available_in_scope: availableInScope } : {}),
     ...(timings !== undefined ? { timings } : {}),
+    ...(retrieval !== undefined ? { retrieval } : {}),
   };
 
   return new Response(JSON.stringify(response, null, 2), {

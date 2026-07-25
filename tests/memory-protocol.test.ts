@@ -181,6 +181,114 @@ describe("hybrid → vector fallback", () => {
   });
 });
 
+describe("search_mode (age-fused) routing + fallback chain", () => {
+  const baseOpts = (palace: unknown, searchMode?: import("../src/types.ts").SearchMode) => ({
+    palace: palace as unknown as import("../src/palace-client.ts").PalaceClient,
+    userMessage: "pgvector advisory lock race",
+    wingScope: null,
+    retrievalLimit: 5,
+    contextBudgetTokens: 4000,
+    recentCitations: [] as string[],
+    searchMode,
+  });
+
+  const ageFusedResult = {
+    query: "pgvector advisory lock race",
+    available_in_scope: 200,
+    warnings: [],
+    results: [{ id: "ag1", text: "graph-connected memory", wing: "memorypalace", room: "problems", similarity: 0.7, matched_via: "both" }],
+    trace: { n_vector: 18, n_graph: 6, n_after_fusion: 8 },
+  };
+
+  test("searchMode=age-fused calls searchAgeFused and threads trace into result.retrieval", async () => {
+    let calledAgeFused = false;
+    const palace = {
+      searchAgeFused: async () => { calledAgeFused = true; return ageFusedResult; },
+      searchHybrid: async () => { throw new Error("hybrid should not be called"); },
+      search: async () => { throw new Error("vector should not be called"); },
+      writeMemory: async () => ({ id: "", warnings: [], errors: [] }),
+      health: async () => ({ status: "ok" }),
+    };
+    const result = await retrieveAndGround(baseOpts(palace, "age-fused"));
+    expect(calledAgeFused).toBe(true);
+    expect(result.drawerIds).toContain("ag1");
+    expect(result.retrieval).toBeDefined();
+    expect(result.retrieval!.mode).toBe("age-fused");
+    expect(result.retrieval!.n_graph).toBe(6);
+    expect(result.retrieval!.n_vector).toBe(18);
+    expect(result.retrieval!.fell_back_to).toBeUndefined();
+  });
+
+  test("age-fused 503 falls back to hybrid with age_fused_fallback_hybrid warning", async () => {
+    const palace = {
+      searchAgeFused: async () => { throw new Error("503 Service Unavailable"); },
+      searchHybrid: async () => ({
+        query: "x", available_in_scope: 50, warnings: [],
+        results: [{ id: "h1", text: "hybrid hit", wing: "w", room: "r", similarity: 0.8, matched_via: "drawer" }],
+      }),
+      search: async () => { throw new Error("vector should not be called"); },
+      writeMemory: async () => ({ id: "", warnings: [], errors: [] }),
+      health: async () => ({ status: "ok" }),
+    };
+    const result = await retrieveAndGround(baseOpts(palace, "age-fused"));
+    expect(result.warnings).toContain("age_fused_fallback_hybrid");
+    expect(result.drawerIds).toContain("h1");
+    expect(result.retrieval!.mode).toBe("hybrid");
+    expect(result.retrieval!.fell_back_to).toBe("hybrid");
+  });
+
+  test("age-fused 503 then hybrid 404 falls all the way back to vector", async () => {
+    const palace = {
+      searchAgeFused: async () => { throw new Error("503 Service Unavailable"); },
+      searchHybrid: async () => { throw new Error("404 Not Found"); },
+      search: async () => ({
+        query: "x", available_in_scope: 50, warnings: [],
+        results: [{ id: "v1", text: "vector hit", wing: "w", room: "r", similarity: 0.6, matched_via: "drawer" }],
+      }),
+      writeMemory: async () => ({ id: "", warnings: [], errors: [] }),
+      health: async () => ({ status: "ok" }),
+    };
+    const result = await retrieveAndGround(baseOpts(palace, "age-fused"));
+    expect(result.warnings).toContain("age_fused_fallback_hybrid");
+    expect(result.warnings).toContain("hybrid_fallback_vector");
+    expect(result.drawerIds).toContain("v1");
+    expect(result.retrieval!.mode).toBe("vector");
+  });
+
+  test("age-fused non-503 error surfaces palace_unreachable without falling back", async () => {
+    let hybridCalled = false;
+    const palace = {
+      searchAgeFused: async () => { throw new Error("ECONNREFUSED"); },
+      searchHybrid: async () => { hybridCalled = true; return { query: "x", results: [] }; },
+      search: async () => ({ query: "x", results: [] }),
+      writeMemory: async () => ({ id: "", warnings: [], errors: [] }),
+      health: async () => ({ status: "ok" }),
+    };
+    const result = await retrieveAndGround(baseOpts(palace, "age-fused"));
+    expect(hybridCalled).toBe(false);
+    expect(result.warnings).toContain("palace_unreachable");
+    expect(result.drawerIds).toEqual([]);
+  });
+
+  test("explicit searchMode=vector skips hybrid + age-fused entirely", async () => {
+    let vectorCalled = false;
+    const palace = {
+      searchAgeFused: async () => { throw new Error("age-fused should not be called"); },
+      searchHybrid: async () => { throw new Error("hybrid should not be called"); },
+      search: async () => { vectorCalled = true; return {
+        query: "x", available_in_scope: 10, warnings: [],
+        results: [{ id: "v1", text: "vector only", wing: "w", room: "r", similarity: 0.9, matched_via: "drawer" }],
+      }; },
+      writeMemory: async () => ({ id: "", warnings: [], errors: [] }),
+      health: async () => ({ status: "ok" }),
+    };
+    const result = await retrieveAndGround(baseOpts(palace, "vector"));
+    expect(vectorCalled).toBe(true);
+    expect(result.retrieval!.mode).toBe("vector");
+    expect(result.retrieval!.fell_back_to).toBeUndefined();
+  });
+});
+
 describe("HyDE integration", () => {
   test("hydeGenerate is forwarded to searchHybrid", async () => {
     let capturedOpts: Record<string, unknown> | undefined;

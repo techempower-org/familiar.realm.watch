@@ -73,6 +73,43 @@ export interface PalaceSearchResult {
   available_in_scope?: number;
   warnings?: string[];
   results: PalaceDrawer[];
+  /**
+   * Present on `/search/age-fused` responses (palace-daemon#150): per-source
+   * candidate counts for the vector + AGE-graph RRF merge. `n_graph > 0` is
+   * the load-bearing signal that the knowledge graph actually contributed to
+   * this retrieval (the whole point of familiar.realm.watch#88).
+   */
+  trace?: {
+    n_vector?: number;
+    n_graph?: number;
+    n_after_fusion?: number;
+    warning?: string;
+  };
+}
+
+/**
+ * The three retrieval strategies familiar can ask the daemon for. Each maps to
+ * a distinct endpoint (see palace-client): vector → GET /search, hybrid → POST
+ * /search/hybrid, age-fused → POST /search/age-fused. Selectable per-request
+ * (chat body `search_mode`, eval `?search_mode=`) and defaulted by the
+ * PALACE_SEARCH_MODE env var.
+ */
+export const SEARCH_MODES = ["vector", "hybrid", "age-fused"] as const;
+export type SearchMode = (typeof SEARCH_MODES)[number];
+
+/**
+ * Which retrieval strategy actually ran and what it surfaced. Threaded out of
+ * retrieveAndGround() into the chat trace SSE event so the UI can show a live
+ * "N vector · N graph · N fused" readout — making the graph contribution
+ * visible to users (familiar.realm.watch#88).
+ */
+export interface RetrievalInfo {
+  mode: SearchMode;
+  n_vector?: number;
+  n_graph?: number;
+  n_after_fusion?: number;
+  /** Set only when the requested mode degraded (503/404) to a lower tier. */
+  fell_back_to?: SearchMode;
 }
 
 export interface ChatMessage {
@@ -271,6 +308,12 @@ export interface SmeQueryResponse {
   available_in_scope?: number;
   /** Per-stage retrieval pipeline latencies in milliseconds (eval/probe telemetry). */
   timings?: RetrievalTimings;
+  /**
+   * Which retrieval strategy ran + per-source counts (#88). Lets the
+   * paraphrase-probe runner confirm the AGE graph actually contributed
+   * (n_graph > 0) end-to-end instead of inferring it from rescue rate.
+   */
+  retrieval?: RetrievalInfo;
 }
 
 /**
@@ -357,6 +400,8 @@ export interface Trace {
   citations: string[];              // drawer_ids cited in answer ([drawer_xxx] pattern)
   warnings: string[];
   available_in_scope?: number;
+  /** Which retrieval strategy ran + its per-source candidate counts (#88). */
+  retrieval?: RetrievalInfo;
   inference_endpoint?: string;      // which provider served this (post-Phase 2)
   duration_ms: number;
 }

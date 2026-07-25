@@ -2,7 +2,7 @@ import type { PalaceClient } from "../palace-client.ts";
 import type { CircuitBreaker } from "../circuit-breaker.ts";
 import type { SlotResolver } from "../slots/resolver.ts";
 import type { SessionStore } from "../sessions.ts";
-import type { Config, InferenceChatProvider } from "../types.ts";
+import type { Config, InferenceChatProvider, SearchMode } from "../types.ts";
 import type { DiaryBuffer } from "../diary-buffer.ts";
 import type { ReflectWriter } from "../reflect/writer.ts";
 import type { ReflectDecision } from "../reflect/types.ts";
@@ -104,6 +104,12 @@ interface OpenAIChatRequest {
   stream?: boolean;
   user?: string;
   wing?: string;
+  /**
+   * Per-request retrieval strategy (familiar.realm.watch#88): "vector" |
+   * "hybrid" | "age-fused". Omit (or send an unknown value) to use the server
+   * default (PALACE_SEARCH_MODE). The PWA's search-mode picker sets this.
+   */
+  search_mode?: SearchMode;
 }
 
 /**
@@ -151,6 +157,7 @@ export async function handleChat(req: Request, deps: ChatRouteDeps): Promise<Res
       recentCitations: session.recentCitations,
       stuck,
       hydeGenerate: deps.hydeGenerate,
+      searchMode: body.search_mode,
     }));
   } catch {
     // breaker open — still respond, just without palace context
@@ -349,6 +356,7 @@ function buildTraceFromOpts(opts: GenOpts, answer: string) {
     answer,
     warnings: grounded.warnings,
     availableInScope: grounded.availableInScope,
+    retrieval: grounded.retrieval,
     startedAt: turnStartedAt,
   });
 }

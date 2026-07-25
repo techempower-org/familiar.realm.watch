@@ -5,7 +5,7 @@
  * corpus, debugging) all read from. See `Trace` in types.ts for the full shape.
  */
 
-import type { SmeEntity, Trace } from "./types.ts";
+import type { RetrievalInfo, SmeEntity, Trace } from "./types.ts";
 
 // Matches drawer-id citations only. The captured group is always the
 // bare drawer id.
@@ -52,6 +52,8 @@ export interface BuildTraceArgs {
   answer: string;
   warnings: string[];
   availableInScope?: number;
+  /** Which retrieval strategy ran + per-source counts (#88). */
+  retrieval?: RetrievalInfo;
   inferenceEndpoint?: string;
   startedAt: number;  // Date.now() at turn start
 }
@@ -69,6 +71,7 @@ export function buildTrace(args: BuildTraceArgs): Trace {
     citations: extractCitations(args.answer),
     warnings: args.warnings,
     available_in_scope: args.availableInScope,
+    retrieval: args.retrieval,
     inference_endpoint: args.inferenceEndpoint,
     duration_ms: Date.now() - args.startedAt,
   };

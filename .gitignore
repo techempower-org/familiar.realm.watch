@@ -18,6 +18,10 @@ coverage/
 *.jpeg
 *.jpg
 
+# Design/reference screenshots are tracked
+!docs/screenshots/
+!docs/screenshots/*.png
+
 # Paraphrase probe results — regenerable benchmark output (data, not code)
 tests/eval/probe-results-*.json
 tests/eval/__pycache__/

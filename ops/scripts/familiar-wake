@@ -1,0 +1,36 @@
+#!/usr/bin/env bash
+# familiar-wake — wake the 'familiar' host from S3 via a Wake-on-LAN magic packet.
+#
+# MUST be run from a host on familiar's L2 segment (10.0.6.0/24), e.g. katana —
+# WOL magic packets are link-local broadcasts and are not routed across subnets.
+# Pairs with `familiar-sleep`. See memory: reference-familiar-wol-s3.
+set -euo pipefail
+
+HOST=familiar
+MAC=04:d9:f5:fa:1e:e0   # familiar enp5s0 — Realtek RTL8168
+
+if ping -c1 -W2 "$HOST" >/dev/null 2>&1; then
+  echo "$HOST is already up."
+  exit 0
+fi
+
+# Limited broadcast (255.255.255.255) floods the local segment; send a few in
+# case of UDP loss. To target a specific subnet broadcast: wakeonlan -i <bcast>.
+echo "Sending magic packet to $MAC..."
+for _ in 1 2 3; do wakeonlan "$MAC" >/dev/null; done
+
+printf "Waiting for %s to wake" "$HOST"
+start=$SECONDS
+for _ in $(seq 1 45); do
+  if ping -c1 -W2 "$HOST" >/dev/null 2>&1; then
+    printf " — up in %ss.\n" "$((SECONDS - start))"
+    exit 0
+  fi
+  printf "."
+  sleep 2
+done
+
+printf "\nTimed out after 90s — %s did not wake.\n" "$HOST" >&2
+echo "If it was fully powered off (S5), WOL won't work without the BIOS toggle;" >&2
+echo "use 'familiar-sleep' (S3) rather than 'poweroff' for remote wake." >&2
+exit 1

@@ -1,0 +1,43 @@
+#!/usr/bin/env bash
+# familiar-sleep — put the 'familiar' host into S3 deep sleep.
+#
+# Wake it again with `familiar-wake`. WOL works from S3 because the wake rides
+# the ACPI path (kernel-armed), NOT the firmware's S5 "Power On By PCI-E" toggle
+# — which is why a full `poweroff` can't be woken on this headless box but S3 can.
+# RAM stays powered on standby (~10W). See memory: reference-familiar-wol-s3.
+#
+# Runs from anywhere with `ssh familiar` (passwordless sudo on familiar).
+set -euo pipefail
+
+HOST=familiar
+IFACE=enp5s0
+
+if ! ping -c1 -W2 "$HOST" >/dev/null 2>&1; then
+  echo "$HOST is not reachable — already asleep/off? (nothing to do)"
+  exit 0
+fi
+
+# Confirm WOL is armed BEFORE sleeping — otherwise it can't be woken.
+echo "Checking WOL is armed on $HOST ($IFACE)..."
+wol=$(ssh "$HOST" "sudo ethtool $IFACE | sed -n 's/.*Wake-on: //p' | tail -1" || echo "?")
+if [ "$wol" != "g" ]; then
+  echo "  Wake-on='$wol' (want 'g') — arming now..."
+  ssh "$HOST" "sudo ethtool -s $IFACE wol g"
+fi
+echo "  WOL armed (Wake-on: g)."
+
+# Detached so the dying SSH link doesn't hang this script.
+echo "Suspending $HOST to S3..."
+ssh "$HOST" "sudo systemd-run --no-block systemctl suspend" >/dev/null
+
+# Wait for it to drop off the network = it actually entered S3.
+for _ in $(seq 1 45); do
+  if ! ping -c1 -W2 "$HOST" >/dev/null 2>&1; then
+    echo "$HOST is asleep (S3). Wake it with:  familiar-wake"
+    exit 0
+  fi
+  sleep 2
+done
+
+echo "WARNING: $HOST still reachable after 90s — suspend may not have taken." >&2
+exit 1

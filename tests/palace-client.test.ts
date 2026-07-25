@@ -166,6 +166,77 @@ describe("PalaceClient", () => {
     expect(result.errors).toEqual(["graph_link_failed"]);
   });
 
+  test("searchAgeFused posts to /search/age-fused with camel→snake body mapping", async () => {
+    let captured: { url: string; body: string; method: string; headers: Headers } | null = null;
+    const fetchMock = mockFetch(async (req) => {
+      captured = { url: req.url, body: await req.text(), method: req.method, headers: req.headers };
+      return new Response(JSON.stringify({
+        query: "pgvector lock",
+        available_in_scope: 200,
+        warnings: [],
+        results: [{ drawer_id: "ag1", text: "graph hit", wing: "memorypalace", room: "problems", similarity: 0.7, matched_via: "both" }],
+        trace: { n_vector: 18, n_graph: 6, n_after_fusion: 8 },
+      }), { status: 200, headers: { "content-type": "application/json" } });
+    });
+    const client = new PalaceClient({ baseUrl: "http://familiar:8085", apiKey: "k", searchTimeoutMs: 2000, fetch: fetchMock as unknown as typeof fetch });
+
+    const result = await client.searchAgeFused({
+      query: "pgvector lock", limit: 8, wing: "memorypalace", room: "problems",
+      graphTopK: 50, fusionK: 60, includeTrace: true,
+    });
+
+    expect(captured!.method).toBe("POST");
+    expect(captured!.url).toContain("/search/age-fused");
+    expect(captured!.headers.get("x-api-key")).toBe("k");
+    const sent = JSON.parse(captured!.body);
+    expect(sent).toEqual({
+      query: "pgvector lock", limit: 8, wing: "memorypalace", room: "problems",
+      graph_top_k: 50, fusion_k: 60, include_trace: true,
+    });
+    // Daemon trace passes through; drawer_id normalized to id; matched_via preserved.
+    expect(result.trace).toEqual({ n_vector: 18, n_graph: 6, n_after_fusion: 8 });
+    expect(result.results[0].id).toBe("ag1");
+    expect(result.results[0].matched_via).toBe("both");
+  });
+
+  test("searchAgeFused omits optional graph_top_k/fusion_k/include_trace when unset", async () => {
+    let body = "";
+    const fetchMock = mockFetch(async (req) => {
+      body = await req.text();
+      return new Response(JSON.stringify({ query: "x", results: [] }), { status: 200 });
+    });
+    const client = new PalaceClient({ baseUrl: "http://k:8085", apiKey: "", searchTimeoutMs: 2000, fetch: fetchMock as unknown as typeof fetch });
+    await client.searchAgeFused({ query: "x", limit: 5 });
+    const sent = JSON.parse(body);
+    expect(sent).toEqual({ query: "x", limit: 5 });
+  });
+
+  test("searchAgeFused strips trailing punctuation from query (embedding stability)", async () => {
+    let body = "";
+    const fetchMock = mockFetch(async (req) => {
+      body = await req.text();
+      return new Response(JSON.stringify({ query: "x", results: [] }), { status: 200 });
+    });
+    const client = new PalaceClient({ baseUrl: "http://k:8085", apiKey: "", searchTimeoutMs: 2000, fetch: fetchMock as unknown as typeof fetch });
+    await client.searchAgeFused({ query: "What is GraphPalace?", limit: 5 });
+    expect(JSON.parse(body).query).toBe("What is GraphPalace");
+  });
+
+  test("searchAgeFused throws on non-2xx (so retrieveAndGround can fall back on 503)", async () => {
+    const fetchMock = mockFetch(() => new Response("backend is chroma", { status: 503, statusText: "Service Unavailable" }));
+    const client = new PalaceClient({ baseUrl: "http://k:8085", apiKey: "", searchTimeoutMs: 2000, fetch: fetchMock as unknown as typeof fetch });
+    await expect(client.searchAgeFused({ query: "x", limit: 5 })).rejects.toThrow(/503/);
+  });
+
+  test("searchAgeFused respects timeout", async () => {
+    const fetchMock = mockFetch(async () => {
+      await new Promise((r) => setTimeout(r, 200));
+      return new Response("{}", { status: 200 });
+    });
+    const client = new PalaceClient({ baseUrl: "http://k:8085", apiKey: "", searchTimeoutMs: 50, fetch: fetchMock as unknown as typeof fetch });
+    await expect(client.searchAgeFused({ query: "x", limit: 5 })).rejects.toThrow(/abort|timeout/i);
+  });
+
   test("health returns parsed JSON", async () => {
     const fetchMock = mockFetch(() => new Response(JSON.stringify({ status: "ok", drawers: 165915 }), { status: 200 }));
     const client = new PalaceClient({ baseUrl: "http://k:8085", apiKey: "", searchTimeoutMs: 2000, fetch: fetchMock as unknown as typeof fetch });

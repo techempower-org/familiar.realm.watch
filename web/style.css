@@ -2184,6 +2184,60 @@ main {
   .block-header { cursor: default; touch-action: auto; }
   .block-settings-drawer { width: 100vw; max-width: 100vw; }
   .dashboard-picker { left: 8px !important; right: 8px !important; max-width: none; }
+
+  /* Mobile sizing fix (#88): in the desktop grid, each block's HEIGHT comes
+     from its grid-row span, which gives the flex:1 .block-content something to
+     fill. In the mobile flex-COLUMN stack there is no such height, so a
+     content area that uses `flex:1` + inner `height:100%` + `overflow:auto`
+     collapses to a sliver — the slot-picker and search-mode rows became
+     untappable (their options scrolled out of a 0-height clip; a tap on the
+     "center" landed on the next block's header). Letting blocks size to their
+     content on mobile fixes every self-sizing widget at once. The two big
+     scrollers (chat, palace) get explicit heights so they don't grow
+     unbounded; everything else just shows its content. */
+  /* The block must not shrink below its content in the column, and must not
+     clip it. flex:0 0 auto + height:auto + overflow:visible = grows to fit. */
+  .block {
+    height: auto;
+    flex: 0 0 auto;
+    overflow: visible;
+  }
+  /* Take the block-content out of the flex-fill chain: `flex: 0 0 auto` means
+     "size to your own content," so the surrounding flex-column block grows to
+     fit instead of squeezing the content to min-content. overflow:visible
+     stops it from becoming a 0-height scroll clip. */
+  .block-content {
+    flex: 0 0 auto;
+    overflow: visible;
+    min-height: 0;
+  }
+  /* Self-sizing widgets: block flow + auto min-height so they report their
+     true content height up the chain (no inner scroll-clip collapse). */
+  .search-mode,
+  .slot-picker {
+    height: auto;
+    min-height: auto;
+  }
+  .search-mode-list,
+  .slot-list {
+    overflow-y: visible;
+    flex: 0 0 auto;
+    min-height: auto;
+  }
+  /* Chat + palace are genuinely large — keep them as flex scrollers with a
+     sane, viewport-relative height so the page stays navigable. */
+  .block-content-chat {
+    flex: 0 0 auto;
+    display: flex;
+    flex-direction: column;
+    height: 75vh; height: 75dvh;
+    overflow: hidden;
+  }
+  .block-content-palace {
+    flex: 0 0 auto;
+    max-height: 80vh; max-height: 80dvh;
+    overflow-y: auto;
+  }
 }
 
 /* ----- Touch-friendly hit-areas (coarse pointers — tablets, phones) -----
@@ -2539,4 +2593,87 @@ main {
 }
 @media (prefers-reduced-motion: reduce) {
   .welcome-flourish { display: none; }
+}
+
+/* =====================================================================
+ * Small-screen responsiveness pass (issue #88)
+ * ---------------------------------------------------------------------
+ * The dashboard was authored desktop-first. These layers make it genuinely
+ * usable on phones (~320–480px) and small tablets without ripping out the
+ * grid engine. Goals: no horizontal overflow, ≥44px tap targets, readable
+ * type, a fully-usable chat composer + transcript. We work WITH the existing
+ * mobile stack (the dashboard collapses to a flex column at ≤767px and
+ * dashboard.js disables drag/resize there) — these rules tighten spacing and
+ * fix overflow inside that stack.
+ *
+ * Theming is untouched: every value reuses the existing custom properties so
+ * dark + light (prefers-color-scheme) both track automatically.
+ * ===================================================================== */
+
+/* Belt-and-braces: nothing in the dashboard should ever cause a horizontal
+ * scrollbar on the page. Long unbreakable tokens (URLs, drawer ids) in chat
+ * or palace content wrap instead of widening the viewport. */
+@media (max-width: 767px) {
+  html, body { overflow-x: hidden; }
+  .dashboard { overflow-x: hidden; }
+  .block { max-width: 100%; }
+  /* NB: don't set overflow-x on .block-content here — the mobile-stack rule
+     above sets `overflow: visible` so self-sizing widgets can grow to their
+     content height. An overflow-x override would reintroduce a scroll
+     container and collapse them to a sliver again. Horizontal overflow is
+     already prevented by .block max-width + overflow-wrap below. */
+  /* Pre/code blocks scroll internally rather than stretching the block. */
+  .msg.assistant pre { overflow-x: auto; }
+  /* Wrap pathological long words (drawer_ids, URLs) in message + palace text. */
+  .msg, .browser-item, .palace-detail-body { overflow-wrap: anywhere; }
+}
+
+/* ---- Phones (≤480px): the real squeeze. ---- */
+@media (max-width: 480px) {
+  /* Header: keep it on one row without crowding. The "layout" text button
+     shrinks; tabs + actions stay reachable. */
+  .main { padding: 0 0.6rem; }
+  .hdr { gap: 0.45rem; padding: 0.6rem 0; }
+  .hdr-tabs { gap: 0.2rem; margin-right: 0.3rem; }
+  .hdr-tab { padding: 0.3rem 0.6rem; }            /* taller tap target */
+  .hdr-action { padding: 0.3rem 0.55rem; }
+  /* Give the menu + add/layout/icon buttons a comfortable finger target. */
+  .hdr-menu { width: 2.5rem; height: 2.5rem; }
+  .hdr-action-icon { width: 2.5rem; height: 2.5rem; }
+
+  /* Chat composer: bigger, thumb-friendly. 16px input font-size also stops
+     iOS Safari from zooming the viewport on focus. */
+  .block-content-chat .form { padding: 0.5rem 0.6rem calc(0.6rem + env(safe-area-inset-bottom)); }
+  #input { font-size: 1rem; padding: 0.7rem 0.85rem; min-height: 2.9rem; }
+  .form button[type="submit"],
+  .form #abort-btn { min-width: 2.9rem; min-height: 2.9rem; }
+
+  /* Messages can use nearly the full width on a phone. */
+  .msg { max-width: 96%; padding: 0.65rem 0.8rem; }
+  .msg.assistant { font-size: 1rem; padding-left: 1.1rem; }
+
+  /* Block chrome: slightly tighter padding so content gets the real estate. */
+  .block-content { padding: 0.45rem 0.55rem; }
+  .block-content-chat .log { padding: 0.6rem 0.6rem 0.2rem; }
+
+  /* Palace browser already collapses to one column at 960px; on a phone give
+     each stacked column a sensible height so three columns + kg don't make an
+     endless scroll, and keep its body from exceeding the block. */
+  .block-content-palace .browser-col { max-height: 13rem; }
+  .palace-toolbar { flex-wrap: wrap; gap: 0.4rem; }
+
+  /* Turn-footer pills wrap rather than overflow. */
+  .turn-footer .footer-row { flex-wrap: wrap; }
+
+  /* Settings drawer is already full-width at ≤767px; ensure its rows give
+     room for the label + control to wrap on the narrowest devices. */
+  .block-settings-row { flex-wrap: wrap; }
+}
+
+/* ---- Tiny phones (≤360px): final tightening so nothing clips. ---- */
+@media (max-width: 360px) {
+  .hdr-tab { font-size: 0.66rem; padding: 0.3rem 0.45rem; letter-spacing: 0.04em; }
+  .hdr-action { font-size: 0.66rem; padding: 0.3rem 0.45rem; }
+  .status { font-size: 0.68rem; padding: 0.2rem 0.4rem; }
+  .main { padding: 0 0.5rem; }
 }

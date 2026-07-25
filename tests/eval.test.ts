@@ -65,6 +65,52 @@ function makeRequest(body: unknown): Request {
   });
 }
 
+describe("/api/familiar/eval — search_mode override (#88)", () => {
+  test("?search_mode=age-fused routes through searchAgeFused and surfaces retrieval.n_graph", async () => {
+    let ageFusedCalled = false;
+    const palace = {
+      search: async () => { throw new Error("vector should not be called"); },
+      searchHybrid: async () => { throw new Error("hybrid should not be called"); },
+      searchAgeFused: async () => {
+        ageFusedCalled = true;
+        return {
+          query: "x", available_in_scope: 100, warnings: [],
+          results: [{ id: "ag1", text: "graph hit", wing: "memorypalace", room: "problems", similarity: 0.7, matched_via: "both" }],
+          trace: { n_vector: 18, n_graph: 6, n_after_fusion: 8 },
+        };
+      },
+    } as unknown as PalaceClient;
+
+    const req = new Request("http://localhost/api/familiar/eval?search_mode=age-fused", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ query: "pgvector lock race", mock: true }),
+    });
+    const res = await handleEval(req, deps(palace, "stub"));
+    const json = (await res.json()) as { retrieval?: { mode: string; n_graph: number } };
+
+    expect(ageFusedCalled).toBe(true);
+    expect(json.retrieval).toBeDefined();
+    expect(json.retrieval!.mode).toBe("age-fused");
+    expect(json.retrieval!.n_graph).toBe(6);
+  });
+
+  test("unknown ?search_mode= is ignored → default (hybrid) path runs", async () => {
+    const palace = mockPalace([
+      { id: "h1", text: "hybrid hit", wing: "w", room: "r", similarity: 0.8, matched_via: "drawer" },
+    ]);
+    const req = new Request("http://localhost/api/familiar/eval?search_mode=bogus", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ query: "x", mock: true }),
+    });
+    const res = await handleEval(req, deps(palace, "stub"));
+    const json = (await res.json()) as { retrieved_entities: { id: string }[]; retrieval?: { mode: string } };
+    expect(json.retrieved_entities.some((e) => e.id === "h1")).toBe(true);
+    expect(json.retrieval!.mode).toBe("hybrid");
+  });
+});
+
 describe("/api/familiar/eval — SME adapter contract", () => {
   test("returns SME-shape response with context_string, entities, and answer", async () => {
     const palace = mockPalace([
