@@ -97,9 +97,9 @@ describe("/api/familiar/eval — search_mode override (#88)", () => {
     expect(json.retrieval!.n_graph).toBe(6);
   });
 
-  test("unknown ?search_mode= is ignored → default (hybrid) path runs", async () => {
+  test("unknown ?search_mode= is ignored → default (age-fused) path runs", async () => {
     const palace = mockPalace([
-      { id: "h1", text: "hybrid hit", wing: "w", room: "r", similarity: 0.8, matched_via: "drawer" },
+      { id: "a1", text: "age-fused hit", wing: "w", room: "r", similarity: 0.8, matched_via: "both" },
     ]);
     const req = new Request("http://localhost/api/familiar/eval?search_mode=bogus", {
       method: "POST",
@@ -108,8 +108,8 @@ describe("/api/familiar/eval — search_mode override (#88)", () => {
     });
     const res = await handleEval(req, deps(palace, "stub"));
     const json = (await res.json()) as { retrieved_entities: { id: string }[]; retrieval?: { mode: string } };
-    expect(json.retrieved_entities.some((e) => e.id === "h1")).toBe(true);
-    expect(json.retrieval!.mode).toBe("hybrid");
+    expect(json.retrieved_entities.some((e) => e.id === "a1")).toBe(true);
+    expect(json.retrieval!.mode).toBe("age-fused");
   });
 });
 
@@ -267,14 +267,19 @@ describe("/api/familiar/eval — SME adapter contract", () => {
   });
 
   test("wing scope survives the age-fused → vector fallback (both channels get it)", async () => {
-    // Force the vector fallback by having age-fused 404 → silent fallback to
-    // /search. The wing must thread through both the primary and the fallback.
+    // Force the vector fallback by having age-fused 404 → hybrid 404 → silent
+    // fallback to /search. The wing must thread through every tier.
     let ageFusedCaptured: { wing?: string } | null = null;
+    let hybridCaptured: { wing?: string } | null = null;
     let vectorCaptured: { wing?: string } | null = null;
     const palace = {
       search: async (opts: { wing?: string }) => {
         vectorCaptured = { wing: opts.wing };
         return { query: "", results: [], warnings: [], available_in_scope: 0 };
+      },
+      searchHybrid: async (opts: { wing?: string }) => {
+        hybridCaptured = { wing: opts.wing };
+        throw new Error("404 Not Found");
       },
       searchAgeFused: async (opts: { wing?: string }) => {
         ageFusedCaptured = { wing: opts.wing };
@@ -287,6 +292,7 @@ describe("/api/familiar/eval — SME adapter contract", () => {
     );
     expect(res.status).toBe(200);
     expect(ageFusedCaptured!.wing).toBe("realmwatch");
+    expect(hybridCaptured!.wing).toBe("realmwatch");
     expect(vectorCaptured!.wing).toBe("realmwatch");
   });
 });

@@ -106,8 +106,8 @@ export interface RetrieveAndGroundOpts {
   hydeGenerate?: (query: string) => Promise<string>;
   /**
    * Per-request retrieval strategy override. When omitted, falls back to the
-   * PALACE_SEARCH_MODE env var (default "hybrid"). "age-fused" routes through
-   * the daemon's AGE knowledge-graph walk (familiar.realm.watch#88), degrading
+   * PALACE_SEARCH_MODE env var (default "age-fused"). Routes through the
+   * daemon's AGE knowledge-graph walk (familiar.realm.watch#88), degrading
    * to hybrid then vector if the daemon can't serve it (503/404).
    */
   searchMode?: SearchMode;
@@ -166,7 +166,7 @@ export async function retrieveAndGround(opts: RetrieveAndGroundOpts): Promise<Re
   timings.temporal_expand_ms = Math.round(performance.now() - tTemporal);
 
   // Retrieval strategy (familiar.realm.watch#88). Per-request `searchMode`
-  // wins; otherwise PALACE_SEARCH_MODE env (default "hybrid").
+  // wins; otherwise PALACE_SEARCH_MODE env (default "age-fused").
   //   vector    → GET /search             (embedding similarity only)
   //   hybrid    → POST /search/hybrid      (vector + BM25 + graph rerank)
   //   age-fused → POST /search/age-fused   (vector + AGE knowledge-graph walk)
@@ -176,12 +176,12 @@ export async function retrieveAndGround(opts: RetrieveAndGroundOpts): Promise<Re
   // with a `<from>_fallback_<to>` warning. Any OTHER error (ECONNREFUSED,
   // timeout) means the daemon is down: we do NOT silently substitute a
   // weaker result, we surface `palace_unreachable`.
-  const requested = (opts.searchMode ?? Bun.env.PALACE_SEARCH_MODE ?? "hybrid").toLowerCase();
+  const requested = (opts.searchMode ?? Bun.env.PALACE_SEARCH_MODE ?? "age-fused").toLowerCase();
   // Unknown values (typo'd env, stale client) degrade to the safe default
   // rather than silently collapsing to vector-only — see contract #88.
   const mode: SearchMode = (SEARCH_MODES as readonly string[]).includes(requested)
     ? (requested as SearchMode)
-    : "hybrid";
+    : "age-fused";
   let retrieval: RetrievalInfo | undefined;
 
   type Tier = { mode: SearchMode; run: () => Promise<PalaceSearchResult> };

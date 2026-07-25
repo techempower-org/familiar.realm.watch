@@ -5,9 +5,10 @@ import type { PalaceSearchResult } from "../src/types.ts";
 function fakePalace(result: PalaceSearchResult) {
   return {
     search: async () => result,
-    // Phase 5: retrieveAndGround defaults to hybrid; the fake returns the
-    // same result so tests don't have to assert on which channel ran.
     searchHybrid: async () => result,
+    // retrieveAndGround defaults to age-fused (#88); fake returns the same
+    // result across all three methods so tests don't assert on which channel ran.
+    searchAgeFused: async () => result,
     writeMemory: async () => ({ id: "", warnings: [], errors: [] }),
     health: async () => ({ status: "ok" }),
   };
@@ -62,6 +63,7 @@ describe("retrieveAndGround", () => {
     const palace = {
       search: async () => { throw new Error("aborted"); },
       searchHybrid: async () => { throw new Error("aborted"); },
+      searchAgeFused: async () => { throw new Error("aborted"); },
       writeMemory: async () => ({ id: "", warnings: [], errors: [] }),
       health: async () => ({ status: "ok" }),
     };
@@ -141,6 +143,7 @@ describe("hybrid → vector fallback", () => {
 
   test("hybrid 503 falls back to vector search with warning", async () => {
     const palace = {
+      searchAgeFused: async () => { throw new Error("503 Service Unavailable"); },
       searchHybrid: async () => { throw new Error("503 Service Unavailable"); },
       search: async () => ({
         query: "test query",
@@ -162,6 +165,7 @@ describe("hybrid → vector fallback", () => {
 
   test("hybrid non-503 error surfaces as palace_unreachable", async () => {
     const palace = {
+      searchAgeFused: async () => { throw new Error("ECONNREFUSED"); },
       searchHybrid: async () => { throw new Error("ECONNREFUSED"); },
       search: async () => ({
         query: "test query",
@@ -318,6 +322,7 @@ describe("HyDE integration", () => {
       retrievalLimit: 5,
       contextBudgetTokens: 4000,
       recentCitations: [],
+      searchMode: "hybrid",
       hydeGenerate,
     });
 
