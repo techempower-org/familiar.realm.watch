@@ -78,6 +78,10 @@ The slot resolver mtime-caches `/var/lib/familiar/slots.json` and re-reads on ch
 - **Functional health probes** — `/health` sends real chat + embed requests (not just model-list pings).
 - **Pre-deploy parse check** — `ops/scripts/` catches JS syntax errors before rsync.
 
+## Inference variants
+
+Beyond the five builtin slots, familiar also runs **Qwen36-coder** (Qwen3.6-35B-A3B UD-Q3_K_XL, 16.8GB MoE) as the default lane for Claude Code on katana. Enabled via `claude-local-qwen` launcher, routed through `http://familiar:8091`. See [HA pipeline integration spec](docs/superpowers/specs/2026-07-25-ha-pipeline-integration.md) for the full architecture.
+
 ## Docs
 
 - [Design spec](docs/superpowers/specs/2026-04-23-familiar-realm-watch-design.md)
@@ -85,6 +89,7 @@ The slot resolver mtime-caches `/var/lib/familiar/slots.json` and re-reads on ch
 - [Foundation rework spec](docs/superpowers/specs/2026-05-10-foundation-rework-design.md)
 - [v0.1 implementation plan](docs/superpowers/plans/2026-04-23-familiar-v0.1.md)
 - [Hybrid search + taxonomy plan](docs/superpowers/plans/2026-05-14-hybrid-search-and-taxonomy.md)
+- [HA pipeline integration](docs/superpowers/specs/2026-07-25-ha-pipeline-integration.md) — Claude Code → Qwen36-coder → Home Assistant
 
 ## License
 

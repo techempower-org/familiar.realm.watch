@@ -52,6 +52,10 @@ Five inference workloads — **chat**, **embed**, **extract**, **hyde**, **refle
 
 v1 ships the admin endpoints + slot infra. Chat/embed/HyDE/reflect runtime still routes through the legacy `InferenceRouter` until Wave 2b swaps it.
 
+## Qwen36-coder lane
+
+familiar also runs **Qwen36-coder** (Qwen3.6-35B-A3B UD-Q3_K_XL, 16.8GB MoE, 131K context) on `familiar:8091` via `--jinja`. Used by `claude-local-qwen` on katana as the default Claude Code inference lane. Supports tool-calling and the HA pipeline (Home Assistant integration). See [docs/superpowers/specs/2026-07-25-ha-pipeline-integration.md](docs/superpowers/specs/2026-07-25-ha-pipeline-integration.md).
+
 ## Deploying
 
 Scripts in `ops/scripts/`:
