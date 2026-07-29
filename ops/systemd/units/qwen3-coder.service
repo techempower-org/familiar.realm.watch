@@ -2,12 +2,26 @@
 Description=llama.cpp coder — Qwen3.6-35B-A3B MoE on both GPUs (local Claude Code backend)
 After=network.target mnt-ollama\x2dmodels.mount
 Requires=mnt-ollama\x2dmodels.mount
-# Owns BOTH P102s (~19 GB resident) — cannot coexist with the chat/extract
+# Owns BOTH P102s (~19 GB resident) — cannot coexist with the GPU chat/extract
 # slot units. Exception (2026-07-25): ollama-embed is allowed to coexist —
 # Qwen3.6's small hybrid KV leaves ~860 MiB free on GPU1 and nomic-embed
 # needs only ~321 MiB, so palace search stays up while the coder lane runs.
 # The companion's chat routes to this server too (OLLAMA_CHAT_URL=:8091).
-Conflicts=ollama-chat.service llama-server-extractor.service llama-server-extractor-gpu1.service llama-server-chat-gemma3-4b-gpu1.service llama-server-hyde-gemma3-4b-gpu1.service llama-server-reflect-qwen-3b-gpu1.service
+#
+# 2026-07-29: llama-server-extractor.service REMOVED from Conflicts=.
+# Conflicts= is symmetric, and both this unit and the extractor were
+# WantedBy=multi-user.target, so systemd had to drop one of two conflicting
+# boot jobs with no defined winner — an actual coin flip, observed live on
+# 2026-07-28 (extractor up 22:44:07, stopped 22:44:48 when this unit started).
+# It also left mempalace-kg-extract@11436 running against a dead :11436 for
+# ~17.7 h. Rather than pick a winner, the extractor moved to CPU
+# (llama-server-extractor.service.d/zz-cpu.conf, --n-gpu-layers 0), so it no
+# longer contends for VRAM and the conflict is gone rather than arbitrated.
+# Ember therefore wins the GPU by construction, not by luck, and unattended KG
+# extraction keeps running. Every unit still listed below is GPU-resident and a
+# genuine conflict; none of them is boot-enabled, which is what makes boot
+# deterministic.
+Conflicts=ollama-chat.service llama-server-extractor-gpu1.service llama-server-chat-gemma3-4b-gpu1.service llama-server-hyde-gemma3-4b-gpu1.service llama-server-reflect-qwen-3b-gpu1.service
 
 [Service]
 Type=simple
