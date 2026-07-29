@@ -127,12 +127,20 @@ rsync -a --delete \
 
 echo ">>> rsync source to ${DEST_HOST}:${DEST_ROOT}/..."
 ssh "${DEST_HOST}" "sudo mkdir -p ${DEST_ROOT} && sudo chown ${DEST_USER}:${DEST_USER} ${DEST_ROOT}"
+# 2026-07-29: excludes were `--exclude .env`, which matches ONLY the literal
+# name. It does not match .env.bak-*, .env.local, .env.save and friends — and an
+# untracked `.env.bak-20260725` containing a live PALACE_DAEMON_API_KEY was
+# sitting in the repo root at 0664, so this rsync would have copied that secret
+# into the world-readable staging dir /var/tmp/familiar-src/ and then on into
+# ${DEST_ROOT}. Widened to '.env*' so every variant is excluded. (This also
+# drops .env.example from the deploy tree, which is correct — it is dev-facing
+# documentation and lives in git; the real .env is written by the block below.)
 rsync -avP --delete \
-  --exclude node_modules --exclude .git --exclude .env --exclude '*.log' \
+  --exclude node_modules --exclude .git --exclude '.env*' --exclude '*.log' \
   -e "ssh" \
   "${REPO_ROOT}/" \
   "${DEST_HOST}:/var/tmp/familiar-src/"
-ssh "${DEST_HOST}" "sudo rsync -a --delete --exclude .env --chown ${DEST_USER}:${DEST_USER} /var/tmp/familiar-src/ ${DEST_ROOT}/"
+ssh "${DEST_HOST}" "sudo rsync -a --delete --exclude '.env*' --chown ${DEST_USER}:${DEST_USER} /var/tmp/familiar-src/ ${DEST_ROOT}/"
 
 echo ">>> Installing dependencies..."
 ssh "${DEST_HOST}" "sudo -u ${DEST_USER} bash -c 'cd ${DEST_ROOT} && ~/.bun/bin/bun install --production'"
@@ -214,17 +222,65 @@ ssh "${DEST_HOST}" "
   sudo systemctl daemon-reload
 "
 
-echo ">>> (Re)starting familiar-api..."
-ssh "${DEST_HOST}" "sudo systemctl enable familiar-api.service && sudo systemctl restart familiar-api.service"
+# 2026-07-29: this block used to be
+#   sudo systemctl enable familiar-api.service && sudo systemctl restart familiar-api.service
+# which was wrong twice over, and for a while actively destructive.
+#
+# 1. NEVER `enable`. familiar-api is deliberately on-demand — that is JP's
+#    documented operating choice, not an accident — and a deploy script must not
+#    silently reverse an operator decision. `enable` also persists across
+#    reboots, so one deploy would permanently change boot behaviour.
+# 2. Restart only what is ALREADY running. Deploying new code to a live service
+#    should restart it onto that code; deploying to a stopped service should
+#    leave it stopped.
+#
+# It was also fatal to the voice assistant until today: restarting familiar-api
+# pulled llama-server-chat-gemma3-4b-gpu1 up via familiar-api.service.wants/,
+# and that unit is in qwen3-coder.service's Conflicts=, so running this script
+# stopped Ember — the very model familiar-api's own OLLAMA_CHAT_URL (:8091)
+# points at. That .wants edge has since been removed (gemma GPU slot disabled,
+# 2026-07-29), but these semantics were wrong independently of it.
+echo ">>> Applying new code to familiar-api..."
+if ssh "${DEST_HOST}" "systemctl is-active --quiet familiar-api.service"; then
+  ssh "${DEST_HOST}" "sudo systemctl restart familiar-api.service"
+  echo "    familiar-api was running -> restarted onto the new code."
+  API_WAS_RUNNING=1
+else
+  API_WAS_RUNNING=""
+  echo "    familiar-api is NOT running -> left stopped (on-demand by design)."
+  echo "    The new code is deployed and will be picked up whenever it next starts."
+  echo "    To start it now:  ssh ${DEST_HOST} sudo systemctl start familiar-api"
+fi
+
+# Smoke tests only make sense against a running service. Without this guard the
+# post-fix script would poll a deliberately-stopped service for 15s and then
+# exit 1, turning a correct deploy into a failed one.
+if [ -z "${API_WAS_RUNNING}" ]; then
+  echo ">>> Smoke test skipped — familiar-api is intentionally stopped."
+  echo ""
+  echo ">>> Deploy done (code staged; service left as the operator had it)."
+  exit 0
+fi
+
 sleep 3
 
 echo ">>> Smoke test..."
 # Poll /api/version rather than a single shot — Bun's boot + module load
 # can run past the post-restart sleep, and a slow boot shouldn't false-fail
 # an otherwise-good deploy. ~15s budget, then give up.
+# 2026-07-29: this loop was `if curl -s ... | head -c 500; then version_ok=1`.
+# A pipeline's exit status is its LAST command's, so `head` returned 0 even when
+# curl had failed outright — version_ok was set on the first iteration every
+# time and this gate could never fail. Verified: piping a connection-refused
+# curl into head still exits 0. Test curl's own status with -f, capture the body,
+# and print it separately.
 version_ok=""
 for i in $(seq 1 15); do
-  if curl -s --max-time 3 http://${DEST_HOST}:8080/api/version | head -c 500; then version_ok=1; break; fi
+  if version_body=$(curl -sf --max-time 3 "http://${DEST_HOST}:8080/api/version"); then
+    version_ok=1
+    printf '%s' "${version_body}" | head -c 500
+    break
+  fi
   sleep 1
 done
 [ -n "$version_ok" ] || { echo "FAIL: /api/version (service did not come up)"; ssh "${DEST_HOST}" "sudo journalctl -u familiar-api -n 40"; exit 1; }
