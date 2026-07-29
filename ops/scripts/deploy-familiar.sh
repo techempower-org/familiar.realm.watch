@@ -132,9 +132,15 @@ ssh "${DEST_HOST}" "sudo mkdir -p ${DEST_ROOT} && sudo chown ${DEST_USER}:${DEST
 # untracked `.env.bak-20260725` containing a live PALACE_DAEMON_API_KEY was
 # sitting in the repo root at 0664, so this rsync would have copied that secret
 # into the world-readable staging dir /var/tmp/familiar-src/ and then on into
-# ${DEST_ROOT}. Widened to '.env*' so every variant is excluded. (This also
-# drops .env.example from the deploy tree, which is correct — it is dev-facing
-# documentation and lives in git; the real .env is written by the block below.)
+# ${DEST_ROOT}. Widened to '.env*' so every variant is excluded.
+#
+# Note on --delete semantics: rsync also protects excluded paths from deletion,
+# so widening this does NOT remove a .env.example already present on the host —
+# it only stops syncing new ones. Verified after the 2026-07-29 deploy: the
+# pre-existing /srv/familiar/.env.example survived untouched. That protection is
+# also why the real .env is safe here, and why a stale staging-dir .env could
+# linger in /var/tmp/familiar-src/ indefinitely (one was found there at 0664 in
+# a world-readable dir and removed by hand).
 rsync -avP --delete \
   --exclude node_modules --exclude .git --exclude '.env*' --exclude '*.log' \
   -e "ssh" \
