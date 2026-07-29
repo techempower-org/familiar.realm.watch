@@ -14,7 +14,7 @@ Local-first AI companion. Reads mempalace before speaking, writes it after. See 
 - **Inference: [llama.cpp](https://github.com/ggml-org/llama.cpp)** (`llama-server`) on `familiar` — built locally with `-DCMAKE_CUDA_ARCHITECTURES=52;61` to support Pascal (P102, sm_61) and Maxwell (GTX 970, sm_52). Speaks OpenAI-compatible `/v1/*` API. `src/ollama-client.ts` is the (legacy-named) OpenAI-compat client. Stock Ollama prebuilts silently CPU-fallback on Pascal — don't reach for them. See `~/.claude/projects/-home-jp-Projects-familiar-realm-watch/memory/reference_pascal_inference_stack.md`.
 - [palace-daemon](https://github.com/techempower-org/palace-daemon) (mempalace HTTP gateway) on `familiar` at `:8085` — postgres backend (pgvector + AGE) in Docker at `familiar:5433`, data on local SSD at `/var/lib/mempalace-db`
 - [mempalace](https://github.com/techempower-org/mempalace) (techempower-org fork) pip-installed into palace-daemon's venv — adds postgres+pgvector+AGE backend, hybrid search, canonical room taxonomy
-- familiar-api: production on `familiar` host (10.0.6.124); dev/test on `katana` (10.0.6.129)
+- familiar-api: production on `familiar` host; dev/test on `katana`. Address via hostname — `familiar` from katana, `familiar.lan` from the HA VM (HAOS doesn't resolve the bare name). Don't hardcode the IP: familiar moved from `.124` to `10.0.6.107` and the stale literal broke HA→familiar reachability.
 - Caddy + Authelia edge on `ubox0` — public-facing `familiar.jphe.in` lands here
 - PWA served by Bun from `web/`
 
