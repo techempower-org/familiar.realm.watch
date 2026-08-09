@@ -1,0 +1,31 @@
+[Unit]
+Description=Wyoming Piper — Ember's voice (en_GB-cori-high), moved off the HA VM
+# The mouth to wyoming-onnx-asr's ears (2026-08-09): the Piper ADD-ON on the HA
+# VM was part of why that VM ran overloaded, and TTS inference has no business
+# on the busiest box in the house. Same voice file as the add-on served —
+# en_GB-cori family; bumped medium -> HIGH in the same move (JP: 'cori high?'),
+# because 24 idle cores make the quality tier a free upgrade the VM never could.
+# Consumer config in ember.realm.watch/docs/home-assistant.md; same
+# cross-reference boundary as qwen3-coder and wyoming-onnx-asr.
+#
+# CPU on purpose (piper is light — a sentence renders in well under a second on
+# one core); the GPUs stay with the inference lanes by construction.
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=jp
+# --uri on 10200: the Wyoming TTS convention port (STT is 10300 next door).
+# First request for the voice downloads it into --data-dir (~60MB, once).
+ExecStart=/opt/wyoming-piper/venv/bin/python -m wyoming_piper \
+  --voice en_GB-cori-high \
+  --data-dir /opt/wyoming-piper/data \
+  --download-dir /opt/wyoming-piper/data \
+  --uri tcp://0.0.0.0:10200
+Restart=always
+RestartSec=5
+Nice=5
+
+[Install]
+WantedBy=multi-user.target
