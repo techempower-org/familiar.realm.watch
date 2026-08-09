@@ -1,0 +1,103 @@
+--- /tmp/claude-1000/-home-jp-Projects-ember-realm-watch/0cae5e92-d350-441f-b833-b06301f7d3d0/scratchpad/wy.orig.py	2026-08-09 08:46:12.226135186 -0700
++++ /tmp/claude-1000/-home-jp-Projects-ember-realm-watch/0cae5e92-d350-441f-b833-b06301f7d3d0/scratchpad/wy.py	2026-08-09 08:46:12.243390059 -0700
+@@ -98,11 +98,46 @@
+ # ==========================================================
+ # EVENT HANDLER
+ # ==========================================================
++def _save_utterance(save_dir, keep, audio_bytes, sample_rate, transcript):
++    """Tee one utterance to disk: exactly the bytes HA forwarded from the
++    satellite's mic, 16-bit mono, plus a sidecar .txt with what the model made
++    of them. This is 'what Ember hears' for debugging mic gain, clipped first
++    words and VAD cutoffs — enabled by --save-audio, pruned to --save-audio-keep
++    newest so it can run indefinitely without eating the disk."""
++    import wave, glob
++    try:
++        os.makedirs(save_dir, exist_ok=True)
++        ts = time.strftime("%Y%m%d-%H%M%S")
++        base = os.path.join(save_dir, f"utt-{ts}")
++        n = 0
++        path = f"{base}.wav"
++        while os.path.exists(path):
++            n += 1
++            path = f"{base}-{n}.wav"
++        with wave.open(path, "wb") as w:
++            w.setnchannels(1)
++            w.setsampwidth(2)
++            w.setframerate(sample_rate)
++            w.writeframes(bytes(audio_bytes))
++        with open(path.replace(".wav", ".txt"), "w") as f:
++            f.write(transcript or "")
++        wavs = sorted(glob.glob(os.path.join(save_dir, "utt-*.wav")))
++        for old in wavs[:-keep]:
++            for ext in (old, old.replace(".wav", ".txt")):
++                try:
++                    os.remove(ext)
++                except OSError:
++                    pass
++    except Exception as e:  # a debug tap must never kill transcription
++        LOG.warning("save-audio failed: %s", e)
++
++
+ class OnnxAsrEventHandler(AsyncEventHandler):
+ 
+     def __init__(self, model, reader, writer, model_id,
+                  debug=False, stream_debug=False,
+-                 endpoint_ms=DEFAULT_ENDPOINT_MS):
++                 endpoint_ms=DEFAULT_ENDPOINT_MS,
++                 save_dir=None, save_keep=40):
+ 
+         super().__init__(reader, writer)
+ 
+@@ -120,6 +155,8 @@
+         self.last_audio_time = None
+ 
+         self.endpoint_ms = endpoint_ms
++        self.save_dir = save_dir
++        self.save_keep = save_keep
+ 
+     def run_inference(self, audio):
+         if audio is None or len(audio) == 0:
+@@ -210,6 +247,10 @@
+ 
+             if duration * 1000 < MIN_AUDIO_MS:
+                 LOG.info("IGNORED SHORT AUDIO (%.2f ms)", duration * 1000)
++                if self.save_dir:
++                    _save_utterance(self.save_dir, self.save_keep,
++                                    self.audio_data, self.sample_rate,
++                                    "[ignored: too short]")
+                 await self.write_event(Transcript(text="").event())
+                 self.audio_data.clear()
+                 return True
+@@ -225,6 +266,10 @@
+ 
+                 text = extract_text(results)
+ 
++                if self.save_dir:
++                    _save_utterance(self.save_dir, self.save_keep,
++                                    self.audio_data, self.sample_rate, text)
++
+                 LOG.info(
+                     "ASR RESULT | %.2fs | %s | infer=%.3fs total=%.3fs",
+                     duration,
+@@ -259,6 +304,10 @@
+     parser.add_argument("--threads", type=int)
+     parser.add_argument("--no-vad", action="store_true")
+     parser.add_argument("--endpoint-ms", type=int, default=DEFAULT_ENDPOINT_MS)
++    parser.add_argument("--save-audio", default=None,
++                        help="directory to tee received utterances into (wav + transcript sidecar)")
++    parser.add_argument("--save-audio-keep", type=int, default=40,
++                        help="newest utterances kept when --save-audio prunes")
+ 
+     args = parser.parse_args()
+ 
+@@ -322,7 +371,9 @@
+             model, r, w, model_id,
+             debug=args.debug,
+             stream_debug=args.stream_debug,
+-            endpoint_ms=args.endpoint_ms
++            endpoint_ms=args.endpoint_ms,
++            save_dir=args.save_audio,
++            save_keep=args.save_audio_keep
+         )
+     )
+ 

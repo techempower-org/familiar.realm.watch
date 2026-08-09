@@ -1,0 +1,57 @@
+[Unit]
+Description=Wyoming ONNX-ASR — Parakeet STT for the Ember voice pipeline (CPU)
+# Ember's ears. Replaces stt.vosk in the `familiar-ember` Assist pipeline
+# (2026-08-09): NVIDIA parakeet-tdt-0.6b-v2 via onnx-asr, served over the
+# Wyoming protocol to Home Assistant. Consumer-side docs live in
+# ember.realm.watch/docs/home-assistant.md — cross-referenced, not mirrored,
+# same boundary as qwen3-coder.service.
+#
+# CPU ON PURPOSE, same reasoning as the KG extractor's zz-cpu.conf: the GPUs
+# belong to the inference lanes by construction, and an STT burst is short
+# (~0.5-2s per utterance on this box). No Conflicts= needed because nothing
+# here touches VRAM.
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=jp
+WorkingDirectory=/opt/wyoming-onnx-asr/src
+# --model parakeet-v2: the ENGLISH-optimised parakeet-tdt-0.6b-v2 — Ember's
+#   pipeline is en-only and v2 beats the multilingual v3 on English. First
+#   start downloads the model into --model-dir (~1GB, one time).
+# --threads 8 of 24: an utterance is a burst, not a load; 8 int8 threads
+#   transcribe a sentence in well under 2s without elbowing the coder lane.
+# --endpoint-ms 800 (default 500): JP's reported symptom is Ember cutting him
+#   off mid-sentence. 800ms tolerates a thinking pause without adding
+#   perceptible lag to the reply. Tune here, not in HA — one knob, one place.
+# --uri on 10300: the Wyoming convention port faster-whisper established;
+#   HA's integration suggests it by default.
+# --save-audio: tee every received utterance to disk (wav + transcript
+#   sidecar), newest 40 kept. This is the ONLY place in the whole chain where
+#   "what Ember hears" can be listened to — the device has no storage and HA
+#   keeps no pipeline audio — and it is the exact bytes the model transcribed,
+#   so a bad transcript can be replayed against the audio that produced it.
+#   JP asked for precisely this (2026-08-09). Listen from katana:
+#     scp familiar:/opt/wyoming-onnx-asr/debug-audio/<f>.wav /tmp && xdg-open ...
+#   ⚠️ The upstream clone is PATCHED to provide this —
+#   ops/patches/wyoming-onnx-asr-save-audio.patch. A `git pull` in
+#   /opt/wyoming-onnx-asr/src will conflict or silently drop the flag; re-apply
+#   the patch after any upstream update, or this unit fails to start
+#   (unknown argument), which is the loud failure and the intended one.
+ExecStart=/opt/wyoming-onnx-asr/venv/bin/python wyoming_onnx_asr.py \
+  --model parakeet-v2 \
+  --cpu \
+  --threads 8 \
+  --model-dir /opt/wyoming-onnx-asr/models \
+  --endpoint-ms 800 \
+  --save-audio /opt/wyoming-onnx-asr/debug-audio \
+  --save-audio-keep 40 \
+  --uri tcp://0.0.0.0:10300
+Restart=always
+RestartSec=5
+# Polite to the inference lanes: STT latency matters less than chat tokens.
+Nice=5
+
+[Install]
+WantedBy=multi-user.target
