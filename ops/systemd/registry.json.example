@@ -1,45 +1,39 @@
 {
   "schema_version": 1,
-  "_description": "Variant registry for familiar.realm.watch slot picker. Ops-owned. Edit alongside the systemd units in ops/systemd/units/ and the allow-list in allowed-units.txt. Copy to /var/lib/familiar/registry.json on the familiar host.",
+  "_description": "Variant registry for familiar.realm.watch slot picker. Ops-owned. Edit alongside the systemd units in ops/systemd/units/ and the allow-list in allowed-units.txt. Copy to /var/lib/familiar/registry.json on the familiar host. REFRESHED 2026-08-09 for the B60 era: one CUDA GPU remains (P102-100, device 0, UUID-pinned in units); the Arc Pro B60 runs qwen3-coder.service (Vulkan, :8091) OUTSIDE the slot system. Removed extractor-phi4-mini-gpu1 (9.5GB + resident embed left a 256MiB nondeterministic margin - admission must hard-fail, not flap) and chat-ollama-qwen-3b (registry claimed ollama/qwen2.5-3b/2.3GB but the unit actually runs phi-4 14B via llama-server override at ~9.4GB - same marginal-fit class; unit remains on disk for manual use). Former GPU1 variants are re-keyed to device 0. vram_mb column re-baselined against embed (~400MiB) being permanently resident on the P102.",
   "gpu_total_mb": {
-    "0": 10240,
-    "1": 10240
+    "0": 10240
   },
   "variants": [
     {
       "id": "extractor-phi4-mini-gpu0",
-      "label": "Phi-4-mini (GPU0)",
+      "label": "Phi-4-mini (P102)",
       "model": "phi-4-mini",
       "runtime": "llama-cpp",
       "unit": "llama-server-extractor.service",
       "url": "http://127.0.0.1:11436",
       "gpu": 0,
       "vram_mb": 5500,
-      "capabilities": ["extract"],
+      "capabilities": [
+        "extract",
+        "chat"
+      ],
       "context": 4096
     },
     {
-      "id": "extractor-phi4-mini-gpu1",
-      "label": "Phi-4-mini (GPU1, Hermes context)",
-      "model": "phi-4-mini-gpu1",
-      "runtime": "llama-cpp",
-      "unit": "llama-server-extractor-gpu1.service",
-      "url": "http://127.0.0.1:11437",
-      "gpu": 1,
-      "vram_mb": 9500,
-      "capabilities": ["extract"],
-      "context": 65536
-    },
-    {
       "id": "chat-gemma3-4b-gpu1",
-      "label": "Gemma 3 4B (GPU1)",
+      "label": "Gemma 3 4B (P102; id kept for slots.json compat)",
       "model": "gemma3:4b",
       "runtime": "llama-cpp",
       "unit": "llama-server-chat-gemma3-4b-gpu1.service",
       "url": "http://127.0.0.1:11438",
-      "gpu": 1,
+      "gpu": 0,
       "vram_mb": 4200,
-      "capabilities": ["chat", "hyde", "reflect"],
+      "capabilities": [
+        "chat",
+        "hyde",
+        "reflect"
+      ],
       "context": 8192
     },
     {
@@ -51,55 +45,53 @@
       "url": "http://127.0.0.1:11448",
       "gpu": null,
       "vram_mb": 0,
-      "capabilities": ["chat", "hyde", "reflect"],
-      "context": 8192
-    },
-    {
-      "id": "chat-ollama-qwen-3b",
-      "label": "Qwen 2.5 3B (Ollama, GPU0)",
-      "model": "qwen2.5:3b-instruct-q4_K_M",
-      "runtime": "ollama",
-      "unit": "ollama-chat.service",
-      "url": "http://127.0.0.1:11434",
-      "gpu": 0,
-      "vram_mb": 2300,
-      "capabilities": ["chat", "hyde", "reflect"],
+      "capabilities": [
+        "chat",
+        "hyde",
+        "reflect"
+      ],
       "context": 8192
     },
     {
       "id": "embed-nomic-gpu1",
-      "label": "nomic-embed-text v1.5 (GPU1)",
+      "label": "nomic-embed-text v1.5 (P102, UUID-pinned; id kept for compat)",
       "model": "nomic-embed-text:v1.5",
-      "runtime": "ollama",
+      "runtime": "llama-cpp",
       "unit": "ollama-embed.service",
       "url": "http://127.0.0.1:11435",
-      "gpu": 1,
-      "vram_mb": 350,
-      "capabilities": ["embed"],
+      "gpu": 0,
+      "vram_mb": 400,
+      "capabilities": [
+        "embed"
+      ],
       "context": 8192
     },
     {
       "id": "hyde-gemma3-4b-gpu1",
-      "label": "HyDE — Gemma 3 4B (GPU1)",
+      "label": "HyDE — Gemma 3 4B (P102; id kept for compat)",
       "model": "gemma3:4b",
       "runtime": "llama-cpp",
       "unit": "llama-server-hyde-gemma3-4b-gpu1.service",
       "url": "http://127.0.0.1:11439",
-      "gpu": 1,
+      "gpu": 0,
       "vram_mb": 4200,
-      "capabilities": ["hyde"],
+      "capabilities": [
+        "hyde"
+      ],
       "context": 2048
     },
     {
       "id": "reflect-qwen-3b-gpu1",
-      "label": "Reflect — Qwen Coder 3B (GPU1)",
+      "label": "Reflect — Qwen Coder 3B (P102; id kept for compat)",
       "model": "qwen2.5-coder:3b",
       "runtime": "llama-cpp",
       "unit": "llama-server-reflect-qwen-3b-gpu1.service",
       "url": "http://127.0.0.1:11440",
-      "gpu": 1,
+      "gpu": 0,
       "vram_mb": 2100,
-      "capabilities": ["reflect"],
+      "capabilities": [
+        "reflect"
+      ],
       "context": 4096
     }
   ]

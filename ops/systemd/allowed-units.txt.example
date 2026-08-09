@@ -8,17 +8,17 @@
 # adds or removes a variant. The intent is that every variant.unit value
 # in registry.json appears here exactly once.
 
-# Currently-deployed units (2026-05-28)
+# Currently-deployed units (refreshed 2026-08-09 for the B60 era:
+# extractor-gpu1 and ollama-chat removed with their registry variants —
+# the second P102 left with the B60 install; see registry.json.example)
 llama-server-extractor.service
-llama-server-extractor-gpu1.service
-ollama-chat.service
 ollama-embed.service
 
-# New units shipped by the slot picker (see ops/systemd/units/)
+# Slot picker units (see ops/systemd/units/)
 llama-server-chat-gemma3-4b-gpu1.service
 llama-server-chat-gemma3-4b-cpu.service
 llama-server-hyde-gemma3-4b-gpu1.service
 llama-server-reflect-qwen-3b-gpu1.service
 
-# Local Claude Code backend (both GPUs — Conflicts= with all GPU slot units)
+# Local Claude Code backend (B60/Vulkan since 2026-08; no Conflicts= — slot units are CUDA/P102, no contention)
 qwen3-coder.service
