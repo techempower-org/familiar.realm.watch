@@ -1,0 +1,102 @@
+#!/bin/bash
+# familiar-sleep-now — quiesce the inference lanes, then suspend to S3.
+#
+# ---------------------------------------------------------------------------
+# WHY THIS IS A WRAPPER AND NOT A system-sleep HOOK
+# ---------------------------------------------------------------------------
+# The obvious design is a `pre` hook in /usr/lib/systemd/system-sleep/, so every
+# sleep path is covered without any caller knowing. It was built that way first,
+# and it does not work: a sleep hook runs INSIDE systemd-suspend.service, which
+# is itself After=sleep.target, so the manager is mid-transaction when the hook
+# asks it to stop another unit. The stop job queues behind the sleep operation.
+#
+#   measured 2026-08-15, same units, same load, minutes apart:
+#     `systemctl stop` from inside the sleep hook:  >60 s, still deactivating
+#     `systemctl stop` from a normal SSH session:     1 s, MemFree 0.7 -> 7.5 GB
+#
+# Escalating to SIGKILL to beat the clock made it strictly worse: it interrupted
+# a graceful GPU teardown that was merely queued, and the half-torn-down driver
+# then failed the suspend outright —
+#     "Failed to put system to sleep. System resumed again: Device or resource busy"
+#
+# So the quiesce happens HERE, before the suspend is initiated. The sleep hook
+# (familiar-ml-quiesce) keeps the parts that are safe to do in-transaction:
+# the resume-side restore, and setting the HA hold as a safety net for paths
+# that bypass this wrapper.
+#
+# ---------------------------------------------------------------------------
+# WHY QUIESCE AT ALL
+# ---------------------------------------------------------------------------
+# The llama-server lanes pin ~10 GB of GPU buffers in *system* RAM (xe/TTM GTT)
+# and push the 16 GB zram swap to 100 %. Suspend entry then finds ~1.5 GB free
+# and no way to reclaim — kswapd is frozen and the storage stack is going down,
+# so only already-free memory counts. The PM_SUSPEND_PREPARE notifier chain,
+# where the GPU drivers evict VRAM into system RAM, is what pays for it:
+#
+#     lanes running:  sync -> freeze 81.7 s, 7 processes OOM-killed, S3 for ~2 s
+#     lanes stopped:  sync -> freeze  0.06 s, nothing killed,        S3 held
+#
+# systemd logs "Finished System Suspend" either way, so the failure is silent.
+
+set -uo pipefail
+
+UNITS=(qwen3-coder.service donkey-llm.service)
+STATE=/run/familiar-ml-quiesce.restore
+STOP_WAIT_TICKS=60    # 60 x 1 s — generous; the measured cost is ~1 s
+
+log() { echo "familiar-sleep-now: $*"; }
+free_kb() { awk '/^MemFree:/ {print $2}' /proc/meminfo; }
+
+[ "$(id -u)" -eq 0 ] || { echo "must run as root (try: sudo $0)" >&2; exit 1; }
+
+# Tell Ember to stand down BEFORE the host goes dark, so the first announce
+# that lands mid-suspend doesn't wake it straight back up.
+/usr/local/sbin/familiar-ha-hold on || true
+
+# Record only what WE stop. Units already stopped (e.g. paused by ~/ci-hooks)
+# stay stopped on resume — this never "restores" something a human turned off.
+: > "$STATE"
+to_stop=()
+for u in "${UNITS[@]}"; do
+  if systemctl is-active --quiet "$u"; then
+    echo "$u" >> "$STATE"
+    to_stop+=("$u")
+  fi
+done
+
+if [ "${#to_stop[@]}" -gt 0 ]; then
+  log "stopping ${to_stop[*]} (they hold GPU buffers in system RAM)"
+  before=$(free_kb)
+  systemctl stop "${to_stop[@]}" || log "WARNING: systemctl stop returned non-zero"
+
+  # `is-active` is checked by STRING, not exit code: a unit that is still
+  # `deactivating` exits non-zero, so `is-active --quiet` would call a lane
+  # that is still holding 20 GB "stopped".
+  ticks=0
+  while [ "$ticks" -lt "$STOP_WAIT_TICKS" ]; do
+    still=""
+    for u in "${to_stop[@]}"; do
+      case "$(systemctl is-active "$u" 2>/dev/null)" in
+        inactive|failed|"") ;;
+        *) still="${still} ${u}" ;;
+      esac
+    done
+    [ -z "$still" ] && break
+    sleep 1
+    ticks=$((ticks + 1))
+  done
+
+  if [ -n "$still" ]; then
+    # Deliberately NOT escalating to SIGKILL — see the header. A slow teardown
+    # that finishes is better than a fast one that leaves the GPU busy.
+    log "WARNING:${still} still stopping after ${ticks}s — suspending anyway;" \
+        "if this rolls back, that is why"
+  else
+    log "lanes stopped in ${ticks}s (MemFree ${before} -> $(free_kb) kB)"
+  fi
+else
+  log "no inference lanes running — nothing to quiesce"
+fi
+
+log "suspending"
+exec systemd-run --no-block systemctl suspend

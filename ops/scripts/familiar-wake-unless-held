@@ -1,0 +1,64 @@
+#!/usr/bin/env bash
+# familiar-wake-unless-held — wake familiar, unless it was deliberately put to sleep.
+#
+# Drop-in replacement for `realm wol wake familiar` in AUTOMATED callers only —
+# principally mempalace's auto_wake, which fires whenever a palace query finds
+# the daemon on familiar unreachable. That self-healing is right when familiar
+# fell asleep on its own and wrong when a human just asked it to sleep.
+#
+# Measured 2026-08-15: with Home Assistant's wake loop already held off, a
+# single packet from katana still ended a deliberate sleep after 124 s —
+#     21:42:30.023421  magic packet, katana -> subnet broadcast :9
+#     21:42:30.268495  ACPI: PM: Low-level resume complete   (245 ms later)
+# The sender was mempalace auto_wake, triggered by a Claude Code hook querying
+# the palace. Nobody typed anything.
+#
+# ⚠️ DO NOT put this guard in `realm wol wake` itself. A human running
+#    `realm wol wake familiar` is exactly how a held host is meant to come
+#    back; guarding the front door would strand it.
+#
+# The hold lives in Home Assistant (input_boolean.familiar_sleep_hold) because
+# that is already the authority: familiar sets it from its own sleep hook and
+# clears it on resume, so every sleep path agrees without coordinating.
+#
+# FAILS OPEN, deliberately: if HA is unreachable or the token is missing we
+# wake as before. auto_wake exists to keep the palace usable, and an HA outage
+# is a different fault than a deliberate sleep — but it is logged loudly,
+# because a silent fail-open here restores the original bug.
+
+set -uo pipefail
+
+HOST="${FAMILIAR_HOST:-familiar}"
+HA_TOKEN_FILE="${HA_TOKEN_FILE:-$HOME/.config/familiar/ha-token}"
+HA_URL="${HA_URL:-https://ha.jphe.in:8123}"
+HOLD_ENTITY=input_boolean.familiar_sleep_hold
+
+log() { echo "familiar-wake-unless-held: $*" >&2; }
+
+hold_state() {
+  [ -r "$HA_TOKEN_FILE" ] || { echo "unknown:no-token"; return; }
+  local body
+  body=$(curl -sf -m 6 -H "Authorization: Bearer $(cat "$HA_TOKEN_FILE")" \
+           "${HA_URL}/api/states/${HOLD_ENTITY}" 2>/dev/null) \
+    || { echo "unknown:unreachable"; return; }
+  # No jq dependency — this runs from hooks with a minimal environment.
+  printf '%s' "$body" | sed -n 's/.*"state"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p'
+}
+
+state=$(hold_state)
+case "$state" in
+  on)
+    log "${HOST} is under a deliberate sleep hold — NOT waking it"
+    exit 0
+    ;;
+  off)
+    ;;
+  unknown:*)
+    log "WARNING: could not read ${HOLD_ENTITY} (${state#unknown:}) — waking anyway (fail-open)"
+    ;;
+  *)
+    log "WARNING: unexpected hold state '${state}' — waking anyway (fail-open)"
+    ;;
+esac
+
+exec realm wol wake "${HOST}"

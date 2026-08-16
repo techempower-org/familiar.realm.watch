@@ -1,0 +1,82 @@
+#!/bin/bash
+# familiar-ml-quiesce — the in-transaction half of making S3 sleep hold.
+#
+# systemd calls: <script> {pre|post} {suspend|hibernate|hybrid-sleep|...}
+# (also self-invoked as `clear-hold`, see POST below)
+#
+# The heavy lifting — stopping the inference lanes so the suspend does not OOM
+# — lives in /usr/local/sbin/familiar-sleep-now, NOT here, because a sleep hook
+# runs inside systemd-suspend.service and cannot reliably stop units: the job
+# queues behind the sleep transaction. Measured 2026-08-15: >60 s from the hook
+# versus 1 s from a normal session. See familiar-sleep-now for the full write-up.
+#
+# What is left here is what is safe and correct to do in-transaction:
+#
+#   pre   set the HA sleep hold — a cheap HTTP POST, and a safety net for sleep
+#         paths that bypass the wrapper (a bare `systemctl suspend`). Warn
+#         loudly if the lanes are still running, because that suspend will
+#         probably OOM and roll back, and systemd will still call it a success.
+#
+#   post  restart whatever the wrapper stopped, and clear the hold.
+#
+# Restoring here rather than in the wrapper is deliberate: the wrapper's process
+# is gone by the time the host resumes, so only a resume-side hook can do it —
+# and this half was verified working before the wrapper existed.
+
+set -uo pipefail
+
+ACTION="${1:-}"
+STATE=/run/familiar-ml-quiesce.restore
+LANES=(qwen3-coder.service donkey-llm.service)
+HA_HOLD=/usr/local/sbin/familiar-ha-hold
+
+log() { echo "familiar-ml-quiesce: $*"; }
+
+case "$ACTION" in
+  pre)
+    "$HA_HOLD" on || true
+
+    running=""
+    for u in "${LANES[@]}"; do
+      systemctl is-active --quiet "$u" && running="${running} ${u}"
+    done
+    if [ -n "$running" ]; then
+      log "WARNING:${running} still running at suspend entry — this sleep was not" \
+          "started via familiar-sleep-now, so ~10 GB of GPU buffers are still" \
+          "pinned in system RAM. Expect an OOM rollback (which systemd will" \
+          "report as 'Finished System Suspend' regardless)."
+    fi
+    ;;
+
+  post)
+    # Detached: the NIC needs a few seconds after resume before the HA call can
+    # succeed, and nothing about clearing a flag should hold up the resume path.
+    # systemd-run escapes this hook's cgroup so it survives the hook exiting.
+    systemd-run --no-block --collect --unit=familiar-ml-quiesce-holdclear \
+      "$0" clear-hold >/dev/null 2>&1 \
+      || { log "systemd-run unavailable — clearing hold inline"; "$HA_HOLD" off || true; }
+
+    if [ -s "$STATE" ]; then
+      while read -r u; do
+        [ -n "$u" ] || continue
+        log "restarting $u"
+        # --no-block: a 20 GB model load must not hold up the resume path.
+        systemctl start --no-block "$u" || log "WARNING: failed to start $u"
+      done < "$STATE"
+    fi
+    rm -f "$STATE"
+    ;;
+
+  clear-hold)
+    # Retry across the post-resume window while the link comes back (measured
+    # ~4 s from "PM: suspend exit" to "Link is Up" on this host).
+    for _ in 1 2 3 4 5 6 7 8; do
+      "$HA_HOLD" off && exit 0
+      sleep 4
+    done
+    log "ERROR: could not clear the HA sleep hold after ~32s"
+    exit 1
+    ;;
+esac
+
+exit 0

@@ -1,0 +1,46 @@
+#!/bin/bash
+# familiar-ha-hold {on|off} — set or clear Home Assistant's "let familiar sleep"
+# flag (input_boolean.familiar_sleep_hold).
+#
+# Ember's stack treats "familiar is asleep" as a fault and heals it: any
+# announce, presence event or satellite listen while the backend is down calls
+# script.ember_wake_backend -> script.wake_familiar -> magic packet. Verified by
+# tcpdump on VLAN6 (2026-08-15): three packets from the HA VM, 75 s apart —
+# which is that script's own wait timeout, not the caller's rate.
+#
+# So a deliberate sleep has to say so. The guard lives in HA
+# (packages/ember_wake_backend.yaml); this is the switch familiar flips.
+#
+# Best-effort by design: failing to reach HA must never block a suspend. Worst
+# case Ember wakes the host, which is today's behaviour, not a regression.
+
+set -uo pipefail
+
+ACTION="${1:-}"
+HA_URL_FILE=/etc/familiar/ha-url
+HA_TOKEN_FILE=/etc/familiar/ha-token
+HOLD_ENTITY=input_boolean.familiar_sleep_hold
+
+log() { echo "familiar-ha-hold: $*"; }
+
+case "$ACTION" in
+  on)  verb=turn_on  ;;
+  off) verb=turn_off ;;
+  *)   echo "usage: $0 {on|off}" >&2; exit 2 ;;
+esac
+
+[ -r "$HA_TOKEN_FILE" ] || { log "no ${HA_TOKEN_FILE} — skipping hold ${ACTION}"; exit 0; }
+
+url=$([ -r "$HA_URL_FILE" ] && cat "$HA_URL_FILE" || echo "https://ha.jphe.in:8123")
+
+if curl -sf -m 6 -X POST \
+     -H "Authorization: Bearer $(cat "$HA_TOKEN_FILE")" \
+     -H "Content-Type: application/json" \
+     -d "{\"entity_id\": \"${HOLD_ENTITY}\"}" \
+     "${url}/api/services/input_boolean/${verb}" >/dev/null 2>&1; then
+  log "sleep hold ${ACTION}"
+  exit 0
+fi
+
+log "WARNING: could not set sleep hold ${ACTION} — Ember may wake this host"
+exit 1
