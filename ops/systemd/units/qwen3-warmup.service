@@ -1,0 +1,15 @@
+# qwen3-warmup.service — pulled in by qwen3-coder.service (Wants=), never
+# enabled on its own. Type=oneshot WITHOUT RemainAfterExit so a re-start of the
+# lane re-triggers it. It must never block or fail the lane: the script always
+# exits 0, and the lane's start job does not wait on this unit (Wants, not
+# Requires; ordering only says we begin after the lane's ExecStart begins).
+[Unit]
+Description=Warm the qwen3-coder lane (shader compile) and restore the pre-sleep session
+After=qwen3-coder.service
+BindsTo=qwen3-coder.service
+
+[Service]
+Type=oneshot
+User=jp
+ExecStart=/usr/local/sbin/qwen3-warmup
+TimeoutStartSec=900

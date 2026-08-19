@@ -6,7 +6,7 @@
 # re-synced from /etc/systemd/system/qwen3-coder.service on 2026-08-19.
 Description=Qwen3.6-35B-A3B UD-Q4_K_XL on the Arc Pro B60 (Vulkan) — Claude Code + HA lane
 After=network-online.target b60-clocks.service
-Wants=network-online.target
+Wants=network-online.target qwen3-warmup.service
 # NO Conflicts=. The "coder conflicts with every GPU slot" belief was false and
 # is now actively wrong: the B60 and the surviving P102 do not contend, so the
 # embed/chat slots on the P102 coexist with this lane by construction.
@@ -63,8 +63,19 @@ User=jp
 # swallows the next argument.
 # --device Vulkan0 is MANDATORY: NVIDIA also enumerates under Vulkan, and this
 # model must never be split across the B60 and a P102.
+# MODEL ON NVMe (2026-08-19): the GGUF moved from /mnt/ollama-models (spinning
+# WD VelociRaptor, 192 MB/s measured -> ~2 min of pure disk read per cold load)
+# to the NVMe root (sha256-verified copy; the sda copy remains as backup).
+# This also drops the old mnt-ollama\x2dmodels.mount dependency entirely.
+#
+# --slot-save-path enables POST /slots/0?action=save|restore. familiar-sleep-now
+# saves slot 0 there before stopping the lane; qwen3-warmup restores it after
+# the next start, so a sleep/wake cycle costs a delta prefill instead of a full
+# cold one. Saves are best-effort and version-bound: after a llama.cpp rebuild
+# or model swap the restore just fails clean -> one cold prefill, nothing worse.
 ExecStart=/opt/llama.cpp-vulkan/build/bin/llama-server \
-  --model /mnt/ollama-models/llama/models/Qwen3.6-35B-A3B-UD-Q4_K_XL.gguf \
+  --model /var/lib/qwen3-coder/models/Qwen3.6-35B-A3B-UD-Q4_K_XL.gguf \
+  --slot-save-path /var/lib/qwen3-coder/slots \
   --alias qwen36-coder \
   --device Vulkan0 \
   --port 8091 --host 0.0.0.0 \

@@ -28,10 +28,20 @@ ssh "${HOST}" "sudo install -o root -g root -m 0755 /tmp/familiar-ml-quiesce \
 # The quiesce wrapper + the HA hold switch. These live in /usr/local/sbin (not
 # in the sleep-hook dir) precisely because they must run OUTSIDE the sleep
 # transaction — see the header of familiar-sleep-now for the measurements.
-for s in familiar-ha-hold familiar-sleep-now; do
+for s in familiar-ha-hold familiar-sleep-now qwen3-warmup; do
     scp "${REPO_ROOT}/ops/familiar/${s}" "${HOST}:/tmp/${s}"
     ssh "${HOST}" "sudo install -o root -g root -m 0755 /tmp/${s} /usr/local/sbin/${s} && rm /tmp/${s}"
 done
+
+# The warmup unit (pulled in by qwen3-coder's Wants=; never enabled directly).
+# Deliberately NO restart of qwen3-coder here — the new unit file stages via
+# daemon-reload and takes effect at the lane's next natural (re)start, so
+# re-running this installer never blows a warm session cache.
+scp "${REPO_ROOT}/ops/systemd/units/qwen3-warmup.service" "${HOST}:/tmp/qwen3-warmup.service"
+ssh "${HOST}" "sudo install -o root -g root -m 0644 /tmp/qwen3-warmup.service \
+    /etc/systemd/system/qwen3-warmup.service && rm /tmp/qwen3-warmup.service && \
+    sudo mkdir -p /var/lib/qwen3-coder/slots && sudo chown -R jp:jp /var/lib/qwen3-coder && \
+    sudo systemctl daemon-reload"
 
 # Credentials for the HA sleep hold. Never echoed, never committed — piped from
 # Vaultwarden straight into a root-only file, per CLAUDE.md.

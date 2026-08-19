@@ -1,0 +1,67 @@
+#!/bin/bash
+# qwen3-warmup — absorb the two hidden costs of a qwen3-coder (re)start.
+#
+# Pulled in automatically by qwen3-coder.service (Wants=qwen3-warmup.service),
+# so it runs on boot, on slotctl starts, and on the post-sleep restart — the
+# operator never has to remember it.
+#
+# 1. SHADER COMPILE: the Vulkan build compiles its pipelines on the first
+#    inference of each process, so the first real request runs at ~half speed.
+#    A throwaway 8-token request here pays that cost before any user does.
+#
+# 2. SESSION RESTORE: familiar-sleep-now saves slot 0's KV state to disk before
+#    stopping the lane (see --slot-save-path in the unit). Restoring it here
+#    means the first Claude Code turn after a sleep prefills only its DELTA
+#    instead of the whole session — the measured alternative was a 146 s cold
+#    prefill at 36K depth (2026-08-19), and it scales worse than linearly.
+#
+# ORDER IS LOAD-BEARING: warmup request FIRST, then restore. Both write into
+# slot 0 (--parallel 1), so restoring first would let the warmup request evict
+# the just-restored session state.
+#
+# Best-effort everywhere: this unit must NEVER fail a lane start. A missed
+# restore degrades to today's behaviour (one cold prefill), nothing worse.
+
+set -uo pipefail
+
+URL=http://localhost:8091
+SLOT_FILE=last-session.bin          # relative to --slot-save-path
+HEALTH_WAIT_S=420                   # cold load measured ~170 s; 7 min ceiling
+
+log() { echo "qwen3-warmup: $*"; }
+
+# --- wait for the model load ------------------------------------------------
+for (( i=0; i<HEALTH_WAIT_S; i+=5 )); do
+  curl -sf -m 3 "$URL/health" >/dev/null 2>&1 && break
+  sleep 5
+done
+if ! curl -sf -m 3 "$URL/health" >/dev/null 2>&1; then
+  log "server not healthy after ${HEALTH_WAIT_S}s — giving up (start proceeds regardless)"
+  exit 0
+fi
+
+# --- 1. shader-compile warmup ------------------------------------------------
+t0=$SECONDS
+if curl -sf -m 300 "$URL/v1/chat/completions" \
+     -H "content-type: application/json" \
+     -d '{"model":"qwen36-coder","max_tokens":8,"cache_prompt":false,
+          "messages":[{"role":"user","content":"warmup"}],
+          "chat_template_kwargs":{"enable_thinking":false}}' >/dev/null 2>&1; then
+  log "shader warmup done in $((SECONDS - t0))s"
+else
+  log "WARNING: warmup request failed — first user request will pay shader compile"
+fi
+
+# --- 2. restore the pre-sleep session, if one was saved ----------------------
+resp=$(curl -sf -m 120 -X POST "$URL/slots/0?action=restore" \
+         -H "content-type: application/json" \
+         -d "{\"filename\": \"${SLOT_FILE}\"}" 2>&1)
+if [ $? -eq 0 ]; then
+  log "session restore ok: ${resp:0:160}"
+else
+  # Normal on first boot (no save yet) and after model/build changes
+  # (incompatible state file). Both degrade to a cold prefill.
+  log "no session restored (${resp:0:120}) — first turn will prefill cold"
+fi
+
+exit 0

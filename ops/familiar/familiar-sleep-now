@@ -53,6 +53,26 @@ free_kb() { awk '/^MemFree:/ {print $2}' /proc/meminfo; }
 # that lands mid-suspend doesn't wake it straight back up.
 /usr/local/sbin/familiar-ha-hold on || true
 
+# Save the coder lane's live session KV to disk before stopping it, so the
+# post-resume restart can restore it (qwen3-warmup) and the first Claude Code
+# turn after waking prefills only its delta — the measured alternative was a
+# 146 s cold prefill at 36K depth, scaling worse than linearly. Best-effort:
+# a failed save costs exactly today's behaviour, one cold prefill.
+#
+# Caveat, documented not fixed: with --parallel 1, slot 0 holds whatever ran
+# LAST. If an Ember/HA request landed after the CC session's final turn, we
+# save that instead — the restore is then useless but harmless (low LCP
+# similarity, CC's next turn prefills cold as it would have anyway).
+if curl -sf -m 3 http://localhost:8091/health >/dev/null 2>&1; then
+  if curl -sf -m 90 -X POST "http://localhost:8091/slots/0?action=save" \
+       -H "content-type: application/json" \
+       -d '{"filename": "last-session.bin"}' >/dev/null 2>&1; then
+    log "coder session KV saved for post-resume restore"
+  else
+    log "WARNING: session save failed (needs --slot-save-path; harmless) — first turn after wake prefills cold"
+  fi
+fi
+
 # Record only what WE stop. Units already stopped (e.g. paused by ~/ci-hooks)
 # stay stopped on resume — this never "restores" something a human turned off.
 : > "$STATE"
