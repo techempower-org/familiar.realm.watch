@@ -76,21 +76,39 @@ User=jp
 # MTP (2026-08-19): swapped to the MTP-head build of the SAME model+quant
 # (unsloth Qwen3.6-35B-A3B-MTP-GGUF UD-Q4_K_XL, sha256-verified 55983c5a…) with
 # --spec-type draft-mtp — self-speculative decoding, lossless by construction
-# (drafted tokens are verified by the target model; at temp-0 the output
-# distribution is unchanged modulo the batch-composition jitter this lane
-# already has). Measured vs baseline, same flags, same day:
+# (drafted tokens are verified by the target model). Measured vs baseline,
+# same flags, same day:
 #     prose 400 tok:  54.0 -> 62.0 t/s (+15%),  draft acceptance 0.64
-#     code  600 tok:  54   -> 78.2 t/s (+45%),  draft acceptance 0.87
-# Toolgate control: the borderline-prompt gate FLAPS IDENTICALLY on both models
-# (baseline went 0/2 cached then 3/3 no-cache in back-to-back runs), so it does
-# not discriminate; direct tool calls pass on both. VRAM is tighter: 23.4 GiB
-# resident (was 22.25) + ~760 MiB GTT spill (was ~486) — decode got faster
-# anyway, so the spill is cold pages, but do NOT grow ctx or add residents on
-# this card. Non-MTP GGUF kept alongside as the instant rollback (swap --model
-# back and drop --spec-type).
-ExecStart=/opt/llama.cpp-vulkan/build/bin/llama-server \
+#     code  600 tok:  54   -> 70-78 t/s (+30-45%), acceptance 0.74-0.87
+# VRAM is tighter: 23.4 GiB resident + ~760 MiB GTT spill — do NOT grow ctx or
+# add residents on this card.
+#
+# ⚠️ BORDERLINE TOOL PROMPTS (measured 2026-08-19, 20 samples/config): with
+# spec ON, the two coin-edge toolgate prompts fail in BOTH cache modes on BOTH
+# builds (0/20), while every spec-off config passes at least one. Each config
+# is deterministic; the numeric regime just lands marginal logits differently
+# — the ggml-org/llama.cpp#26817 jitter class, and MTP's draft-verify batching
+# shifts it hardest. DECISIVE tool prompts (Claude Code-style, explicit tools)
+# pass 100% under MTP. If Ember voice acts start flapping to prose, the lever
+# is per-request: send "speculative": false on the HA-pipeline requests
+# (documented in the server README; not yet wired anywhere).
+#
+# BUILD 947fd9b (2026-08-19, /opt/llama.cpp-vulkan-20260819): decode parity
+# with the 08-02 build (71.6 vs 70.2 t/s, acceptance 0.77 vs 0.74), same gate
+# behaviour. Old build kept at /opt/llama.cpp-vulkan as rollback.
+#
+# --reasoning-preserve (build 947fd9b onward): renders assistant thinking
+# blocks back into the FULL history instead of stripping them, so the rendered
+# context matches what generation laid down. Measured: a thinking turn-2
+# replay read 5132 tokens from cache and prefilled 26 (was: divergence at the
+# stripped block -> partial/full reprefill). This is also what makes the sleep
+# save/restore exact-append actually attainable. Cost: reasoning tokens stay
+# in the window — Claude Code's AUTO_COMPACT_WINDOW=110000 already budgets
+# headroom for this.
+ExecStart=/opt/llama.cpp-vulkan-20260819/build/bin/llama-server \
   --model /var/lib/qwen3-coder/models/Qwen3.6-35B-A3B-MTP-UD-Q4_K_XL.gguf \
   --spec-type draft-mtp \
+  --reasoning-preserve \
   --slot-save-path /var/lib/qwen3-coder/slots \
   --alias qwen36-coder \
   --device Vulkan0 \

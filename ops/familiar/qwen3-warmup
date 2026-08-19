@@ -12,20 +12,18 @@
 # 2. SESSION RESTORE: familiar-sleep-now saves slot 0's KV state to disk before
 #    stopping the lane (see --slot-save-path in the unit), and this restores it.
 #
-#    ⚠️ MEASURED LIMITATION (2026-08-19): on this hybrid Gated-DeltaNet arch the
-#    restore currently helps ONLY an exact-append continuation, and real CC
-#    turns are never exactly that — the Qwen3 template re-renders history
-#    slightly differently than generation laid it down (thinking-block
-#    handling), so the follow-up lands at f_sim ~0.998 / f_keep ~0.999 and the
-#    recurrent state cannot be rolled back past the ~15 divergent boundary
-#    tokens: the server reprefills from zero. In-RAM slot state DOES survive
-#    such divergence (0.97-1.00 hits reuse fine live); the on-disk slot file
-#    evidently does not carry whatever makes that rollback possible.
-#    KEPT ANYWAY: the save costs 0.4 s per sleep and ~150 MB disk, restore is
-#    58 ms, failure degrades to a cold prefill (today's behaviour) — and if a
-#    future llama.cpp preserves hybrid checkpoints in slot files, this starts
-#    working with zero re-work. Do not read "restore ok" below as "next turn
-#    will be cheap" — verify with cache_read_input_tokens in the usage block.
+#    On this hybrid Gated-DeltaNet arch the restore only helps an EXACT-append
+#    continuation — the recurrent state cannot roll back past a divergence.
+#    That made it useless at first: the template stripped thinking blocks when
+#    re-rendering history, so every real follow-up diverged ~15 boundary
+#    tokens before the end (f_keep 0.999 -> full reprefill anyway).
+#    FIXED the same day by --reasoning-preserve on the unit (build 947fd9b+):
+#    history now renders exactly as generation laid it down. Measured end to
+#    end on prod: save 5400 tokens -> evict -> restore -> follow-up read 5400
+#    from cache and prefilled 24. Caveats that remain: the save is version-
+#    bound (a build/model swap fails it clean -> one cold prefill), and it
+#    captures whatever ran LAST before sleep — if that was an Ember one-shot
+#    rather than the CC session, the restore is useless but harmless.
 #
 # ORDER IS LOAD-BEARING: warmup request FIRST, then restore. Both write into
 # slot 0 (--parallel 1), so restoring first would let the warmup request evict
