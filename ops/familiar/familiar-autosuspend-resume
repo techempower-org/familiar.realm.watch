@@ -1,0 +1,6 @@
+#!/bin/sh
+# system-sleep hook: invalidate the autosuspend idle clock on resume so a stale
+# clock (which survives S3 — RAM is retained) doesn't trigger an immediate
+# re-suspend loop. systemd calls: <script> {pre|post} {suspend|hibernate|...}
+[ "$1" = post ] && rm -f /run/familiar-autosuspend/last-busy 2>/dev/null
+exit 0
