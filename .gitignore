@@ -5,6 +5,8 @@ node_modules/
 __pycache__/
 .env
 .env.local
+.env.*
+!.env.example
 *.log
 dist/
 .bun/
